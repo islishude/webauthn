@@ -154,6 +154,10 @@ func (attStmt *packedAttestationStatement) Verify(clientDataHash []byte, authnDa
 }
 
 func verifyAttestationCert(attestnCert *x509.Certificate, caCerts []*x509.Certificate) (trustPath []*x509.Certificate, err error) {
+	if len(caCerts) == 0 {
+		return []*x509.Certificate{attestnCert}, nil
+	}
+
 	var verifyOptions x509.VerifyOptions
 
 	if len(caCerts) > 0 {
