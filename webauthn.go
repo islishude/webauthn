@@ -207,14 +207,14 @@ func VerifyAttestation(credentialAttestation *PublicKeyCredentialAttestation, ex
 }
 
 // NewAssertionOptions returns a PublicKeyCredentialRequestOptions from config and user.
-func NewAssertionOptions(config *Config, user *User) (*PublicKeyCredentialRequestOptions, error) {
+func NewAssertionOptions(config *Config, credentialIDs [][]byte) (*PublicKeyCredentialRequestOptions, error) {
 	challenge := make([]byte, config.ChallengeLength)
 	if _, err := rand.Read(challenge); err != nil {
 		return nil, errors.New("failed to generate challenge: " + err.Error())
 	}
 
-	var allowCredentials []PublicKeyCredentialDescriptor
-	for _, id := range user.CredentialIDs {
+	allowCredentials := make([]PublicKeyCredentialDescriptor, 0, len(credentialIDs))
+	for _, id := range credentialIDs {
 		allowCredentials = append(allowCredentials, PublicKeyCredentialDescriptor{Type: PublicKeyCredentialTypePublicKey, ID: id})
 	}
 

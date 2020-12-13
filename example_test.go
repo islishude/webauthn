@@ -155,7 +155,7 @@ func ExampleNewAssertionOptions() {
 		},
 	}
 
-	requestOptions, err := webauthn.NewAssertionOptions(cfg, user)
+	requestOptions, err := webauthn.NewAssertionOptions(cfg, user.CredentialIDs)
 	if err != nil {
 		fmt.Println("error:", err)
 		return

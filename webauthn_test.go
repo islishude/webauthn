@@ -585,7 +585,7 @@ func TestVerifyAttestationError(t *testing.T) {
 func TestNewAssertionOptions(t *testing.T) {
 	for _, tc := range newAssertionOptionsTests {
 		t.Run(tc.name, func(t *testing.T) {
-			requestOptions, err := webauthn.NewAssertionOptions(tc.cfg, tc.user)
+			requestOptions, err := webauthn.NewAssertionOptions(tc.cfg, tc.user.CredentialIDs)
 			if err != nil {
 				t.Fatalf("NewAssertionOptions(%v, %v) returns error %q", tc.cfg, tc.user, err.Error())
 			}
