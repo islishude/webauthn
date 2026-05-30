@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: initial design, created 2026-05-29.
+Status: updated design, revised 2026-05-30.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -9,6 +9,18 @@ This document defines the test approach for the planned WebAuthn/passkey server-
 Tests may be derived from W3C specification requirements, independently generated fixtures, browser outputs collected for this project, and public conformance data when the license and source are documented.
 
 Do not copy tests from public WebAuthn/passkey libraries. Do not translate another library's test cases into this repository.
+
+## Local quality gate
+
+The local quality gate is defined in `docs/ci.md` and implemented by the root `Makefile`.
+
+The required pre-PR command is:
+
+```sh
+make ci
+```
+
+During the documentation-only baseline, Go-specific targets skip because `go.mod` does not yet exist. Once plan 02 creates `go.mod`, `make ci` must run format checks, linting, unit tests, race tests, bounded fuzz smoke tests when fuzz targets exist, and module tidy verification.
 
 ## Test layers
 
@@ -145,6 +157,8 @@ Fuzzing should be added for:
 
 Fuzz tests must not require network access.
 
+CI fuzzing is a bounded smoke check. Longer fuzz campaigns should be run locally or in a separate scheduled workflow once parser surfaces exist.
+
 ## Browser interoperability tests
 
 Collect browser-produced registration and authentication outputs for representative environments when implementation exists:
@@ -164,12 +178,19 @@ Fixtures should be generated specifically for this project and documented with b
 
 ## Continuous integration expectations
 
+The baseline CI workflow is `.github/workflows/ci.yml` and is documented in `docs/ci.md`.
+
 Before release, CI should run:
 
+- documentation and configuration presence checks;
+- line-ending checks for text files;
+- `gofmt`/`goimports` formatting checks;
+- golangci-lint static analysis;
 - unit tests;
 - race-enabled tests for state-free components where practical;
 - fuzz smoke tests with bounded time;
-- static analysis;
 - dependency license checks;
 - examples build checks;
 - import graph checks proving root package does not import optional attestation packages.
+
+The initial workflow includes the first seven categories that can be expressed before implementation. Dependency license checks, examples build checks, and import graph checks must be added when the corresponding files and packages exist.

@@ -1,0 +1,28 @@
+version: "2"
+
+run:
+  timeout: 15m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - durationcheck
+    - errorlint
+    - gosec
+    - nilerr
+    - noctx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/islishude/webauthn

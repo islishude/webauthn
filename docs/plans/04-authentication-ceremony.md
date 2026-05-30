@@ -1,4 +1,4 @@
-# 03 - Authentication ceremony
+# 04 - Authentication ceremony
 
 Priority: P0.
 
@@ -10,8 +10,8 @@ Implement WebAuthn Level 2 authentication option generation and assertion verifi
 
 ## Prerequisites
 
-- Plan 01 complete.
-- Plan 02 complete enough to reuse client data, authenticator data, codec, crypto, and extension policy components.
+- Plan 02 complete.
+- Plan 03 complete enough to reuse client data, authenticator data, codec, crypto, and extension policy components.
 - Stored credential model available.
 
 ## Deliverables

@@ -1,6 +1,6 @@
 # Implementation plans
 
-Status: initial plan index, created 2026-05-29.
+Status: updated plan index, revised 2026-05-30.
 
 This file is the top-level plan index. Detailed plans live in `docs/plans/*.md` and are ordered by implementation importance using numeric prefixes. Do not collapse all planning into this file.
 
@@ -18,21 +18,22 @@ When a plan is completed, update this file and the corresponding plan file in th
 
 ## Priority-ordered plan index
 
-| Order | Plan                                                                               | Priority | Status               | Summary                                                                                                    |
-| ----- | ---------------------------------------------------------------------------------- | -------- | -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 00    | [Governance and documentation boundaries](plans/00-governance-and-boundaries.md)   | P0       | Complete, 2026-05-29 | Establish README, AGENTS, docs, source restrictions, and no-code planning baseline.                        |
-| 01    | [Core protocol model and adapter contracts](plans/01-core-protocol-model.md)       | P0       | Not started          | Define module/package layout, protocol types, codec/crypto contracts, and import graph boundaries.         |
-| 02    | [Registration ceremony](plans/02-registration-ceremony.md)                         | P0       | Not started          | Implement registration option generation and verification, starting with `none` attestation.               |
-| 03    | [Authentication ceremony](plans/03-authentication-ceremony.md)                     | P0       | Not started          | Implement assertion option generation and verification, including counters and discoverable credentials.   |
-| 04    | [Modular attestation formats](plans/04-attestation-formats.md)                     | P1       | Not started          | Implement all WebAuthn Level 2 attestation statement formats as optional packages.                         |
-| 05    | [Extension framework and Level 2 extensions](plans/05-extensions.md)               | P1       | Not started          | Implement extension input/output handling and Level 2 extension semantics.                                 |
-| 06    | [Trust policy and metadata integration](plans/06-trust-policy-and-metadata.md)     | P1       | Not started          | Add trust anchor policy, metadata hooks, certificate status behavior, and attestation acceptance controls. |
-| 07    | [Testing and conformance](plans/07-testing-and-conformance.md)                     | P1       | Not started          | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                     |
-| 08    | [Adapters, examples, and release hardening](plans/08-adapters-examples-release.md) | P2       | Not started          | Add optional transport helpers, examples, import graph checks, and release documentation.                  |
+| Order | Plan                                                                               | Priority | Status               | Summary                                                                                                      |
+| ----- | ---------------------------------------------------------------------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 00    | [Governance and documentation boundaries](plans/00-governance-and-boundaries.md)   | P0       | Complete, 2026-05-29 | Establish README, AGENTS, docs, source restrictions, and no-code planning baseline.                          |
+| 01    | [Quality gates and CI workflow](plans/01-quality-gates-and-ci.md)                  | P0       | Complete, 2026-05-30 | Establish local Makefile workflow, golangci-lint configuration, LF policy, and GitHub Actions CI gate.       |
+| 02    | [Core protocol model and adapter contracts](plans/02-core-protocol-model.md)       | P0       | Not started          | Define module/package layout, protocol types, codec/crypto contracts, and import graph boundaries.           |
+| 03    | [Registration ceremony](plans/03-registration-ceremony.md)                         | P0       | Not started          | Implement registration option generation and verification, starting with `none` attestation.                 |
+| 04    | [Authentication ceremony](plans/04-authentication-ceremony.md)                     | P0       | Not started          | Implement assertion option generation and verification, including counters and discoverable credentials.     |
+| 05    | [Modular attestation formats](plans/05-attestation-formats.md)                     | P1       | Not started          | Implement all WebAuthn Level 2 attestation statement formats as optional packages.                           |
+| 06    | [Extension framework and Level 2 extensions](plans/06-extensions.md)               | P1       | Not started          | Implement extension input/output handling and Level 2 extension semantics.                                   |
+| 07    | [Trust policy and metadata integration](plans/07-trust-policy-and-metadata.md)     | P1       | Not started          | Add trust anchor policy, metadata hooks, certificate status behavior, and attestation acceptance controls.   |
+| 08    | [Testing and conformance](plans/08-testing-and-conformance.md)                     | P1       | Not started          | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                       |
+| 09    | [Adapters, examples, and release hardening](plans/09-adapters-examples-release.md) | P2       | Not started          | Add optional transport helpers, examples, import graph checks, CI example builds, and release documentation. |
 
 ## Release gates
 
-A stable release requires plans 01 through 07 to be complete. Plan 08 is required for a public release candidate but may continue after core protocol completeness if examples are still expanding.
+A stable release requires plans 02 through 08 to be complete. Plan 09 is required for a public release candidate but may continue after core protocol completeness if examples are still expanding.
 
 Root package release gates:
 
@@ -40,7 +41,13 @@ Root package release gates:
 - root package does not import optional attestation format packages;
 - no implementation code copied or adapted from public WebAuthn libraries;
 - no general-purpose cryptography or codec library implemented in this repository;
+- local `make ci` passes;
+- GitHub Actions CI passes on the release branch;
 - registration and authentication relying-party operations covered by tests;
 - all WebAuthn Level 2 attestation formats supported through optional modules;
 - all WebAuthn Level 2 extensions represented and policy-checked;
 - README feature claims match implemented and tested behavior.
+
+## Plan synchronization rule
+
+Plan 01 added repository quality gates after the initial documentation pass. Because it is prerequisite infrastructure, implementation plans were renumbered so that core code begins at plan 02. Future plan insertions must either preserve numeric priority ordering or explicitly document why a later-numbered plan has higher execution priority.

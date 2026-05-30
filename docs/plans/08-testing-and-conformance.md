@@ -1,4 +1,4 @@
-# 07 - Testing and conformance
+# 08 - Testing and conformance
 
 Priority: P1.
 
@@ -10,9 +10,10 @@ Build confidence that the implementation follows WebAuthn Level 2 relying-party 
 
 ## Prerequisites
 
-- Plans 01 through 06 sufficiently implemented for test targets.
+- Plans 02 through 07 sufficiently implemented for test targets.
 - Fixture generation approach documented.
 - Dependency license review completed for any external conformance data.
+- Plan 01 quality gate remains active in local and GitHub Actions workflows.
 
 ## Deliverables
 
@@ -28,7 +29,7 @@ Build confidence that the implementation follows WebAuthn Level 2 relying-party 
 10. Browser interoperability fixture suite generated for this project.
 11. Conformance matrix mapping W3C relying-party verification steps to tests.
 12. Import graph checks in CI.
-13. CI workflow for unit tests, fuzz smoke tests, static analysis, and examples.
+13. Expand the existing CI workflow for unit tests, fuzz smoke tests, static analysis, examples, dependency license checks, and import graph checks as those targets become available.
 
 ## Fixture rules
 
@@ -46,7 +47,8 @@ Build confidence that the implementation follows WebAuthn Level 2 relying-party 
 - Policy rejection paths.
 - Import graph root independence.
 - Race-free operation for stateless verifiers.
+- Local `make ci` and GitHub Actions passing on the release branch.
 
 ## Completion update requirements
 
-When complete, update `docs/plans.md`, this file, `docs/testing.md`, and README feature status.
+When complete, update `docs/plans.md`, this file, `docs/testing.md`, `docs/ci.md`, and README feature status.

@@ -1,0 +1,125 @@
+name: ci
+
+"on":
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: stable
+  GOLANGCI_LINT_VERSION: v2.12.2
+
+jobs:
+  docs-and-config:
+    name: docs and configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Required documentation and config files
+        run: make ci-docs
+
+      - name: Check text file line endings
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r -d '' file; do
+            if ! perl -ne 'exit 1 if /\r/' "$file"; then
+              echo "CRLF line ending detected: $file"
+              status=1
+            fi
+          done < <(find . -type f \( -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name 'Makefile' \) -print0)
+          exit "$status"
+
+  detect-go-module:
+    name: detect go module
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      has-go-mod: ${{ steps.detect.outputs.has-go-mod }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect go.mod
+        id: detect
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then
+            echo 'has-go-mod=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'has-go-mod=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - docs-and-config
+      - detect-go-module
+    if: needs.detect-go-module.outputs.has-go-mod == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            **/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: ./...
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - docs-and-config
+      - detect-go-module
+    if: needs.detect-go-module.outputs.has-go-mod == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.sum
+            **/go.sum
+
+      - name: Format check
+        run: make format-check
+
+      - name: Unit tests
+        run: make test
+
+      - name: Race tests
+        run: make test-race
+
+      - name: Fuzz smoke tests
+        run: make test-fuzz-smoke
+
+      - name: Module tidy check
+        run: make mod-check

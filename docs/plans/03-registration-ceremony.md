@@ -1,4 +1,4 @@
-# 02 - Registration ceremony
+# 03 - Registration ceremony
 
 Priority: P0.
 
@@ -10,7 +10,7 @@ Implement WebAuthn Level 2 registration option generation and registration respo
 
 ## Prerequisites
 
-- Plan 01 complete.
+- Plan 02 complete.
 - Challenge generator and ceremony state representation available.
 - Codec and crypto adapter contracts available.
 - `none` attestation verifier contract available.

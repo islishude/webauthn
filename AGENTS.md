@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is planned as `github.com/islishude/webauthn`, a Go server-side WebAuthn/passkey library. The immediate project state is documentation-first: do not add implementation code until the root `README.md`, this file, `docs/technical.md`, `docs/protocol-map.md`, `docs/api-boundaries.md`, `docs/security-model.md`, `docs/testing.md`, `docs/plans.md`, and the referenced `docs/plans/*.md` files exist and are internally consistent.
+This repository is planned as `github.com/islishude/webauthn`, a Go server-side WebAuthn/passkey library. The immediate project state is documentation-first: do not add implementation code until the root `README.md`, this file, `docs/technical.md`, `docs/protocol-map.md`, `docs/api-boundaries.md`, `docs/security-model.md`, `docs/testing.md`, `docs/ci.md`, `docs/plans.md`, and the referenced `docs/plans/*.md` files exist and are internally consistent.
 
 ## Non-negotiable constraints
 
@@ -21,6 +21,26 @@ Every change must preserve a documentation trail. If a plan item is completed, u
 A plan update must record status, date, deliverables, and any scope changes. Do not leave completed work marked as pending.
 
 Do not add files that conflict with the documented package boundaries. If implementation requires changing a boundary, update `docs/technical.md`, `docs/api-boundaries.md`, and the relevant plan first.
+
+## Local and CI quality gate
+
+The required local gate is:
+
+```sh
+make ci
+```
+
+Run narrower targets while editing, then run `make ci` before a change is considered ready. The target validates required docs/config immediately and runs Go checks once `go.mod` exists.
+
+Quality workflow files are:
+
+- `Makefile` for local commands;
+- `.github/workflows/ci.yml` for GitHub Actions;
+- `.golangci.yml` for lint and formatter configuration;
+- `.gitattributes` for text line-ending normalization;
+- `docs/ci.md` for workflow documentation.
+
+Changing format, lint, test, race, fuzz, module, import-graph, or example-build behavior requires updating the local target, GitHub workflow, and documentation together.
 
 ## Source and dependency hygiene
 
@@ -65,11 +85,15 @@ Tests must be based on specifications, generated fixtures, browser outputs colle
 
 For each protocol parser or verifier, include positive tests, malformed input tests, boundary-length tests, and policy rejection tests. Attestation modules must test both cryptographic verification and trust-path policy behavior where applicable.
 
+The default test gate is `make ci`. After `go.mod` exists, this includes formatting, linting, unit tests, race tests, fuzz smoke tests when fuzz targets exist, and module tidy verification. CI must remain green before merging implementation work.
+
 ## Release-readiness rules
 
 A release candidate must not be tagged until:
 
 - all P0 and P1 plans in `docs/plans.md` are complete;
+- local `make ci` passes;
+- GitHub Actions CI passes on the release branch;
 - root package import does not pull optional attestation formats;
 - examples demonstrate integration without `net/http` and, separately, with an optional HTTP adapter;
 - conformance coverage is documented in `docs/testing.md`;

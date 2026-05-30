@@ -1,4 +1,4 @@
-# 05 - Extension framework and Level 2 extensions
+# 06 - Extension framework and Level 2 extensions
 
 Priority: P1.
 
@@ -10,8 +10,8 @@ Implement a WebAuthn extension framework and support all WebAuthn Level 2 define
 
 ## Prerequisites
 
-- Plan 01 core extension registry contract complete.
-- Plans 02 and 03 expose extension input/output hooks.
+- Plan 02 core extension registry contract complete.
+- Plans 03 and 04 expose extension input/output hooks.
 - Codec adapter can decode authenticator extension output maps.
 
 ## Required extensions
@@ -37,6 +37,7 @@ Implement a WebAuthn extension framework and support all WebAuthn Level 2 define
 9. `appidExclude` registration option support.
 10. `uvm`, `credProps`, and `largeBlob` parsing and result objects.
 11. Documentation for extension policy configuration.
+12. Keep `make ci` and GitHub Actions green as extension handlers are added.
 
 ## Tests
 

@@ -31,4 +31,4 @@ Establish the repository as a documentation-first WebAuthn/passkey server-side l
 
 ## Follow-up
 
-Implementation can begin with `01-core-protocol-model.md`. Any change to core architecture must update this plan set before or with code changes.
+Quality gates and CI must be established by `01-quality-gates-and-ci.md` before Go implementation begins. Core implementation can then begin with `02-core-protocol-model.md`. Any change to core architecture must update this plan set before or with code changes.

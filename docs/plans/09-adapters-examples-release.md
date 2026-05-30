@@ -1,4 +1,4 @@
-# 08 - Adapters, examples, and release hardening
+# 09 - Adapters, examples, and release hardening
 
 Priority: P2.
 
@@ -10,9 +10,10 @@ Add optional integration helpers and release-quality documentation after the tra
 
 ## Prerequisites
 
-- Plans 01 through 07 complete or nearly complete.
+- Plans 02 through 08 complete or nearly complete.
 - Public API names stable enough for examples.
 - Root package import graph verified.
+- Local and GitHub Actions quality gates passing.
 
 ## Deliverables
 
@@ -27,6 +28,7 @@ Add optional integration helpers and release-quality documentation after the tra
 9. Security considerations section updated for users.
 10. Dependency inventory and license notes.
 11. Release checklist.
+12. CI example-build job and README snippet verification, when examples exist.
 
 ## Non-goals
 
@@ -44,4 +46,4 @@ Add optional integration helpers and release-quality documentation after the tra
 
 ## Completion update requirements
 
-When complete, update `docs/plans.md`, this file, README, and release notes.
+When complete, update `docs/plans.md`, this file, README, `docs/ci.md`, and release notes.

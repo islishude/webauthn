@@ -165,11 +165,14 @@ The library should not assume that every passkey is hardware-bound, non-exportab
 Implementation should follow `docs/plans.md`. The required order is:
 
 1. governance and boundaries;
-2. core protocol model and adapter contracts;
-3. registration ceremony with `none` attestation;
-4. authentication ceremony;
-5. modular attestation formats;
-6. extensions;
-7. trust and metadata policy;
-8. conformance tests;
-9. optional adapters, examples, and release hardening.
+2. local and GitHub Actions quality gates;
+3. core protocol model and adapter contracts;
+4. registration ceremony with `none` attestation;
+5. authentication ceremony;
+6. modular attestation formats;
+7. extensions;
+8. trust and metadata policy;
+9. conformance tests;
+10. optional adapters, examples, and release hardening.
+
+The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces Go formatting, linting, tests, race checks, fuzz smoke checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so documentation-only planning remains green while implementation work becomes gated as soon as the module is created.

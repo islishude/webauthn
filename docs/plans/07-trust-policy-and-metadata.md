@@ -1,4 +1,4 @@
-# 06 - Trust policy and metadata integration
+# 07 - Trust policy and metadata integration
 
 Priority: P1.
 
@@ -10,9 +10,9 @@ Separate attestation cryptographic validity from relying-party trust decisions, 
 
 ## Prerequisites
 
-- Plan 01 verifier contracts complete.
-- Plan 02 registration verifier can receive attestation verification outputs.
-- Plan 04 format packages expose trust path material and format-specific evidence.
+- Plan 02 verifier contracts complete.
+- Plan 03 registration verifier can receive attestation verification outputs.
+- Plan 05 format packages expose trust path material and format-specific evidence.
 
 ## Deliverables
 
@@ -24,6 +24,7 @@ Separate attestation cryptographic validity from relying-party trust decisions, 
 6. Certificate status policy hook for intermediate CA certificate status where applicable.
 7. Enterprise or restricted enrollment policy examples.
 8. Documentation explaining cryptographic validity vs trust acceptance.
+9. Keep `make ci` and GitHub Actions green as trust-policy code is added.
 
 ## Non-goals
 
