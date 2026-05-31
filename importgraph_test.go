@@ -33,7 +33,7 @@ func TestRootPackageImportGraphExcludesOptionalPackages(t *testing.T) {
 		"github.com/islishude/webauthn/http",
 	}
 
-	for _, dep := range strings.Fields(string(output)) {
+	for dep := range strings.FieldsSeq(string(output)) {
 		if _, forbidden := forbiddenExact[dep]; forbidden {
 			t.Fatalf("root package must not import %s", dep)
 		}

@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/islishude/webauthn/attestation"
@@ -630,33 +632,19 @@ func validateOrigins(origins []string) error {
 	if len(origins) == 0 {
 		return errors.New("allowed origins are required")
 	}
-	for _, origin := range origins {
-		if origin == "" {
-			return errors.New("allowed origins must not contain empty values")
-		}
+	if slices.Contains(origins, "") {
+		return errors.New("allowed origins must not contain empty values")
 	}
 
 	return nil
 }
 
 func originAllowed(origin string, allowedOrigins []string) bool {
-	for _, allowed := range allowedOrigins {
-		if origin == allowed {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(allowedOrigins, origin)
 }
 
 func algorithmAllowed(algorithm protocol.COSEAlgorithmIdentifier, allowed []protocol.COSEAlgorithmIdentifier) bool {
-	for _, candidate := range allowed {
-		if algorithm == candidate {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(allowed, algorithm)
 }
 
 func algorithmsFromParameters(parameters []protocol.CredentialParameter) []protocol.COSEAlgorithmIdentifier {
@@ -723,9 +711,7 @@ func cloneExtensionInputs(inputs protocol.ExtensionInputs) protocol.ExtensionInp
 	}
 
 	out := make(protocol.ExtensionInputs, len(inputs))
-	for key, value := range inputs {
-		out[key] = value
-	}
+	maps.Copy(out, inputs)
 
 	return out
 }
