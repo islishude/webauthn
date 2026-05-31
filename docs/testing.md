@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: authentication coverage and initial packed/TPM/Android Key/FIDO U2F attestation coverage started, revised 2026-05-31.
+Status: authentication coverage and initial packed/TPM/Android Key/SafetyNet/FIDO U2F attestation coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -195,6 +195,13 @@ The Android Key Plan 05 slice added tests for:
 - optional `attestation/androidkey` EC2 and RSA valid paths;
 - malformed statement fields, malformed x5c, invalid signature, certificate public-key mismatch, missing or malformed Android Key attestation extension, challenge mismatch, `allApplications` rejection, missing or wrong origin, and missing signing purpose;
 - shared attestation statement helper reuse across optional format packages;
+- continued root import graph independence from optional attestation format packages.
+
+The Android SafetyNet Plan 05 slice added tests for:
+
+- optional `attestation/androidsafetynet` valid path;
+- malformed statement fields, JWS verifier rejection, malformed payload JSON, nonce mismatch, missing or false `ctsProfileMatch`, missing or non-numeric `timestampMs`, missing x5c chain, malformed leaf certificate, and SafetyNet service hostname mismatch;
+- shared attestation statement string helper reuse across optional format packages;
 - continued root import graph independence from optional attestation format packages.
 
 ## Fuzzing targets

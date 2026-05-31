@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
 )
 
 var (
@@ -59,5 +60,5 @@ func (d CollectedClientData) ChallengeBytes() ([]byte, error) {
 		return nil, err
 	}
 
-	return cloneBytes(challenge), nil
+	return slices.Clone(challenge), nil
 }

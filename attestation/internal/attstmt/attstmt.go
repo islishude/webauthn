@@ -57,6 +57,16 @@ func Bytes(value any, invalid error) ([]byte, error) {
 	return append([]byte{}, bytes...), nil
 }
 
+// String parses a non-empty string from a decoded attStmt value.
+func String(value any, invalid error) (string, error) {
+	out, ok := value.(string)
+	if !ok || out == "" {
+		return "", fmt.Errorf("%w: string field has type %T", invalid, value)
+	}
+
+	return out, nil
+}
+
 // X5C parses a non-empty leaf-first x5c certificate array.
 func X5C(value any, invalid error) ([][]byte, error) {
 	switch typed := value.(type) {

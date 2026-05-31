@@ -25,6 +25,7 @@ Current package boundaries:
 - `attestation/fidou2f`: optional `fido-u2f` format verifier selected explicitly by callers;
 - `attestation/tpm`: optional `tpm` format verifier selected explicitly by callers;
 - `attestation/androidkey`: optional `android-key` format verifier selected explicitly by callers;
+- `attestation/androidsafetynet`: optional `android-safetynet` format verifier selected explicitly by callers;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
 ## Ceremony API shape
@@ -184,6 +185,8 @@ The minimal trust policy contract is `attestation.TrustPolicy`. It receives veri
 `attestation/tpm` verifies TPM 2.0 attestation statements by binding `certInfo` to authenticator data, client data hash, and `pubArea`; binding `pubArea` to codec-derived EC2 or RSA credential public key material; checking AIK certificate shape requirements; and returning `TypeAttCA` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
 
 `attestation/androidkey` verifies Android Key attestation statements by checking the signature over authenticator data plus client data hash, binding the leaf certificate public key to codec-derived EC2 or RSA credential public key material, validating the WebAuthn-required Android Key attestation extension fields, and returning `TypeBasic` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
+
+`attestation/androidsafetynet` verifies Android SafetyNet attestation statements by delegating compact JWS verification to `crypto.JWSVerifier`, checking the SafetyNet nonce against authenticator data plus client data hash, requiring `ctsProfileMatch`, validating the SafetyNet service certificate hostname, and returning `TypeBasic` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
 
 ## Extension boundary
 

@@ -3,6 +3,7 @@ package protocol
 import (
 	"crypto/subtle"
 	"fmt"
+	"slices"
 )
 
 const (
@@ -50,21 +51,11 @@ func newByteValue(field string, value []byte, minLength int, maxLength int) (byt
 		}
 	}
 
-	return byteValue{value: cloneBytes(value)}, nil
-}
-
-func cloneBytes(value []byte) []byte {
-	if value == nil {
-		return nil
-	}
-
-	out := make([]byte, len(value))
-	copy(out, value)
-	return out
+	return byteValue{value: slices.Clone(value)}, nil
 }
 
 func (v byteValue) bytes() []byte {
-	return cloneBytes(v.value)
+	return slices.Clone(v.value)
 }
 
 func (v byteValue) len() int {
@@ -72,10 +63,6 @@ func (v byteValue) len() int {
 }
 
 func (v byteValue) equalBytes(other []byte) bool {
-	if len(v.value) != len(other) {
-		return false
-	}
-
 	return subtle.ConstantTimeCompare(v.value, other) == 1
 }
 

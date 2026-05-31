@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"slices"
 )
 
 const (
@@ -33,7 +34,7 @@ type AAGUID [AAGUIDLength]byte
 
 // Bytes returns a defensive copy.
 func (a AAGUID) Bytes() []byte {
-	return cloneBytes(a[:])
+	return slices.Clone(a[:])
 }
 
 // AuthenticatorFlags exposes authenticator data flags.
@@ -97,7 +98,7 @@ func ParseAuthenticatorData(raw AuthenticatorData) (ParsedAuthenticatorData, err
 
 	parsed := ParsedAuthenticatorData{
 		Raw:       raw,
-		RPIDHash:  cloneBytes(bytes[:RPIDHashLength]),
+		RPIDHash:  slices.Clone(bytes[:RPIDHashLength]),
 		Flags:     AuthenticatorFlags(bytes[RPIDHashLength]),
 		SignCount: binary.BigEndian.Uint32(bytes[RPIDHashLength+1 : MinAuthenticatorDataLength]),
 	}
@@ -108,7 +109,7 @@ func ParseAuthenticatorData(raw AuthenticatorData) (ParsedAuthenticatorData, err
 		case parsed.Flags.HasExtensionData() && len(extensionData) == 0:
 			return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
 		case parsed.Flags.HasExtensionData():
-			parsed.ExtensionData = cloneBytes(extensionData)
+			parsed.ExtensionData = slices.Clone(extensionData)
 		case len(extensionData) != 0:
 			return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
 		}
@@ -151,6 +152,6 @@ func parseAttestedCredentialData(data []byte) (AttestedCredentialData, error) {
 	return AttestedCredentialData{
 		AAGUID:                           aaguid,
 		CredentialID:                     credentialID,
-		CredentialPublicKeyAndExtensions: cloneBytes(data[credentialIDEnd:]),
+		CredentialPublicKeyAndExtensions: slices.Clone(data[credentialIDEnd:]),
 	}, nil
 }

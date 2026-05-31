@@ -29,7 +29,7 @@ func parseStatement(statement codec.AttestationStatement) (tpmStatement, error) 
 		}
 	}
 
-	version, err := statementString(statement["ver"])
+	version, err := attstmt.String(statement["ver"], ErrInvalidStatement)
 	if err != nil {
 		return tpmStatement{}, err
 	}
@@ -62,13 +62,4 @@ func parseStatement(statement codec.AttestationStatement) (tpmStatement, error) 
 		certInfo:   certInfo,
 		publicArea: publicArea,
 	}, nil
-}
-
-func statementString(value any) (string, error) {
-	out, ok := value.(string)
-	if !ok || out == "" {
-		return "", fmt.Errorf("%w: string field has type %T", ErrInvalidStatement, value)
-	}
-
-	return out, nil
 }
