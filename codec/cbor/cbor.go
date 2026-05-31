@@ -1,0 +1,124 @@
+// Package cbor provides concrete CBOR and COSE_Key decoders behind the codec
+// contracts.
+package cbor
+
+import (
+	"errors"
+	"fmt"
+
+	fxcbor "github.com/fxamacker/cbor/v2"
+	cosekey "github.com/ldclabs/cose/key"
+
+	"github.com/islishude/webauthn/codec"
+	"github.com/islishude/webauthn/protocol"
+)
+
+var (
+	// ErrMalformedCBOR reports a decoded shape that is not valid WebAuthn input.
+	ErrMalformedCBOR = errors.New("malformed cbor")
+)
+
+// Decoder decodes WebAuthn CBOR structures using strict duplicate-key checks.
+type Decoder struct {
+	mode fxcbor.DecMode
+}
+
+// NewDecoder creates a decoder with duplicate map-key rejection.
+func NewDecoder() (*Decoder, error) {
+	mode, err := fxcbor.DecOptions{
+		DupMapKey:   fxcbor.DupMapKeyEnforcedAPF,
+		IndefLength: fxcbor.IndefLengthForbidden,
+		UTF8:        fxcbor.UTF8RejectInvalid,
+	}.DecMode()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Decoder{mode: mode}, nil
+}
+
+// MustNewDecoder creates a decoder or panics. It is intended for tests and
+// package-level fixtures.
+func MustNewDecoder() *Decoder {
+	decoder, err := NewDecoder()
+	if err != nil {
+		panic(err)
+	}
+
+	return decoder
+}
+
+// DecodeAttestationObject decodes a WebAuthn attestationObject CBOR map.
+func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {
+	var decoded struct {
+		Format            string                     `cbor:"fmt"`
+		AuthenticatorData []byte                     `cbor:"authData"`
+		Statement         codec.AttestationStatement `cbor:"attStmt"`
+	}
+
+	if err := d.decode(raw.Bytes(), &decoded); err != nil {
+		return codec.DecodedAttestationObject{}, err
+	}
+	if decoded.Format == "" || len(decoded.AuthenticatorData) == 0 || decoded.Statement == nil {
+		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
+	}
+
+	authData, err := protocol.NewAuthenticatorData(decoded.AuthenticatorData)
+	if err != nil {
+		return codec.DecodedAttestationObject{}, err
+	}
+
+	return codec.DecodedAttestationObject{
+		Format:            decoded.Format,
+		AuthenticatorData: authData,
+		Statement:         decoded.Statement,
+		Raw:               raw,
+	}, nil
+}
+
+// DecodeCredentialPublicKey decodes the first CBOR item as a COSE_Key and
+// stores only the consumed COSE_Key bytes in the returned Raw value.
+func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicKey, error) {
+	var key cosekey.Key
+	rest, err := d.mode.UnmarshalFirst(raw, &key)
+	if err != nil {
+		return codec.CredentialPublicKey{}, err
+	}
+
+	consumed := len(raw) - len(rest)
+	if consumed <= 0 || key == nil {
+		return codec.CredentialPublicKey{}, ErrMalformedCBOR
+	}
+
+	return codec.NewCredentialPublicKey(
+		protocol.COSEAlgorithmIdentifier(key.Alg()),
+		key,
+		raw[:consumed],
+	), nil
+}
+
+// DecodeExtensionMap decodes authenticator extension output CBOR.
+func (d *Decoder) DecodeExtensionMap(raw []byte) (codec.ExtensionMap, error) {
+	var extensions codec.ExtensionMap
+	if err := d.decode(raw, &extensions); err != nil {
+		return nil, err
+	}
+	if extensions == nil {
+		return nil, ErrMalformedCBOR
+	}
+
+	return extensions, nil
+}
+
+func (d *Decoder) decode(data []byte, out any) error {
+	if d == nil {
+		return errors.New("nil cbor decoder")
+	}
+	if err := d.mode.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+	}
+
+	return nil
+}
+
+var _ codec.Decoders = (*Decoder)(nil)

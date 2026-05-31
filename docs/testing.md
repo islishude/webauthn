@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: core model coverage started, revised 2026-05-31.
+Status: registration coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -153,6 +153,16 @@ Plan 02 added initial tests for:
 - codec and crypto adapter contracts using independently authored test doubles;
 - attestation and extension registry duplicate rejection, unknown lookup, and case-sensitive identifiers;
 - root import graph checks preventing `net/http`, transport helpers, and optional attestation format package imports.
+
+Plan 03 added tests for:
+
+- registration option generation and successful registration with `none` attestation;
+- collected client data parsing and malformed client data rejection;
+- authenticator data parsing, flags, sign count, and attested credential data extraction;
+- registration rejection paths for challenge, origin, cross-origin, token binding, RP ID hash, UP/UV, algorithm, format, attestation policy, duplicate credential, and expiry failures;
+- extension absent, unsolicited ignored, and unsolicited rejected behavior;
+- optional CBOR/COSE decoder behavior, including duplicate map key rejection and COSE_Key raw-consumption boundaries;
+- optional `attestation/none` verifier behavior.
 
 ## Fuzzing targets
 

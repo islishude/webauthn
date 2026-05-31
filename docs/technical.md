@@ -1,6 +1,6 @@
 # Technical design
 
-Status: core protocol model implemented, revised 2026-05-31.
+Status: registration ceremony implemented, revised 2026-05-31.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -38,16 +38,17 @@ The library should not own the account model. User lookup, session creation, acc
 
 Plan 02 fixed the initial package names. The dependency direction must remain stable.
 
-| Area                        | Responsibility                                                                                           | Root dependency direction                                             |
-| --------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Root package                | Module documentation and future ceremony entry points                                                    | Does not import optional packages or `net/http`                       |
-| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, credential descriptors, enum-like values | No attestation format dependencies                                    |
-| `attestation`               | Format verifier contract, result types, and duplicate-rejecting registry                                 | Root accepts explicit format verifiers                                |
-| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                         | Optional imports only; not implemented in Plan 02                     |
-| `extension`                 | Extension handler contract, result types, and duplicate-rejecting registry                               | Root accepts explicit extension handlers or built-in Level 2 handlers |
-| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                       | Behind narrow contracts                                               |
-| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                  | Behind narrow contracts                                               |
-| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                       | Must not be imported by the root package                              |
+| Area                        | Responsibility                                                                                          | Root dependency direction                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Root package                | Module documentation and registration ceremony entry points                                             | Does not import optional packages or `net/http`                       |
+| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values | No attestation format dependencies                                    |
+| `attestation`               | Format verifier contract, result types, and duplicate-rejecting registry                                | Root accepts explicit format verifiers                                |
+| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                        | `none` implemented as optional import; others future work             |
+| `extension`                 | Extension handler contract, result types, and duplicate-rejecting registry                              | Root accepts explicit extension handlers or built-in Level 2 handlers |
+| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                      | Behind narrow contracts                                               |
+| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                 | Behind narrow contracts                                               |
+| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                             | Not imported by root; replaceable behind `codec.Decoders`             |
+| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                      | Must not be imported by the root package                              |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -154,6 +155,8 @@ Dependencies must be minimal and compartmentalized. The root package should not 
 
 The implementation should prefer standard library support for SHA-256, X.509 parsing, ASN.1 parsing, ECDSA/RSA verification, and base64url handling where it is sufficient. CBOR, COSE, and JWS/JWT require explicit dependency decisions before implementation.
 
+Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration API still accepts `codec.Decoders`, so replacing these dependencies does not change root API compatibility.
+
 ## Compatibility and passkey behavior
 
 The library should support both username-first and discoverable-credential authentication flows. Passkey-oriented behavior requires correct user handle processing, resident/discoverable credential options, user verification policy, authenticator attachment preferences, and extension results such as credential properties where supported.
@@ -167,7 +170,7 @@ Implementation should follow `docs/plans.md`. The required order is:
 1. governance and boundaries;
 2. local and GitHub Actions quality gates;
 3. core protocol model and adapter contracts (complete, 2026-05-31);
-4. registration ceremony with `none` attestation;
+4. registration ceremony with `none` attestation (complete, 2026-05-31);
 5. authentication ceremony;
 6. modular attestation formats;
 7. extensions;

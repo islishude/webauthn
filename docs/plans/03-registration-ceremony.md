@@ -2,7 +2,7 @@
 
 Priority: P0.
 
-Status: Not started.
+Status: Complete, 2026-05-31.
 
 ## Purpose
 
@@ -58,3 +58,31 @@ Implement WebAuthn Level 2 registration option generation and registration respo
 ## Completion update requirements
 
 When complete, update `docs/plans.md`, this file, `docs/technical.md`, `docs/api-boundaries.md`, and `README.md` feature status.
+
+## Completion record
+
+Completed on 2026-05-31.
+
+Delivered files and packages:
+
+- root registration APIs: `StartRegistration`, `FinishRegistration`, `RegistrationState`, structured registration response input, credential result output, policy structs, and stable sentinel errors;
+- `protocol` client data parsing, challenge decoding, authenticator data parsing, flags, AAGUID, sign counter, and attested credential data extraction;
+- optional `codec/cbor` decoder for attestation objects, COSE_Key public keys, and authenticator extension maps;
+- optional `attestation/none` verifier package;
+- dependency updates for `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4`.
+
+Tests delivered:
+
+- successful registration with `none` attestation and explicit `AllowNone` policy;
+- malformed client data, challenge mismatch, origin, cross-origin, and token binding mismatch, RP ID hash mismatch, missing UP, missing UV when required, unsupported algorithm, unsupported attestation format, rejected `none` policy, truncated authenticator data, missing attested credential data, duplicate credential, and expired ceremony rejections;
+- requested extension absent, unsolicited extension ignored, and unsolicited extension rejected behavior;
+- concrete CBOR/COSE decoder tests for attestation object shape, duplicate map key rejection, COSE_Key raw-consumption boundary, extension map decoding, and malformed CBOR;
+- `none` verifier tests for empty and non-empty attestation statements.
+
+Scope changes: concrete CBOR and COSE_Key dependencies were added in an optional `codec/cbor` package as requested for Plan 03. The root package depends only on the existing `codec.Decoders` abstraction and does not expose concrete dependency types.
+
+Dependency decision:
+
+- `github.com/fxamacker/cbor/v2 v2.9.2` is used only by `codec/cbor` to decode WebAuthn CBOR structures with duplicate map key rejection.
+- `github.com/ldclabs/cose v1.3.4` is used only by `codec/cbor` to decode COSE_Key material and expose the COSE algorithm identifier through `codec.CredentialPublicKey`.
+- These dependencies are not imported by the root package and can be replaced behind `codec.Decoders` without changing the root registration API.

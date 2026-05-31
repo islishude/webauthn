@@ -1,7 +1,11 @@
 // Package codec defines narrow WebAuthn codec adapter contracts.
 package codec
 
-import "github.com/islishude/webauthn/protocol"
+import (
+	"slices"
+
+	"github.com/islishude/webauthn/protocol"
+)
 
 // AttestationStatement is the decoded attestation statement map for a format.
 type AttestationStatement map[string]any
@@ -22,13 +26,13 @@ func NewCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, key any,
 	return CredentialPublicKey{
 		Algorithm: algorithm,
 		Key:       key,
-		raw:       cloneBytes(raw),
+		raw:       slices.Clone(raw),
 	}
 }
 
 // Raw returns a defensive copy of the source COSE key bytes when available.
 func (k CredentialPublicKey) Raw() []byte {
-	return cloneBytes(k.raw)
+	return slices.Clone(k.raw)
 }
 
 // DecodedAttestationObject is the WebAuthn shape expected after CBOR decoding.
@@ -60,14 +64,4 @@ type Decoders interface {
 	AttestationObjectDecoder
 	COSEKeyDecoder
 	ExtensionMapDecoder
-}
-
-func cloneBytes(value []byte) []byte {
-	if value == nil {
-		return nil
-	}
-
-	out := make([]byte, len(value))
-	copy(out, value)
-	return out
 }

@@ -21,12 +21,11 @@ help:
 	@echo '  make ci               - run the local CI gate'
 
 format:
-	gofmt -w $(GO_FILES)
 	$(GOLANGCI_LINT) fmt ./...
 	$(PRETTIER) --write .
 
 format-check:
-	@files=$$(gofmt -l $(GO_FILES)); if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
+	$(GOLANGCI_LINT) fmt -d ./...
 	$(PRETTIER) --check .
 
 lint:

@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: core boundary contracts implemented, revised 2026-05-31.
+Status: registration ceremony APIs implemented, revised 2026-05-31.
 
-This document defines public API boundaries. Plan 02 established the initial Go packages and contracts; ceremony APIs are still future work.
+This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs.
 
 ## Boundary principles
 
@@ -12,20 +12,22 @@ The core package must not own user or credential persistence. Applications suppl
 
 The core package must not import optional attestation format packages. Attestation verifiers are selected explicitly through configuration or a registry supplied by the caller.
 
-Plan 02 package boundaries:
+Current package boundaries:
 
-- root `webauthn`: package documentation and future ceremony entry points;
-- `protocol`: byte-safe protocol values and option/client-data models;
+- root `webauthn`: registration start and finish APIs, ceremony state, policy inputs, result records, and module documentation;
+- `protocol`: byte-safe protocol values, option dictionaries, client data parsing, and authenticator data parsing;
 - `codec`: CBOR attestation object, COSE key, and extension map decoder contracts;
+- `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind `codec.Decoders`;
 - `crypto`: hashing, algorithm policy, signature, certificate, and JWS/JWT verifier contracts;
 - `attestation`: format verifier contract and duplicate-rejecting registry;
+- `attestation/none`: optional `none` format verifier selected explicitly by callers;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
 ## Ceremony API shape
 
 ### Registration start
 
-Inputs should include:
+Plan 03 implements `StartRegistration(ctx, RegistrationStartOptions)`. Inputs include:
 
 - RP entity and RP ID;
 - allowed origins or origin policy reference;
@@ -38,16 +40,16 @@ Inputs should include:
 - requested extensions;
 - timeout hint.
 
-Outputs should include:
+Outputs include:
 
 - creation options suitable for browser transport serialization;
 - ceremony state containing challenge, RP ID, origin policy reference, user binding, selected options, and expiration metadata.
 
-The core should not persist ceremony state.
+The core does not persist ceremony state.
 
 ### Registration finish
 
-Inputs should include:
+Plan 03 implements `FinishRegistration(ctx, RegistrationFinishOptions)`. Inputs include:
 
 - stored ceremony state;
 - client credential response in structured form;
@@ -56,7 +58,7 @@ Inputs should include:
 - extension policy;
 - optional credential uniqueness result or callback output supplied by the application.
 
-Outputs should include:
+Outputs include:
 
 - credential ID;
 - credential public key;
@@ -69,7 +71,7 @@ Outputs should include:
 - warnings or risk flags;
 - persistence-ready credential record.
 
-The core should not insert the credential into a database.
+The core does not insert the credential into a database.
 
 ### Authentication start
 
@@ -146,6 +148,8 @@ The project may define protocol shapes expected after decoding, but must not imp
 - preserving raw bytes where required for signature bases.
 
 JSON decoding of `clientDataJSON` may use the Go standard library. Parsing must be tolerant of unknown keys and key ordering.
+
+Plan 03 adds optional `codec/cbor` using `github.com/fxamacker/cbor/v2` and `github.com/ldclabs/cose`. This package remains replaceable because public registration APIs accept `codec.Decoders` and return `codec.CredentialPublicKey`, not concrete dependency types.
 
 ## Attestation registry boundary
 

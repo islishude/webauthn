@@ -19,7 +19,7 @@ CI uses:
 - `golangci-lint` pinned to `v2.12.2`;
 - `.golangci.yml` with configuration version `2`.
 
-`go.mod` records minimum supported Go version `1.25`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
+`go.mod` records minimum supported Go version `1.25.0`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
 
 ## Local prerequisites
 

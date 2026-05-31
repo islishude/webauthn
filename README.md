@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 02 core protocol model and adapter contracts are implemented. Registration and authentication ceremony behavior has not been implemented yet.
+Current status: Plan 03 registration ceremony behavior is implemented for the `none` attestation path. Authentication ceremony behavior and non-`none` attestation formats have not been implemented yet.
 
 ## Goals
 
@@ -43,7 +43,7 @@ Use these commands from the repository root:
 - `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
 - `make ci` runs the local equivalent of the default CI gate.
 
-Plan 02 created `go.mod` with minimum Go version `1.25`. Go-oriented targets are now mandatory in the local quality gate.
+Plan 02 created `go.mod`; the current module records minimum Go version `1.25.0`. Go-oriented targets are now mandatory in the local quality gate.
 
 ## CI workflow
 
@@ -66,13 +66,15 @@ The CI and local workflow are documented in `docs/ci.md`.
 
 ## Package philosophy
 
-The package layout keeps the root package small and stable. Format-specific and adapter-specific code lives outside the root package. Current Plan 02 packages are:
+The package layout keeps the root package small and stable. Format-specific and adapter-specific code lives outside the root package. Current packages are:
 
-- root package: module documentation and future ceremony entry points;
-- `protocol`: WebAuthn option dictionaries, DOMString-like values, collected client data, and byte-safe protocol values;
+- root package: registration start and finish APIs plus module documentation;
+- `protocol`: WebAuthn option dictionaries, DOMString-like values, collected client data parsing, authenticator data parsing, and byte-safe protocol values;
 - `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
+- `codec/cbor`: optional concrete CBOR and COSE_Key decoder using explicit dependencies;
 - `crypto`: narrow contracts for hashing, algorithm policy, signature verification, X.509 chain verification, and JWS/JWT handoff;
 - `attestation`: format verifier contract and duplicate-rejecting registry;
+- `attestation/none`: optional `none` attestation verifier;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
-Optional attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.
+Authentication, optional non-`none` attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.
