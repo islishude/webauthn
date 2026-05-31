@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: initial design, created 2026-05-29.
+Status: core boundary contracts implemented, revised 2026-05-31.
 
-This document defines the intended public API boundaries before implementation. It avoids concrete Go signatures until the implementation plan reaches the core protocol model phase.
+This document defines public API boundaries. Plan 02 established the initial Go packages and contracts; ceremony APIs are still future work.
 
 ## Boundary principles
 
@@ -11,6 +11,15 @@ The core package must operate on explicit data structures. It must not read HTTP
 The core package must not own user or credential persistence. Applications supply user data, stored credential data, ceremony state, and policy configuration; the library returns verified outputs and state changes.
 
 The core package must not import optional attestation format packages. Attestation verifiers are selected explicitly through configuration or a registry supplied by the caller.
+
+Plan 02 package boundaries:
+
+- root `webauthn`: package documentation and future ceremony entry points;
+- `protocol`: byte-safe protocol values and option/client-data models;
+- `codec`: CBOR attestation object, COSE key, and extension map decoder contracts;
+- `crypto`: hashing, algorithm policy, signature, certificate, and JWS/JWT verifier contracts;
+- `attestation`: format verifier contract and duplicate-rejecting registry;
+- `extension`: extension handler contract and duplicate-rejecting registry.
 
 ## Ceremony API shape
 

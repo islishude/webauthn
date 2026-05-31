@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: documentation, execution planning, and quality-gate configuration only. No implementation code has been added in this planning pass.
+Current status: Plan 02 core protocol model and adapter contracts are implemented. Registration and authentication ceremony behavior has not been implemented yet.
 
 ## Goals
 
@@ -30,26 +30,26 @@ No public WebAuthn/passkey library implementation may be used, copied, translate
 
 ## Local development workflow
 
-The repository quality gate is configured before implementation starts.
+The repository quality gate is active for the Go module.
 
 Use these commands from the repository root:
 
-- `make format` rewrites Go formatting when Go files exist.
-- `make format-check` verifies `gofmt` formatting.
-- `make lint` runs golangci-lint after `go.mod` exists.
-- `make test` runs unit tests after `go.mod` exists.
-- `make test-race` runs race-enabled tests after `go.mod` exists.
+- `make format` rewrites Go and Markdown formatting.
+- `make format-check` verifies Go and Markdown formatting.
+- `make lint` runs golangci-lint.
+- `make test` runs unit tests.
+- `make test-race` runs race-enabled tests.
 - `make test-fuzz-smoke` runs bounded fuzz targets after fuzz tests exist.
-- `make mod-check` runs `go mod tidy` and verifies module file cleanliness after `go.mod` exists.
+- `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
 - `make ci` runs the local equivalent of the default CI gate.
 
-Before plan 02 creates `go.mod`, Go-oriented targets intentionally skip so the documentation-only baseline remains valid. After `go.mod` exists, those checks are mandatory.
+Plan 02 created `go.mod` with minimum Go version `1.25`. Go-oriented targets are now mandatory in the local quality gate.
 
 ## CI workflow
 
 GitHub Actions configuration lives in `.github/workflows/ci.yml`.
 
-The default workflow runs documentation/config checks immediately. Go lint and test jobs activate when `go.mod` exists. The lint job uses `golangci/golangci-lint-action` with the pinned version recorded in the workflow; formatter and linter behavior is configured in `.golangci.yml`.
+The default workflow runs documentation/config checks, Go lint, and Go tests without module-detection conditionals. The lint job uses `golangci/golangci-lint-action` with the pinned version recorded in the workflow; formatter and linter behavior is configured in `.golangci.yml`.
 
 The CI and local workflow are documented in `docs/ci.md`.
 
@@ -64,15 +64,15 @@ The CI and local workflow are documented in `docs/ci.md`.
 - `docs/plans.md` is the top-level implementation plan index.
 - `docs/plans/*.md` contains prioritized execution plans. When a plan is completed, both the plan file and `docs/plans.md` must be updated.
 
-## Planned package philosophy
+## Package philosophy
 
-The final package layout should keep the root package small and stable. Format-specific and adapter-specific code should live outside the root package. The intended direction is:
+The package layout keeps the root package small and stable. Format-specific and adapter-specific code lives outside the root package. Current Plan 02 packages are:
 
-- root package: ceremony orchestration, configuration, policy, result types, registries;
-- protocol packages: WebAuthn data structures and validation helpers;
-- attestation packages: one package per attestation statement format;
-- extension packages: one package per WebAuthn extension when behavior is non-trivial;
-- codec and crypto adapter packages: narrow wrappers over standard or third-party implementations;
-- optional integration packages: JSON/browser transport helpers and framework-neutral HTTP helpers.
+- root package: module documentation and future ceremony entry points;
+- `protocol`: WebAuthn option dictionaries, DOMString-like values, collected client data, and byte-safe protocol values;
+- `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
+- `crypto`: narrow contracts for hashing, algorithm policy, signature verification, X.509 chain verification, and JWS/JWT handoff;
+- `attestation`: format verifier contract and duplicate-rejecting registry;
+- `extension`: extension handler contract and duplicate-rejecting registry.
 
-This README is intentionally high-level until implementation begins. Feature claims must be added only after matching code and tests exist.
+Optional attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.

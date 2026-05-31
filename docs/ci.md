@@ -1,10 +1,10 @@
 # Local and GitHub Actions quality workflow
 
-Status: initial configuration, created 2026-05-30.
+Status: mandatory Go module configuration, revised 2026-05-31.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
-The repository is still in the documentation-first phase. Go-oriented targets intentionally skip when `go.mod` does not exist. Plan 02 creates `go.mod`; from that point forward, the same targets become mandatory quality gates.
+Plan 02 created `go.mod` and Go source files. Go-oriented targets are mandatory quality gates and no longer check for module or Go-file existence before running.
 
 ## Toolchain baseline
 
@@ -14,19 +14,21 @@ CI uses:
 
 - `actions/checkout@v6`;
 - `actions/setup-go@v6` with `go-version: stable`;
+- `actions/setup-node@v6` for `npx`-based Prettier formatting checks;
 - `golangci/golangci-lint-action@v9`;
 - `golangci-lint` pinned to `v2.12.2`;
 - `.golangci.yml` with configuration version `2`.
 
-When implementation begins, `go.mod` must record the minimum supported Go version. The CI workflow may continue to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
+`go.mod` records minimum supported Go version `1.25`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
 
 ## Local prerequisites
 
 Required local tools:
 
 - `make`;
-- a Go toolchain compatible with the future `go.mod` minimum version;
-- `golangci-lint v2.12.2` for `make lint` and full `make ci` after `go.mod` exists.
+- a Go toolchain compatible with the `go.mod` minimum version;
+- Node.js with `npx` available for Prettier formatting;
+- `golangci-lint v2.12.2` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
 
@@ -50,28 +52,29 @@ golangci-lint version
 
 Run these commands from the repository root.
 
-| Command                | Purpose                                                                  | Mutates files                        |
-| ---------------------- | ------------------------------------------------------------------------ | ------------------------------------ |
-| `make format`          | Run `gofmt -w` on Go files and `golangci-lint fmt ./...` when available. | Yes                                  |
-| `make format-check`    | Fail if Go files are not `gofmt` formatted.                              | No                                   |
-| `make lint`            | Run `golangci-lint run ./...` when `go.mod` exists.                      | No                                   |
-| `make test`            | Run `go test ./...` when `go.mod` exists.                                | No                                   |
-| `make test-race`       | Run `go test -race ./...` when `go.mod` exists.                          | No                                   |
-| `make test-fuzz-smoke` | Run bounded fuzz targets when fuzz tests exist.                          | No                                   |
-| `make mod-check`       | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.             | Yes, then must be clean              |
-| `make ci-docs`         | Verify required documentation and quality config files exist.            | No                                   |
-| `make ci`              | Run the full local quality gate.                                         | `mod-check` may rewrite module files |
+| Command                | Purpose                                                                                 | Mutates files                        |
+| ---------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
+| `make format`          | Run `gofmt -w` on Go files, `golangci-lint fmt ./...`, and `npx -y prettier --write .`. | Yes                                  |
+| `make format-check`    | Fail if Go files are not `gofmt` formatted or `npx -y prettier --check .` fails.        | No                                   |
+| `make lint`            | Run `golangci-lint run ./...`.                                                          | No                                   |
+| `make test`            | Run `go test ./...`.                                                                    | No                                   |
+| `make test-race`       | Run `go test -race ./...`.                                                              | No                                   |
+| `make test-fuzz-smoke` | Run bounded fuzz targets when fuzz tests exist.                                         | No                                   |
+| `make mod-check`       | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
+| `make ci-docs`         | Verify required documentation and quality config files exist.                           | No                                   |
+| `make ci`              | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
 
-`make ci` is the required pre-PR command. During the documentation-only phase it validates docs/config and skips Go checks. After `go.mod` exists it runs formatting, linting, unit tests, race tests, fuzz smoke tests, and module hygiene.
+`make ci` is the required pre-PR command. It runs formatting, linting, unit tests, race tests, fuzz smoke tests, and module hygiene.
 
 ## Formatting policy
 
-Formatting has two layers:
+Formatting has three layers:
 
 1. `gofmt` is the baseline formatter and is checked by `make format-check`.
 2. `golangci-lint` formatters enforce import grouping and formatter configuration in `.golangci.yml`.
+3. Prettier formats Markdown and other supported repository text files through `npx -y prettier --write .`; CI checks it with `npx -y prettier --check .`.
 
-The configured formatter set is intentionally small: `gofmt` and `goimports`. The local import prefix is `github.com/islishude/webauthn`.
+The Go formatter set is intentionally small: `gofmt` and `goimports`. The local import prefix is `github.com/islishude/webauthn`. Prettier is invoked through `npx` rather than a project runtime dependency.
 
 ## Linting policy
 
@@ -94,14 +97,13 @@ Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. The
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main` or `master`.
 
-The workflow has four jobs:
+The workflow has three jobs:
 
 1. `docs-and-config` always runs. It calls `make ci-docs` and checks LF line endings for Markdown, YAML, and Makefile text files.
-2. `detect-go-module` always runs and exposes whether `go.mod` exists.
-3. `lint` runs only when `go.mod` exists. It sets up Go and runs the official golangci-lint action with the pinned lint version.
-4. `test` runs only when `go.mod` exists. It runs `make format-check`, `make test`, `make test-race`, `make test-fuzz-smoke`, and `make mod-check`.
+2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
+3. `test` runs after `docs-and-config`. It sets up Go and Node.js, then runs `make format-check`, `make test`, `make test-race`, `make test-fuzz-smoke`, and `make mod-check`.
 
-The `go.mod` condition prevents false failures in the documentation-only baseline. After plan 02 creates `go.mod`, missing format/lint/test coverage becomes a CI failure.
+The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, or module-tidy drift are CI failures.
 
 ## Adding or changing checks
 

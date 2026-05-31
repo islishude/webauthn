@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: updated design, revised 2026-05-30.
+Status: core model coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -20,7 +20,7 @@ The required pre-PR command is:
 make ci
 ```
 
-During the documentation-only baseline, Go-specific targets skip because `go.mod` does not yet exist. Once plan 02 creates `go.mod`, `make ci` must run format checks, linting, unit tests, race tests, bounded fuzz smoke tests when fuzz targets exist, and module tidy verification.
+`make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests when fuzz targets exist, and module tidy verification without module-detection skips.
 
 ## Test layers
 
@@ -143,6 +143,16 @@ Required coverage:
 - RSA PKCS#1 v1.5 and RSA-PSS behavior for supported algorithms;
 - JWS/JWT verification handoff behavior for SafetyNet-like formats;
 - X.509 chain acceptance and rejection through trust policy.
+
+## Current coverage
+
+Plan 02 added initial tests for:
+
+- byte-safe value copy semantics, length validation, and exact challenge comparison;
+- protocol option validation and unknown DOMString preservation until validation boundaries;
+- codec and crypto adapter contracts using independently authored test doubles;
+- attestation and extension registry duplicate rejection, unknown lookup, and case-sensitive identifiers;
+- root import graph checks preventing `net/http`, transport helpers, and optional attestation format package imports.
 
 ## Fuzzing targets
 

@@ -43,34 +43,12 @@ jobs:
           done < <(find . -type f \( -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name 'Makefile' \) -print0)
           exit "$status"
 
-  detect-go-module:
-    name: detect go module
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      has-go-mod: ${{ steps.detect.outputs.has-go-mod }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Detect go.mod
-        id: detect
-        shell: bash
-        run: |
-          if [ -f go.mod ]; then
-            echo 'has-go-mod=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'has-go-mod=false' >> "$GITHUB_OUTPUT"
-          fi
-
   lint:
     name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - docs-and-config
-      - detect-go-module
-    if: needs.detect-go-module.outputs.has-go-mod == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -80,6 +58,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: |
+            go.mod
+            **/go.mod
             go.sum
             **/go.sum
 
@@ -95,8 +75,6 @@ jobs:
     timeout-minutes: 20
     needs:
       - docs-and-config
-      - detect-go-module
-    if: needs.detect-go-module.outputs.has-go-mod == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -106,8 +84,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: |
+            go.mod
+            **/go.mod
             go.sum
             **/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
 
       - name: Format check
         run: make format-check

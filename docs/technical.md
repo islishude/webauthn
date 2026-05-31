@@ -1,6 +1,6 @@
 # Technical design
 
-Status: initial design, created 2026-05-29.
+Status: core protocol model implemented, revised 2026-05-31.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -36,18 +36,18 @@ The library should not own the account model. User lookup, session creation, acc
 
 ## Planned package boundaries
 
-The exact names may change before implementation, but the dependency direction must remain stable.
+Plan 02 fixed the initial package names. The dependency direction must remain stable.
 
-| Area                        | Responsibility                                                                                            | Root dependency direction                                             |
-| --------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Root package                | Configuration, ceremonies, policy composition, result types, registries                                   | May depend on protocol primitives and narrow interfaces only          |
-| Protocol model              | WebAuthn dictionaries, authenticator data, collected client data, credential descriptors, flags, counters | No attestation format dependencies                                    |
-| Attestation registry        | Format lookup and dispatch by `fmt`                                                                       | Root accepts explicit format verifiers                                |
-| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                          | Optional imports only                                                 |
-| Extension registry          | Extension validation and output interpretation                                                            | Root accepts explicit extension handlers or built-in Level 2 handlers |
-| Crypto adapter              | COSE algorithm handling, signature verification, hash binding, certificate path checks                    | Behind narrow contracts                                               |
-| Codec adapter               | CBOR and JSON bridge behavior that is not covered by standard library                                     | Behind narrow contracts                                               |
-| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                        | Must not be imported by the root package                              |
+| Area                        | Responsibility                                                                                           | Root dependency direction                                             |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Root package                | Module documentation and future ceremony entry points                                                    | Does not import optional packages or `net/http`                       |
+| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, credential descriptors, enum-like values | No attestation format dependencies                                    |
+| `attestation`               | Format verifier contract, result types, and duplicate-rejecting registry                                 | Root accepts explicit format verifiers                                |
+| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                         | Optional imports only; not implemented in Plan 02                     |
+| `extension`                 | Extension handler contract, result types, and duplicate-rejecting registry                               | Root accepts explicit extension handlers or built-in Level 2 handlers |
+| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                       | Behind narrow contracts                                               |
+| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                  | Behind narrow contracts                                               |
+| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                       | Must not be imported by the root package                              |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -166,7 +166,7 @@ Implementation should follow `docs/plans.md`. The required order is:
 
 1. governance and boundaries;
 2. local and GitHub Actions quality gates;
-3. core protocol model and adapter contracts;
+3. core protocol model and adapter contracts (complete, 2026-05-31);
 4. registration ceremony with `none` attestation;
 5. authentication ceremony;
 6. modular attestation formats;
