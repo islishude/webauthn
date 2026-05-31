@@ -65,11 +65,12 @@ type VerificationResult struct {
 	Evidence               map[string]any
 }
 
-// TrustRequest is the evidence passed to relying-party attestation trust
-// policy after format verification succeeds.
+// TrustRequest is the evidence, including registration AAGUID, passed to
+// relying-party attestation trust policy after format verification succeeds.
 type TrustRequest struct {
 	Format               string
 	Result               VerificationResult
+	AAGUID               protocol.AAGUID
 	AuthenticatorData    protocol.AuthenticatorData
 	CredentialPublicKey  codec.CredentialPublicKey
 	RawAttestationObject protocol.AttestationObject

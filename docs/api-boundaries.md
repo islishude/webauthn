@@ -177,7 +177,7 @@ A verifier should return at least:
 
 Trust evaluation should be outside the verifier or clearly layered on top of it. Format verification answers whether the statement is well-formed and cryptographically valid. Trust policy answers whether the relying party accepts it.
 
-The minimal trust policy contract is `attestation.TrustPolicy`. It receives verified format evidence, authenticator data, the credential public key, and raw attestation object context, then returns an accepted/rejected trust result. Built-in trust-root, metadata, AAGUID, and certificate-status policies remain future Plan 07 work.
+The trust policy contract is `attestation.TrustPolicy`. It receives verified format evidence, registration AAGUID, authenticator data, the credential public key, and raw attestation object context, then returns an accepted/rejected trust result. Built-in trust policies are explicit caller-selected building blocks: accept/reject `none`, accept/reject self, format and type allow-lists, x5c trust-root checks through `crypto.CertificateVerifier`, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies keep trust paths based on `crypto.CertificateChain` and do not expose concrete `crypto/x509` public API types.
 
 `attestation/packed` verifies self attestation and x5c attestation signatures. For x5c it parses the leaf-first certificate chain, validates packed attestation certificate shape requirements, and returns the x5c trust path without deciding whether the chain is trusted by the relying party.
 

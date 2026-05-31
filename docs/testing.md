@@ -183,6 +183,13 @@ The initial Plan 05 and Plan 07 slice added tests for:
 - default rejection of non-`none` attestation when no caller trust policy is supplied;
 - continued root import graph independence from optional attestation format packages.
 
+The completed Plan 07 trust-policy slice added tests for:
+
+- built-in `none`, self, format allow-list, type allow-list, AAGUID, x5c trust-root, metadata, certificate status, and composition policies;
+- metadata provider positive, negative, and unavailable paths;
+- certificate status good, revoked, unknown, unavailable, and provider-error paths;
+- registration integration with built-in trust policies while preserving `ErrRejectedAttestationPolicy` for rejected valid attestations.
+
 The TPM Plan 05 slice added tests for:
 
 - optional `attestation/tpm` EC2 and RSA valid paths;

@@ -356,6 +356,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		decodedAttestation:  decodedAttestation,
 		credentialPublicKey: credentialPublicKey,
 		clientDataHash:      clientDataHash,
+		aaguid:              attested.AAGUID,
 	})
 	if err != nil {
 		return RegistrationResult{}, err
@@ -521,6 +522,7 @@ type registrationAttestationInputs struct {
 	decodedAttestation  codec.DecodedAttestationObject
 	credentialPublicKey codec.CredentialPublicKey
 	clientDataHash      []byte
+	aaguid              protocol.AAGUID
 }
 
 func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttestationInputs) (attestation.VerificationResult, AttestationTrustResult, error) {
@@ -547,6 +549,7 @@ func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttes
 		trustResult, err := inputs.trustPolicy.EvaluateAttestationTrust(ctx, attestation.TrustRequest{
 			Format:               inputs.decodedAttestation.Format,
 			Result:               result,
+			AAGUID:               inputs.aaguid,
 			AuthenticatorData:    inputs.decodedAttestation.AuthenticatorData,
 			CredentialPublicKey:  inputs.credentialPublicKey,
 			RawAttestationObject: inputs.decodedAttestation.Raw,

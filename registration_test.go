@@ -16,6 +16,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	attnone "github.com/islishude/webauthn/attestation/none"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
+	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -450,6 +451,148 @@ func TestRegistrationRejectsNonNoneAttestationWithoutTrustPolicy(t *testing.T) {
 	}
 }
 
+func TestRegistrationBuiltInAttestationTrustPolicies(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accept none trust policy overrides legacy allow none flag", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.AttestationPolicy.AllowNone = false
+		options.AttestationTrustPolicy = attestation.AcceptNone()
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		if !result.AttestationTrust.Accepted || result.Attestation.Type != attestation.TypeNone {
+			t.Fatalf("attestation = %+v trust = %+v, want accepted none", result.Attestation, result.AttestationTrust)
+		}
+	})
+
+	t.Run("reject none trust policy rejects valid none attestation", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.AttestationTrustPolicy = attestation.RejectNone()
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrRejectedAttestationPolicy) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrRejectedAttestationPolicy", err)
+		}
+	})
+
+	t.Run("accept self trust policy accepts valid self attestation", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+		options.AttestationRegistry = mustRegistrationRegistry(t, fakeRegistrationAttestationVerifier{
+			format: "packed",
+			result: attestation.VerificationResult{
+				Type:                   attestation.TypeSelf,
+				CryptographicallyValid: true,
+			},
+		})
+		options.AttestationTrustPolicy = attestation.AcceptSelf()
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		if result.Credential.AttestationType != attestation.TypeSelf {
+			t.Fatalf("AttestationType = %q, want self", result.Credential.AttestationType)
+		}
+	})
+
+	t.Run("trust root policy accepts trusted x5c path", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := x5cRegistrationOptions(t, fixture)
+		options.AttestationTrustPolicy = attestation.RequireTrustedRoots(
+			&registrationCertificateVerifier{result: webcrypto.CertificateVerification{Trusted: true}},
+			webcrypto.CertificateVerificationContext{DNSName: "attestation.example"},
+		)
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		if !result.AttestationTrust.Accepted || result.Attestation.TrustPath.Kind != attestation.TrustPathX509 {
+			t.Fatalf("attestation = %+v trust = %+v, want trusted x5c", result.Attestation, result.AttestationTrust)
+		}
+	})
+
+	t.Run("trust root policy rejects untrusted x5c path", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := x5cRegistrationOptions(t, fixture)
+		options.AttestationTrustPolicy = attestation.RequireTrustedRoots(
+			&registrationCertificateVerifier{result: webcrypto.CertificateVerification{Trusted: false}},
+			webcrypto.CertificateVerificationContext{},
+		)
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrRejectedAttestationPolicy) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrRejectedAttestationPolicy", err)
+		}
+	})
+
+	t.Run("metadata policy accepts trusted metadata", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := x5cRegistrationOptions(t, fixture)
+		options.AttestationTrustPolicy = attestation.RequireTrustedMetadata(&registrationMetadataProvider{
+			result: attestation.MetadataResult{Found: true, Trusted: true},
+		})
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		if !result.AttestationTrust.Accepted {
+			t.Fatalf("AttestationTrust = %+v, want accepted", result.AttestationTrust)
+		}
+	})
+
+	t.Run("aaguid policy accepts matching authenticator", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.AttestationTrustPolicy = attestation.RequireAAGUID(registrationFixtureAAGUID())
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		if !result.AttestationTrust.Accepted {
+			t.Fatalf("AttestationTrust = %+v, want accepted", result.AttestationTrust)
+		}
+	})
+
+	t.Run("certificate status policy rejects revoked x5c path", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := x5cRegistrationOptions(t, fixture)
+		options.AttestationTrustPolicy = attestation.RequireCertificateStatus(&registrationCertificateStatusProvider{
+			result: attestation.CertificateStatusResult{Status: attestation.CertificateStatusRevoked},
+		})
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrRejectedAttestationPolicy) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrRejectedAttestationPolicy", err)
+		}
+	})
+}
+
 type registrationFixture struct {
 	challenge    protocol.Challenge
 	credentialID []byte
@@ -648,6 +791,50 @@ func checkedUint16Length(t *testing.T, length int) uint16 {
 	return uint16(length) //nolint:gosec // length is bounded by MaxCredentialIDLength before conversion.
 }
 
+func x5cRegistrationOptions(t *testing.T, fixture *registrationFixture) webauthn.RegistrationFinishOptions {
+	t.Helper()
+
+	options := fixture.finishOptions()
+	options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+	options.AttestationRegistry = mustRegistrationRegistry(t, fakeRegistrationAttestationVerifier{
+		format: "packed",
+		result: attestation.VerificationResult{
+			Type:                   attestation.TypeBasic,
+			TrustPath:              registrationX5CTrustPath(),
+			CryptographicallyValid: true,
+		},
+	})
+
+	return options
+}
+
+func registrationX5CTrustPath() attestation.TrustPath {
+	return attestation.TrustPath{
+		Kind:         attestation.TrustPathX509,
+		Certificates: webcrypto.CertificateChain{webcrypto.NewCertificate([]byte("leaf"))},
+	}
+}
+
+func registrationFixtureAAGUID() protocol.AAGUID {
+	var aaguid protocol.AAGUID
+	for i := range aaguid {
+		aaguid[i] = 0x02
+	}
+
+	return aaguid
+}
+
+func mustRegistrationRegistry(t *testing.T, verifiers ...attestation.Verifier) *attestation.Registry {
+	t.Helper()
+
+	registry, err := attestation.NewRegistry(verifiers...)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	return registry
+}
+
 type fakeRegistrationAttestationVerifier struct {
 	format string
 	result attestation.VerificationResult
@@ -662,6 +849,45 @@ func (v fakeRegistrationAttestationVerifier) VerifyAttestation(context.Context, 
 }
 
 var _ attestation.Verifier = fakeRegistrationAttestationVerifier{}
+
+type registrationCertificateVerifier struct {
+	result webcrypto.CertificateVerification
+	err    error
+}
+
+func (v *registrationCertificateVerifier) VerifyCertificateChain(context.Context, webcrypto.CertificateChain, webcrypto.CertificateVerificationContext) (webcrypto.CertificateVerification, error) {
+	if v.err != nil {
+		return webcrypto.CertificateVerification{}, v.err
+	}
+
+	return v.result, nil
+}
+
+type registrationMetadataProvider struct {
+	result attestation.MetadataResult
+	err    error
+}
+
+func (p *registrationMetadataProvider) LookupAttestationMetadata(context.Context, attestation.MetadataRequest) (attestation.MetadataResult, error) {
+	if p.err != nil {
+		return attestation.MetadataResult{}, p.err
+	}
+
+	return p.result, nil
+}
+
+type registrationCertificateStatusProvider struct {
+	result attestation.CertificateStatusResult
+	err    error
+}
+
+func (p *registrationCertificateStatusProvider) CheckCertificateStatus(context.Context, attestation.CertificateStatusRequest) (attestation.CertificateStatusResult, error) {
+	if p.err != nil {
+		return attestation.CertificateStatusResult{}, p.err
+	}
+
+	return p.result, nil
+}
 
 func mustLevel2Registry(t *testing.T) *extension.Registry {
 	t.Helper()

@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony, Level 2 extension handling, and initial attestation trust hook implemented, revised 2026-06-01.
+Status: authentication ceremony, Level 2 extension handling, and attestation trust policy implemented, revised 2026-06-01.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -64,6 +64,8 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
 The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
+
+The `attestation` package provides explicit trust policy building blocks for `none`, self attestation, format and type allow-lists, x5c trust-root verification through caller-provided certificate verifiers, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies do not include built-in trust anchors, network fetching, metadata caches, or automatic restricted-enrollment defaults.
 
 ## Extension policy
 

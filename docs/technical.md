@@ -188,7 +188,7 @@ Implementation should follow `docs/plans.md`. The required order is:
 5. authentication ceremony (complete, 2026-05-31);
 6. modular attestation formats (complete, 2026-05-31);
 7. extensions (complete, 2026-06-01);
-8. trust and metadata policy (in progress: minimal trust hook);
+8. trust and metadata policy (complete, 2026-06-01);
 9. conformance tests;
 10. optional adapters, examples, and release hardening.
 

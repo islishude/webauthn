@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: In progress, 2026-05-31.
+Status: Complete, 2026-06-01.
 
 ## Purpose
 
@@ -50,3 +50,5 @@ When complete, update `docs/plans.md`, this file, `docs/security-model.md`, and 
 ## Progress updates
 
 2026-05-31: Delivered the minimal trust-policy interface required by the first attestation-format slice. Added `attestation.TrustPolicy`, `TrustPolicyFunc`, `TrustRequest`, and `TrustResult`; registration now accepts an optional caller trust policy after attestation format verification. The default remains conservative: `none` follows the existing `AllowNone` policy and non-`none` attestation is rejected unless caller policy accepts it. Scope remaining: built-in accept/reject policies, trust-root evaluation, AAGUID policy, metadata provider, certificate status behavior, and restricted enrollment examples.
+
+2026-06-01: Completed Plan 07. Added explicit built-in `attestation.TrustPolicy` implementations for accept/reject `none`, accept/reject self, format allow-list, type allow-list, trusted x5c roots through `crypto.CertificateVerifier`, AAGUID allow-list, caller-owned metadata lookup, caller-owned certificate status checks, and `AllOf`/`AnyOf` composition. `TrustRequest` now carries the registration AAGUID so policy code does not need to reparse authenticator data. Added unit tests for accept, reject, mismatch, unavailable provider, revoked/unknown/unavailable status, and composition short-circuit behavior, plus registration integration tests proving the built-in policies preserve `ErrRejectedAttestationPolicy` behavior. Scope note: no trust anchors, metadata service parser, network fetching, OCSP/CRL client, or hidden enterprise enrollment default was added; restricted enrollment is represented as explicit composable policy examples.

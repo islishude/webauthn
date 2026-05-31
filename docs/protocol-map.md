@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: all initial WebAuthn Level 2 attestation format and extension slices implemented, revised 2026-06-01.
+Status: all initial WebAuthn Level 2 attestation format, trust-policy, and extension slices implemented, revised 2026-06-01.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 

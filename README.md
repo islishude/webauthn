@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 06 is complete and Plan 07 is in progress: registration and authentication ceremony behavior is implemented; registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification; caller-supplied attestation trust policy hooks and WebAuthn Level 2 extension handlers are available.
+Current status: Plan 07 is complete: registration and authentication ceremony behavior is implemented; registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification; caller-supplied attestation trust policies, trust-root checks, metadata hooks, certificate-status hooks, AAGUID allow-lists, and WebAuthn Level 2 extension handlers are available.
 
 ## Goals
 
@@ -73,7 +73,7 @@ The package layout keeps the root package small and stable. Format-specific and 
 - `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder using explicit dependencies;
 - `crypto`: narrow contracts for hashing, algorithm policy, signature verification, X.509 chain verification, and JWS/JWT handoff;
-- `attestation`: format verifier contract, duplicate-rejecting registry, and minimal trust policy contract;
+- `attestation`: format verifier contract, duplicate-rejecting registry, trust policy contract, and explicit built-in trust policy building blocks;
 - `attestation/none`: optional `none` attestation verifier;
 - `attestation/packed`: optional `packed` attestation verifier for self and x5c paths;
 - `attestation/fidou2f`: optional `fido-u2f` attestation verifier;
