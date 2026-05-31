@@ -2,7 +2,7 @@
 
 Priority: P0.
 
-Status: Not started.
+Status: Complete, 2026-05-31.
 
 ## Purpose
 
@@ -61,3 +61,28 @@ Implement WebAuthn Level 2 authentication option generation and assertion verifi
 ## Completion update requirements
 
 When complete, update `docs/plans.md`, this file, `docs/technical.md`, `docs/api-boundaries.md`, `docs/security-model.md`, and `README.md` feature status.
+
+## Completion record
+
+Completed on 2026-05-31.
+
+Delivered files and packages:
+
+- root authentication APIs: `StartAuthentication`, `FinishAuthentication`, `AuthenticationState`, structured assertion response input, counter policy/result types, and authentication result output;
+- username-first and discoverable-credential ownership checks using caller-supplied `CredentialRecord` values;
+- `webauthn.get` client data validation, challenge/origin/cross-origin/token-binding checks, allow-credentials enforcement, RP ID hash verification, AppID hash fallback, UP/UV checks, signature verification through `crypto.SignatureVerifier`, and sign counter comparison;
+- authenticator extension data parsing for authentication assertions with the ED flag;
+- authentication extension policy handling for absent, ignored unsolicited, and rejected unsolicited results.
+
+Tests delivered:
+
+- successful username-first and discoverable authentication;
+- missing discoverable user handle, username-first user-handle mismatch, allow-credentials mismatch, challenge mismatch, origin mismatch, RP ID hash mismatch, missing UP, missing required UV, invalid signature, unsupported algorithm, and counter rollback rejection;
+- AppID hash acceptance only with requested extension, policy AppID, and client output;
+- counter zero/zero, counter increment, and counter rollback clone-risk warning behavior;
+- extension absent, unsolicited ignored, and unsolicited rejected behavior;
+- authenticator data parser coverage for authentication extension data and unexpected trailing bytes.
+
+Scope changes: none. HTTP/session/database behavior, browser JSON helpers, broader risk engines, and storage adapters remain out of scope.
+
+Dependency decision: no runtime dependency was added in this plan. Signature verification remains behind `crypto.SignatureVerifier`, and authenticator extension decoding reuses `codec.Decoders`.

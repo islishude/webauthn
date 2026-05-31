@@ -185,7 +185,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		return RegistrationStartResult{}, protocol.ValueError{Field: "attestation", Value: string(attestationConveyance)}
 	}
 
-	authenticatorSelection := cloneAuthenticatorSelection(options.AuthenticatorSelection)
+	authenticatorSelection := options.AuthenticatorSelection.Clone()
 	if authenticatorSelection != nil && authenticatorSelection.UserVerification == "" {
 		authenticatorSelection.UserVerification = userVerification
 	}
@@ -199,7 +199,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		RP:                     options.RP,
 		User:                   options.User,
 		Challenge:              challenge,
-		PubKeyCredParams:       cloneCredentialParameters(options.PubKeyCredParams),
+		PubKeyCredParams:       slices.Clone(options.PubKeyCredParams),
 		TimeoutMilliseconds:    timeoutMilliseconds,
 		ExcludeCredentials:     cloneCredentialDescriptors(options.ExcludeCredentials),
 		AuthenticatorSelection: authenticatorSelection,
@@ -213,7 +213,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	state := RegistrationState{
 		Challenge:                 challenge,
 		RPID:                      options.RP.ID,
-		AllowedOrigins:            cloneStrings(options.AllowedOrigins),
+		AllowedOrigins:            slices.Clone(options.AllowedOrigins),
 		AllowCrossOrigin:          options.AllowCrossOrigin,
 		TokenBindingID:            options.TokenBindingID,
 		User:                      options.User,
@@ -369,13 +369,13 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 			RPID:            options.State.RPID,
 			AAGUID:          attested.AAGUID,
 			SignCount:       parsedAuthData.SignCount,
-			Transports:      cloneTransports(options.Response.Transports),
+			Transports:      slices.Clone(options.Response.Transports),
 			AttestationType: attestationResult.Type,
 		},
 		Attestation:      attestationResult,
 		AttestationTrust: trustResult,
 		Extensions:       extensionResults,
-		Warnings:         append(cloneStrings(attestationResult.Warnings), clientDataWarnings(clientData)...),
+		Warnings:         append(slices.Clone(attestationResult.Warnings), clientDataWarnings(clientData)...),
 	}
 
 	return result, nil
@@ -676,32 +676,15 @@ func clientDataWarnings(protocol.CollectedClientData) []string {
 	return nil
 }
 
-func cloneAuthenticatorSelection(selection *protocol.AuthenticatorSelectionCriteria) *protocol.AuthenticatorSelectionCriteria {
-	if selection == nil {
-		return nil
-	}
-
-	cloned := *selection
-	return &cloned
-}
-
-func cloneCredentialParameters(parameters []protocol.CredentialParameter) []protocol.CredentialParameter {
-	if parameters == nil {
-		return nil
-	}
-
-	out := make([]protocol.CredentialParameter, len(parameters))
-	copy(out, parameters)
-	return out
-}
-
 func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {
 	if descriptors == nil {
 		return nil
 	}
 
 	out := make([]protocol.CredentialDescriptor, len(descriptors))
-	copy(out, descriptors)
+	for i, descriptor := range descriptors {
+		out[i] = descriptor.Clone()
+	}
 	return out
 }
 
@@ -713,25 +696,5 @@ func cloneExtensionInputs(inputs protocol.ExtensionInputs) protocol.ExtensionInp
 	out := make(protocol.ExtensionInputs, len(inputs))
 	maps.Copy(out, inputs)
 
-	return out
-}
-
-func cloneStrings(values []string) []string {
-	if values == nil {
-		return nil
-	}
-
-	out := make([]string, len(values))
-	copy(out, values)
-	return out
-}
-
-func cloneTransports(values []protocol.AuthenticatorTransport) []protocol.AuthenticatorTransport {
-	if values == nil {
-		return nil
-	}
-
-	out := make([]protocol.AuthenticatorTransport, len(values))
-	copy(out, values)
 	return out
 }

@@ -57,6 +57,49 @@ func TestParseAuthenticatorDataRejectsTruncatedAttestedCredentialData(t *testing
 	}
 }
 
+func TestParseAuthenticatorDataWithAuthenticationExtensionData(t *testing.T) {
+	t.Parallel()
+
+	rpIDHash := sha256.Sum256([]byte("example.com"))
+	authData := append([]byte{}, rpIDHash[:]...)
+	authData = append(authData, 0x01|0x80)
+	authData = append(authData, 0x00, 0x00, 0x00, 0x07)
+	authData = append(authData, 0xa0)
+
+	raw, err := protocol.NewAuthenticatorData(authData)
+	if err != nil {
+		t.Fatalf("NewAuthenticatorData() error = %v", err)
+	}
+
+	parsed, err := protocol.ParseAuthenticatorData(raw)
+	if err != nil {
+		t.Fatalf("ParseAuthenticatorData() error = %v", err)
+	}
+	if !bytes.Equal(parsed.ExtensionData, []byte{0xa0}) {
+		t.Fatalf("ExtensionData = %x, want a0", parsed.ExtensionData)
+	}
+}
+
+func TestParseAuthenticatorDataRejectsUnexpectedTrailingBytes(t *testing.T) {
+	t.Parallel()
+
+	rpIDHash := sha256.Sum256([]byte("example.com"))
+	authData := append([]byte{}, rpIDHash[:]...)
+	authData = append(authData, 0x01)
+	authData = append(authData, 0x00, 0x00, 0x00, 0x07)
+	authData = append(authData, 0xa0)
+
+	raw, err := protocol.NewAuthenticatorData(authData)
+	if err != nil {
+		t.Fatalf("NewAuthenticatorData() error = %v", err)
+	}
+
+	_, err = protocol.ParseAuthenticatorData(raw)
+	if !errors.Is(err, protocol.ErrMalformedAuthenticatorData) {
+		t.Fatalf("ParseAuthenticatorData() error = %v, want ErrMalformedAuthenticatorData", err)
+	}
+}
+
 func buildProtocolAuthenticatorData(t *testing.T, flags byte, credentialID []byte, credentialPublicKey []byte) []byte {
 	t.Helper()
 

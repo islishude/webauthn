@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 03 registration ceremony behavior is implemented for the `none` attestation path. Authentication ceremony behavior and non-`none` attestation formats have not been implemented yet.
+Current status: Plan 04 registration and authentication ceremony behavior is implemented. Registration supports the `none` attestation path; non-`none` attestation formats have not been implemented yet.
 
 ## Goals
 
@@ -68,7 +68,7 @@ The CI and local workflow are documented in `docs/ci.md`.
 
 The package layout keeps the root package small and stable. Format-specific and adapter-specific code lives outside the root package. Current packages are:
 
-- root package: registration start and finish APIs plus module documentation;
+- root package: registration and authentication start/finish APIs plus module documentation;
 - `protocol`: WebAuthn option dictionaries, DOMString-like values, collected client data parsing, authenticator data parsing, and byte-safe protocol values;
 - `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder using explicit dependencies;
@@ -77,4 +77,4 @@ The package layout keeps the root package small and stable. Format-specific and 
 - `attestation/none`: optional `none` attestation verifier;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
-Authentication, optional non-`none` attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.
+Optional non-`none` attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.

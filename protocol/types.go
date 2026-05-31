@@ -3,6 +3,7 @@ package protocol
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // ErrUnsupportedValue marks a DOMString value that is not accepted at a
@@ -214,12 +215,35 @@ func (d CredentialDescriptor) Validate() error {
 	return nil
 }
 
+// Clone returns a defensive copy of the descriptor.
+func (d CredentialDescriptor) Clone() CredentialDescriptor {
+	return CredentialDescriptor{
+		Type:       d.Type,
+		ID:         CredentialID{byteValue: d.ID.byteValue},
+		Transports: slices.Clone(d.Transports),
+	}
+}
+
 // AuthenticatorSelectionCriteria describes authenticator selection preferences.
 type AuthenticatorSelectionCriteria struct {
 	AuthenticatorAttachment AuthenticatorAttachment
 	ResidentKey             ResidentKeyRequirement
 	RequireResidentKey      bool
 	UserVerification        UserVerificationRequirement
+}
+
+// Clone returns a defensive copy of the criteria.
+func (c *AuthenticatorSelectionCriteria) Clone() *AuthenticatorSelectionCriteria {
+	if c == nil {
+		return nil
+	}
+
+	return &AuthenticatorSelectionCriteria{
+		AuthenticatorAttachment: c.AuthenticatorAttachment,
+		ResidentKey:             c.ResidentKey,
+		RequireResidentKey:      c.RequireResidentKey,
+		UserVerification:        c.UserVerification,
+	}
 }
 
 // ExtensionInputs preserves client extension inputs by identifier.

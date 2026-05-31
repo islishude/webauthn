@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: registration ceremony APIs implemented, revised 2026-05-31.
+Status: registration and authentication ceremony APIs implemented, revised 2026-05-31.
 
-This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs.
+This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs.
 
 ## Boundary principles
 
@@ -14,7 +14,7 @@ The core package must not import optional attestation format packages. Attestati
 
 Current package boundaries:
 
-- root `webauthn`: registration start and finish APIs, ceremony state, policy inputs, result records, and module documentation;
+- root `webauthn`: registration and authentication start/finish APIs, ceremony state, policy inputs, result records, and module documentation;
 - `protocol`: byte-safe protocol values, option dictionaries, client data parsing, and authenticator data parsing;
 - `codec`: CBOR attestation object, COSE key, and extension map decoder contracts;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind `codec.Decoders`;
@@ -75,7 +75,7 @@ The core does not insert the credential into a database.
 
 ### Authentication start
 
-Inputs should include:
+Plan 04 implements `StartAuthentication(ctx, AuthenticationStartOptions)`. Inputs include:
 
 - RP ID;
 - origin policy;
@@ -86,16 +86,16 @@ Inputs should include:
 - timeout hint;
 - optional user/account binding for username-first flows.
 
-Outputs should include:
+Outputs include:
 
 - request options suitable for browser transport serialization;
 - ceremony state containing challenge, RP ID, origin policy reference, allowed credentials, requested extensions, and expiration metadata.
 
-The core should support empty `allowCredentials` for discoverable-credential/passkey flows.
+The core supports empty `allowCredentials` for discoverable-credential/passkey flows.
 
 ### Authentication finish
 
-Inputs should include:
+Plan 04 implements `FinishAuthentication(ctx, AuthenticationFinishOptions)`. Inputs include:
 
 - stored ceremony state;
 - client assertion response in structured form;
@@ -105,7 +105,7 @@ Inputs should include:
 - AppID extension policy if requested;
 - sign counter policy.
 
-Outputs should include:
+Outputs include:
 
 - credential ID;
 - authenticated user handle/account binding;
@@ -116,7 +116,7 @@ Outputs should include:
 - extension outputs;
 - persistence-ready credential update.
 
-The core should not create a login session.
+The core does not create a login session. Username-first flows are selected by `ExpectedUserHandle`; discoverable flows require a response user handle and caller-provided credential binding. Signature verification is delegated through `crypto.SignatureVerifier`, and counter rollback is surfaced as clone risk unless caller policy rejects it.
 
 ## Transport DTO boundary
 

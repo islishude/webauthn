@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: initial design, created 2026-05-29.
+Status: authentication ceremony implemented, revised 2026-05-31.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -50,7 +50,7 @@ The project must not implement cryptographic primitives. Signature verification 
 
 Signature counters are clone-detection signals, not universally reliable monotonic counters. If both the stored counter and new counter are zero, no clone signal is available. If either is nonzero and the new counter is not greater than the stored counter, the library should return a clone-risk result.
 
-The default high-level policy may fail on counter rollback, but the lower-level result must allow an application to choose fail, warn, step-up, or continue according to risk tolerance.
+The authentication API surfaces counter rollback as clone risk by default. Callers can reject clone risk through counter policy or accept the result and apply their own warn, step-up, or continue behavior.
 
 ## Attestation policy
 

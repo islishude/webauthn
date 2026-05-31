@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: registration coverage started, revised 2026-05-31.
+Status: authentication coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -163,6 +163,15 @@ Plan 03 added tests for:
 - extension absent, unsolicited ignored, and unsolicited rejected behavior;
 - optional CBOR/COSE decoder behavior, including duplicate map key rejection and COSE_Key raw-consumption boundaries;
 - optional `attestation/none` verifier behavior.
+
+Plan 04 added tests for:
+
+- authentication option generation and successful username-first and discoverable authentication;
+- missing discoverable user handle, username-first user handle mismatch, allow-credentials mismatch, challenge mismatch, origin mismatch, RP ID hash mismatch, UP/UV failures, invalid signature, unsupported algorithm, and counter rollback rejection;
+- AppID RP ID hash fallback only when requested, policy-configured, and client output indicates use;
+- zero/zero, incrementing, and rollback sign counter comparison behavior;
+- authentication extension absent, unsolicited ignored, and unsolicited rejected behavior;
+- authenticator data parser behavior for authentication ED extension bytes and unexpected trailing bytes.
 
 ## Fuzzing targets
 

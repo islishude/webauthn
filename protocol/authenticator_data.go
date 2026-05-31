@@ -85,6 +85,7 @@ type ParsedAuthenticatorData struct {
 	Flags                  AuthenticatorFlags
 	SignCount              uint32
 	AttestedCredentialData *AttestedCredentialData
+	ExtensionData          []byte
 }
 
 // ParseAuthenticatorData parses the WebAuthn authenticator data layout.
@@ -102,6 +103,16 @@ func ParseAuthenticatorData(raw AuthenticatorData) (ParsedAuthenticatorData, err
 	}
 
 	if !parsed.Flags.HasAttestedCredentialData() {
+		extensionData := bytes[MinAuthenticatorDataLength:]
+		switch {
+		case parsed.Flags.HasExtensionData() && len(extensionData) == 0:
+			return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
+		case parsed.Flags.HasExtensionData():
+			parsed.ExtensionData = cloneBytes(extensionData)
+		case len(extensionData) != 0:
+			return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
+		}
+
 		return parsed, nil
 	}
 
