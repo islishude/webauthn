@@ -3,6 +3,7 @@ package fidou2f
 import (
 	"fmt"
 
+	"github.com/islishude/webauthn/attestation/internal/attstmt"
 	"github.com/islishude/webauthn/codec"
 )
 
@@ -23,42 +24,14 @@ func parseStatement(statement codec.AttestationStatement) (u2fStatement, error) 
 		}
 	}
 
-	x5c, err := statementX5C(statement["x5c"])
+	x5c, err := attstmt.SingleX5C(statement["x5c"], ErrInvalidStatement)
 	if err != nil {
 		return u2fStatement{}, err
 	}
-	signature, err := statementBytes(statement["sig"])
+	signature, err := attstmt.Bytes(statement["sig"], ErrInvalidStatement)
 	if err != nil {
 		return u2fStatement{}, err
 	}
 
 	return u2fStatement{x5c: x5c, signature: signature}, nil
-}
-
-func statementX5C(value any) ([]byte, error) {
-	switch typed := value.(type) {
-	case [][]byte:
-		if len(typed) != 1 || len(typed[0]) == 0 {
-			return nil, ErrInvalidStatement
-		}
-
-		return append([]byte{}, typed[0]...), nil
-	case []any:
-		if len(typed) != 1 {
-			return nil, ErrInvalidStatement
-		}
-
-		return statementBytes(typed[0])
-	default:
-		return nil, fmt.Errorf("%w: x5c field has type %T", ErrInvalidStatement, value)
-	}
-}
-
-func statementBytes(value any) ([]byte, error) {
-	bytes, ok := value.([]byte)
-	if !ok || len(bytes) == 0 {
-		return nil, fmt.Errorf("%w: bytes field has type %T", ErrInvalidStatement, value)
-	}
-
-	return append([]byte{}, bytes...), nil
 }

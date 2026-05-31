@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: initial packed and FIDO U2F attestation slices implemented, revised 2026-05-31.
+Status: initial packed, TPM, Android Key, and FIDO U2F attestation slices implemented, revised 2026-05-31.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 
@@ -91,7 +91,7 @@ The stable completeness target includes all WebAuthn Level 2 defined attestation
 | `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                       | P0 complete    |
 | `packed`            | `attestation/packed`           | Signature verification through adapter; X.509 parsing uses Go standard library      | P1 in progress |
 | `tpm`               | `attestation/tpm`              | Narrow TPM structure parsing and X.509 requirement checks using Go standard library | P1 in progress |
-| `android-key`       | `attestation/androidkey`       | Android key attestation extension parsing delegated where possible                  | P1             |
+| `android-key`       | `attestation/androidkey`       | Android Key extension parsing with Go standard library ASN.1/X.509 support          | P1 in progress |
 | `android-safetynet` | `attestation/androidsafetynet` | JWS/JWT verification delegated to adapter/dependency                                | P1             |
 | `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters            | P1 in progress |
 | `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through package-specific verifier    | P1             |

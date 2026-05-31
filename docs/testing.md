@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: authentication coverage and initial packed/FIDO U2F attestation coverage started, revised 2026-05-31.
+Status: authentication coverage and initial packed/TPM/Android Key/FIDO U2F attestation coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -188,6 +188,13 @@ The TPM Plan 05 slice added tests for:
 - optional `attestation/tpm` EC2 and RSA valid paths;
 - malformed TPM statement fields, unsupported algorithms, public-area parse failures, credential/public-area mismatch, certInfo magic/type/extraData/name mismatch, TPMT_SIGNATURE algorithm/hash mismatch, invalid signatures, and AIK certificate requirement failures;
 - optional `codec/cbor` EC2/RSA public key material extraction and wrong-shape omission behavior;
+- continued root import graph independence from optional attestation format packages.
+
+The Android Key Plan 05 slice added tests for:
+
+- optional `attestation/androidkey` EC2 and RSA valid paths;
+- malformed statement fields, malformed x5c, invalid signature, certificate public-key mismatch, missing or malformed Android Key attestation extension, challenge mismatch, `allApplications` rejection, missing or wrong origin, and missing signing purpose;
+- shared attestation statement helper reuse across optional format packages;
 - continued root import graph independence from optional attestation format packages.
 
 ## Fuzzing targets

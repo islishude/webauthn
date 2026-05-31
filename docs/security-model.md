@@ -63,7 +63,7 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
-The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, and `tpm` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
+The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, `tpm`, and `android-key` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
 ## Extension policy
 
