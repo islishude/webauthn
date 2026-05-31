@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: all initial WebAuthn Level 2 attestation format slices implemented, revised 2026-05-31.
+Status: all initial WebAuthn Level 2 attestation format and extension slices implemented, revised 2026-06-01.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 
@@ -102,15 +102,15 @@ The root package must not import these packages automatically. A separate option
 
 The stable completeness target includes WebAuthn Level 2 defined extensions.
 
-| Extension identifier | Applicability                   | Planned behavior                                                                                                    |
-| -------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `appid`              | Authentication                  | Support U2F migration by allowing RP ID hash verification against AppID when client output says AppID was used.     |
-| `appidExclude`       | Registration                    | Represent input and validate policy; most behavior is client-side, but options and result policy must be supported. |
-| `uvm`                | Registration and authentication | Parse and surface user verification method output where present.                                                    |
-| `credProps`          | Registration                    | Surface discoverable/resident credential property output, useful for passkey flows.                                 |
-| `largeBlob`          | Registration and authentication | Represent inputs/outputs and define policy boundaries. Server-side storage behavior remains application-specific.   |
+| Extension identifier | Applicability                   | Behavior                                                                                                                | Stable target |
+| -------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `appid`              | Authentication                  | Supports U2F migration by allowing RP ID hash verification against AppID when request, policy, and client output agree. | P1 complete   |
+| `appidExclude`       | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                                     | P1 complete   |
+| `uvm`                | Registration and authentication | Parses and surfaces user verification method output where present.                                                      | P1 complete   |
+| `credProps`          | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                            | P1 complete   |
+| `largeBlob`          | Registration and authentication | Represents inputs/outputs and defines policy boundaries; server-side storage behavior remains application-specific.     | P1 complete   |
 
-The extension system must tolerate absent results and unknown extension keys. Unknown or unsolicited extensions should be ignored or rejected according to explicit policy, not accidentally accepted as trusted signals.
+The extension system tolerates absent results and unknown extension keys. Unknown or unsolicited extensions are preserved as untrusted raw results or rejected according to explicit policy, not accidentally accepted as trusted signals.
 
 ## Security and privacy sections to implement as policy
 

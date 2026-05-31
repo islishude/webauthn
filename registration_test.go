@@ -16,6 +16,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	attnone "github.com/islishude/webauthn/attestation/none"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
+	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -251,6 +252,112 @@ func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(
 	options.Response.ClientExtensionResults = map[string]any{"credProps": true}
 	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
 		t.Fatalf("FinishRegistration() with ignored unrequested extension error = %v", err)
+	}
+}
+
+func TestRegistrationLevel2CredPropsExtension(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: true}
+	options.Response.ClientExtensionResults = map[string]any{
+		extension.IDCredProps: map[string]any{"rk": true},
+	}
+	options.ExtensionRegistry = mustLevel2Registry(t)
+
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+
+	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDCredProps)
+	output, ok := extensionResult.Outputs[extension.IDCredProps].(extension.CredentialPropertiesResult)
+	if !ok {
+		t.Fatalf("credProps output = %T, want CredentialPropertiesResult", extensionResult.Outputs[extension.IDCredProps])
+	}
+	if !extensionResult.Accepted || output.ResidentKey == nil || !*output.ResidentKey {
+		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	}
+}
+
+func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("preserved by default", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.Response.ClientExtensionResults = map[string]any{"future": true}
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		extensionResult := mustExtensionResult(t, result.Extensions, "future")
+		if extensionResult.Accepted || extensionResult.Outputs["clientOutput"] != true {
+			t.Fatalf("extension result = %+v, want untrusted raw output", extensionResult)
+		}
+	})
+
+	t.Run("preserves explicit nil output", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.Response.ClientExtensionResults = map[string]any{"future": nil}
+
+		result, err := webauthn.FinishRegistration(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+		extensionResult := mustExtensionResult(t, result.Extensions, "future")
+		clientOutput, ok := extensionResult.Outputs["clientOutput"]
+		if !ok || clientOutput != nil {
+			t.Fatalf("extension result = %+v, want explicit nil client output", extensionResult)
+		}
+	})
+
+	t.Run("rejected by policy", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.Response.ClientExtensionResults = map[string]any{"future": true}
+		options.ExtensionPolicy.RejectUnknown = true
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrExtensionPolicy) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrExtensionPolicy", err)
+		}
+	})
+}
+
+func TestRegistrationUnrequestedKnownExtensionOutputIsUntrusted(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.ClientExtensionResults = map[string]any{
+		extension.IDCredProps: map[string]any{"rk": true},
+	}
+	options.ExtensionRegistry = mustLevel2Registry(t)
+
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+
+	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDCredProps)
+	if extensionResult.Accepted {
+		t.Fatalf("Accepted = true, want unrequested output to remain untrusted")
+	}
+	if _, ok := extensionResult.Outputs[extension.IDCredProps]; ok {
+		t.Fatalf("Outputs[%s] unexpectedly contains typed trusted output: %+v", extension.IDCredProps, extensionResult.Outputs)
+	}
+	if _, ok := extensionResult.Outputs["clientOutput"]; !ok {
+		t.Fatalf("extension result = %+v, want raw client output", extensionResult)
 	}
 }
 
@@ -555,3 +662,27 @@ func (v fakeRegistrationAttestationVerifier) VerifyAttestation(context.Context, 
 }
 
 var _ attestation.Verifier = fakeRegistrationAttestationVerifier{}
+
+func mustLevel2Registry(t *testing.T) *extension.Registry {
+	t.Helper()
+
+	registry, err := extension.NewLevel2Registry()
+	if err != nil {
+		t.Fatalf("NewLevel2Registry() error = %v", err)
+	}
+
+	return registry
+}
+
+func mustExtensionResult(t *testing.T, results []extension.Result, id string) extension.Result {
+	t.Helper()
+
+	for _, result := range results {
+		if result.ID == id {
+			return result
+		}
+	}
+
+	t.Fatalf("extension result %q missing from %+v", id, results)
+	return extension.Result{}
+}

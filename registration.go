@@ -250,6 +250,7 @@ type AttestationTrustResult = attestation.TrustResult
 // RegistrationExtensionPolicy controls extension output handling.
 type RegistrationExtensionPolicy struct {
 	RejectUnrequested bool
+	RejectUnknown     bool
 }
 
 // RegistrationFinishOptions configures registration response verification.
@@ -595,19 +596,44 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 		clientInput, requested := inputs.state.RequestedExtensions[id]
 		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
 		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
-		if !requested && (hasClientOutput || hasAuthenticatorOutput) && inputs.policy.RejectUnrequested {
+
+		handler, known := lookupExtensionHandler(inputs.registry, id)
+		if !known && inputs.policy.RejectUnknown {
 			return nil, ErrExtensionPolicy
 		}
 
-		if inputs.registry == nil {
+		hasOutput := hasClientOutput || hasAuthenticatorOutput
+		if !requested && hasOutput {
+			if inputs.policy.RejectUnrequested {
+				return nil, ErrExtensionPolicy
+			}
+			results = append(results, rawExtensionResult(id, rawExtensionInputs{
+				requested:              requested,
+				clientInput:            clientInput,
+				clientOutput:           clientOutput,
+				hasClientOutput:        hasClientOutput,
+				authenticatorOutput:    authenticatorOutput,
+				hasAuthenticatorOutput: hasAuthenticatorOutput,
+				warning:                "unrequested extension output ignored",
+			}))
 			continue
 		}
-		handler, ok := inputs.registry.Lookup(id)
-		if !ok {
+
+		if !known {
+			results = append(results, rawExtensionResult(id, rawExtensionInputs{
+				requested:              requested,
+				clientInput:            clientInput,
+				clientOutput:           clientOutput,
+				hasClientOutput:        hasClientOutput,
+				authenticatorOutput:    authenticatorOutput,
+				hasAuthenticatorOutput: hasAuthenticatorOutput,
+				warning:                "unknown extension preserved",
+			}))
 			continue
 		}
 
 		result, err := handler.HandleExtension(ctx, extension.Request{
+			Operation:           extension.OperationRegistration,
 			ID:                  id,
 			Requested:           requested,
 			ClientInput:         clientInput,
@@ -621,6 +647,44 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 	}
 
 	return results, nil
+}
+
+func lookupExtensionHandler(registry *extension.Registry, id string) (extension.Handler, bool) {
+	if registry == nil {
+		return nil, false
+	}
+
+	return registry.Lookup(id)
+}
+
+type rawExtensionInputs struct {
+	requested              bool
+	clientInput            any
+	clientOutput           any
+	hasClientOutput        bool
+	authenticatorOutput    any
+	hasAuthenticatorOutput bool
+	warning                string
+}
+
+func rawExtensionResult(id string, input rawExtensionInputs) extension.Result {
+	outputs := map[string]any{"requested": input.requested}
+	if input.clientInput != nil {
+		outputs["clientInput"] = input.clientInput
+	}
+	if input.hasClientOutput {
+		outputs["clientOutput"] = input.clientOutput
+	}
+	if input.hasAuthenticatorOutput {
+		outputs["authenticatorOutput"] = input.authenticatorOutput
+	}
+
+	return extension.Result{
+		ID:       id,
+		Accepted: false,
+		Outputs:  outputs,
+		Warnings: []string{input.warning},
+	}
 }
 
 func registrationUserVerification(options RegistrationStartOptions) protocol.UserVerificationRequirement {

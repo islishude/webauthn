@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: registration and authentication ceremony APIs plus minimal attestation trust policy implemented, revised 2026-05-31.
+Status: registration and authentication ceremony APIs, Level 2 extension handlers, and minimal attestation trust policy implemented, revised 2026-06-01.
 
-This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs.
+This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs. Plan 06 added operation-aware extension handlers and WebAuthn Level 2 extension result types.
 
 ## Boundary principles
 
@@ -27,7 +27,7 @@ Current package boundaries:
 - `attestation/androidkey`: optional `android-key` format verifier selected explicitly by callers;
 - `attestation/androidsafetynet`: optional `android-safetynet` format verifier selected explicitly by callers;
 - `attestation/apple`: optional `apple` format verifier selected explicitly by callers;
-- `extension`: extension handler contract and duplicate-rejecting registry.
+- `extension`: operation-aware extension handler contract, duplicate-rejecting registry, and built-in WebAuthn Level 2 handlers.
 
 ## Ceremony API shape
 
@@ -198,7 +198,9 @@ Extensions have two boundaries:
 - option construction, where the RP asks the client/authenticator for extension behavior;
 - result verification, where the RP interprets client and authenticator extension outputs.
 
-Extension handlers should be optional and registered by identifier. Unknown extension results should be represented in raw form and processed according to policy. The core must not silently treat unknown extension results as trusted facts.
+Extension handlers are registered by identifier and receive the ceremony operation so a handler can reject extensions used in the wrong ceremony. The built-in Level 2 registry covers `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob`, while callers may still provide a narrower or custom registry.
+
+Unknown extension results are represented in raw form and processed according to policy. The core preserves unknown and unrequested outputs as `Accepted: false` results by default, can reject unknown outputs with `RejectUnknown`, and can reject unrequested outputs with `RejectUnrequested`. The core must not silently treat unknown extension results as trusted facts.
 
 ## Storage boundary
 

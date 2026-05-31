@@ -12,10 +12,25 @@ var (
 	ErrInvalidID = errors.New("extension id is empty")
 	// ErrDuplicateID reports a duplicate registry entry.
 	ErrDuplicateID = errors.New("extension id already registered")
+	// ErrInvalidOperation reports an extension used with the wrong ceremony.
+	ErrInvalidOperation = errors.New("extension operation is invalid")
+	// ErrInvalidRequest reports malformed extension input or output values.
+	ErrInvalidRequest = errors.New("extension request is invalid")
+)
+
+// Operation identifies the WebAuthn ceremony that produced an extension value.
+type Operation string
+
+const (
+	// OperationRegistration identifies a credential creation ceremony.
+	OperationRegistration Operation = "registration"
+	// OperationAuthentication identifies an assertion ceremony.
+	OperationAuthentication Operation = "authentication"
 )
 
 // Request contains extension input and output values routed to a handler.
 type Request struct {
+	Operation           Operation
 	ID                  string
 	Requested           bool
 	ClientInput         any

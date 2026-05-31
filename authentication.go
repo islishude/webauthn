@@ -153,6 +153,7 @@ type AuthenticationResponse struct {
 // AuthenticationExtensionPolicy controls authentication extension behavior.
 type AuthenticationExtensionPolicy struct {
 	RejectUnrequested bool
+	RejectUnknown     bool
 	AppID             string
 }
 
@@ -425,10 +426,15 @@ func authenticationAppIDAllowed(state AuthenticationState, response Authenticati
 	if policy.AppID == "" {
 		return false
 	}
-	if _, requested := state.RequestedExtensions["appid"]; !requested {
+	requestedAppID, requested := state.RequestedExtensions[extension.IDAppID]
+	if !requested {
 		return false
 	}
-	used, ok := response.ClientExtensionResults["appid"].(bool)
+	appID, ok := requestedAppID.(string)
+	if !ok || appID == "" || appID != policy.AppID {
+		return false
+	}
+	used, ok := response.ClientExtensionResults[extension.IDAppID].(bool)
 	if !ok || !used {
 		return false
 	}
@@ -478,18 +484,44 @@ func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationEx
 		clientInput, requested := inputs.state.RequestedExtensions[id]
 		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
 		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
-		if !requested && (hasClientOutput || hasAuthenticatorOutput) && inputs.policy.RejectUnrequested {
+
+		handler, known := lookupExtensionHandler(inputs.registry, id)
+		if !known && inputs.policy.RejectUnknown {
 			return nil, ErrExtensionPolicy
 		}
-		if inputs.registry == nil {
+
+		hasOutput := hasClientOutput || hasAuthenticatorOutput
+		if !requested && hasOutput {
+			if inputs.policy.RejectUnrequested {
+				return nil, ErrExtensionPolicy
+			}
+			results = append(results, rawExtensionResult(id, rawExtensionInputs{
+				requested:              requested,
+				clientInput:            clientInput,
+				clientOutput:           clientOutput,
+				hasClientOutput:        hasClientOutput,
+				authenticatorOutput:    authenticatorOutput,
+				hasAuthenticatorOutput: hasAuthenticatorOutput,
+				warning:                "unrequested extension output ignored",
+			}))
 			continue
 		}
-		handler, ok := inputs.registry.Lookup(id)
-		if !ok {
+
+		if !known {
+			results = append(results, rawExtensionResult(id, rawExtensionInputs{
+				requested:              requested,
+				clientInput:            clientInput,
+				clientOutput:           clientOutput,
+				hasClientOutput:        hasClientOutput,
+				authenticatorOutput:    authenticatorOutput,
+				hasAuthenticatorOutput: hasAuthenticatorOutput,
+				warning:                "unknown extension preserved",
+			}))
 			continue
 		}
 
 		result, err := handler.HandleExtension(ctx, extension.Request{
+			Operation:           extension.OperationAuthentication,
 			ID:                  id,
 			Requested:           requested,
 			ClientInput:         clientInput,

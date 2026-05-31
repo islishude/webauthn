@@ -13,6 +13,7 @@ import (
 	"github.com/islishude/webauthn/codec"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -217,6 +218,23 @@ func TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput(t *testing.T) {
 	}
 }
 
+func TestAuthenticationAppIDRejectsPolicyMismatch(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	appID := "https://legacy.example/appid"
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+	options.ExtensionPolicy.AppID = "https://other.example/appid"
+	options.Response.ClientExtensionResults = map[string]any{extension.IDAppID: true}
+	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, appID, authenticationFlagUP, 8, nil))
+
+	_, err := webauthn.FinishAuthentication(context.Background(), options)
+	if !errors.Is(err, webauthn.ErrRPIDHashMismatch) {
+		t.Fatalf("FinishAuthentication() error = %v, want ErrRPIDHashMismatch", err)
+	}
+}
+
 func TestAuthenticationCounterPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +286,62 @@ func TestAuthenticationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtension
 	options.Response.ClientExtensionResults = map[string]any{"credProps": true}
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); err != nil {
 		t.Fatalf("FinishAuthentication() with ignored unrequested extension error = %v", err)
+	}
+}
+
+func TestAuthenticationLevel2UVMExtension(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDUVM: true}
+	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagED, 8, map[string]any{
+		extension.IDUVM: []any{[]any{uint64(2), uint64(4), uint64(2)}},
+	}))
+	options.Decoders = codeccbor.MustNewDecoder()
+	options.ExtensionRegistry = mustLevel2Registry(t)
+
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+
+	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDUVM)
+	output, ok := extensionResult.Outputs[extension.IDUVM].(extension.UVMResult)
+	if !ok {
+		t.Fatalf("uvm output = %T, want UVMResult", extensionResult.Outputs[extension.IDUVM])
+	}
+	if !extensionResult.Accepted || len(output.Entries) != 1 || output.Entries[0].KeyProtectionType != 4 {
+		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	}
+}
+
+func TestAuthenticationLevel2LargeBlobExtension(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	read := true
+	options.State.RequestedExtensions = protocol.ExtensionInputs{
+		extension.IDLargeBlob: extension.LargeBlobInput{Read: &read},
+	}
+	options.Response.ClientExtensionResults = map[string]any{
+		extension.IDLargeBlob: map[string]any{"blob": []byte("blob")},
+	}
+	options.ExtensionRegistry = mustLevel2Registry(t)
+
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+
+	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDLargeBlob)
+	output, ok := extensionResult.Outputs[extension.IDLargeBlob].(extension.LargeBlobResult)
+	if !ok {
+		t.Fatalf("largeBlob output = %T, want LargeBlobResult", extensionResult.Outputs[extension.IDLargeBlob])
+	}
+	if !extensionResult.Accepted || string(output.Blob) != "blob" || output.Read == nil || !*output.Read {
+		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
 	}
 }
 

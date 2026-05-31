@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: Not started.
+Status: Complete, 2026-06-01.
 
 ## Purpose
 
@@ -53,3 +53,24 @@ Implement a WebAuthn extension framework and support all WebAuthn Level 2 define
 ## Completion update requirements
 
 When complete, update `docs/plans.md`, this file, `docs/protocol-map.md`, `docs/security-model.md`, and README feature status.
+
+## Completion update
+
+Completed on 2026-06-01.
+
+Delivered files/packages:
+
+- `extension`: operation-aware handler requests, Level 2 extension identifiers, typed result/input structures, and built-in handlers/registry helpers for `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob`.
+- root `webauthn`: registration and authentication extension routing now passes ceremony operation, preserves unknown extension outputs as untrusted raw results by default, supports `RejectUnknown`, and rejects unrequested outputs when configured.
+- authentication AppID handling now requires the requested `appid` input, caller policy `AppID`, and client output to agree before accepting the AppID RP ID hash fallback.
+- Documentation updated in README, protocol map, API boundaries, security model, technical design, testing strategy, and plan index.
+
+Tests:
+
+- Added handler unit tests for valid, absent, malformed, and wrong-operation paths across the Level 2 extension handlers.
+- Added registration/authentication integration tests for `credProps`, `uvm`, `largeBlob`, unknown extension preservation/rejection, unrequested rejection, and AppID policy mismatch.
+
+Scope changes:
+
+- Browser JSON DTO conversion remains out of scope for Plan 09; byte-like largeBlob values are represented in core as `[]byte`.
+- Unknown and unrequested outputs are observable but never marked accepted unless a registered handler validates a requested extension.

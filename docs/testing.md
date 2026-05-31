@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: authentication coverage and initial packed/TPM/Android Key/SafetyNet/FIDO U2F attestation coverage started, revised 2026-05-31.
+Status: authentication, attestation, and Level 2 extension coverage started, revised 2026-06-01.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -210,6 +210,13 @@ The Apple Plan 05 slice added tests for:
 - malformed statement fields, missing or empty x5c, malformed certificates, missing or malformed nonce extension, nonce mismatch, missing credential public key material, leaf public-key mismatch, and leaf-first trust path preservation;
 - shared X.509 certificate-chain, extension lookup, and certificate public-key binding helpers across optional format packages;
 - continued root import graph independence from optional attestation format packages.
+
+Plan 06 added tests for:
+
+- built-in Level 2 extension handlers for `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob`, including valid, absent-output, malformed, and wrong-operation paths;
+- registration `credProps` result surfacing and unknown extension preservation/rejection policy;
+- authentication `uvm` authenticator output parsing, `largeBlob` client output parsing, and AppID policy mismatch rejection;
+- continued default behavior that unknown or unrequested extension outputs are observable but not accepted as trusted handler results.
 
 ## Fuzzing targets
 

@@ -1,6 +1,6 @@
 # Implementation plans
 
-Status: updated plan index, revised 2026-05-31.
+Status: updated plan index, revised 2026-06-01.
 
 This file is the top-level plan index. Detailed plans live in `docs/plans/*.md` and are ordered by implementation importance using numeric prefixes. Do not collapse all planning into this file.
 
@@ -26,7 +26,7 @@ When a plan is completed, update this file and the corresponding plan file in th
 | 03    | [Registration ceremony](plans/03-registration-ceremony.md)                         | P0       | Complete, 2026-05-31         | Implement registration option generation and verification with explicit `none` attestation policy.                |
 | 04    | [Authentication ceremony](plans/04-authentication-ceremony.md)                     | P0       | Complete, 2026-05-31         | Implement assertion option generation and verification, including counters and discoverable credentials.          |
 | 05    | [Modular attestation formats](plans/05-attestation-formats.md)                     | P1       | Complete, 2026-05-31         | Implement optional attestation formats; all WebAuthn Level 2 format verifiers are delivered as optional packages. |
-| 06    | [Extension framework and Level 2 extensions](plans/06-extensions.md)               | P1       | Not started                  | Implement extension input/output handling and Level 2 extension semantics.                                        |
+| 06    | [Extension framework and Level 2 extensions](plans/06-extensions.md)               | P1       | Complete, 2026-06-01         | Implement extension input/output handling and Level 2 extension semantics.                                        |
 | 07    | [Trust policy and metadata integration](plans/07-trust-policy-and-metadata.md)     | P1       | In progress, 2026-05-31      | Add trust policy hooks; minimal attestation trust policy contract is delivered.                                   |
 | 08    | [Testing and conformance](plans/08-testing-and-conformance.md)                     | P1       | Not started                  | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                            |
 | 09    | [Adapters, examples, and release hardening](plans/09-adapters-examples-release.md) | P2       | Not started                  | Add optional transport helpers, examples, import graph checks, CI example builds, and release documentation.      |

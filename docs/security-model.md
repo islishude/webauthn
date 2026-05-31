@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony and initial attestation trust hook implemented, revised 2026-05-31.
+Status: authentication ceremony, Level 2 extension handling, and initial attestation trust hook implemented, revised 2026-06-01.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -67,9 +67,11 @@ The current default remains conservative. Without a caller-supplied `attestation
 
 ## Extension policy
 
-Extensions are optional for clients and authenticators. Missing requested extension outputs must be handled explicitly. Unsolicited extension outputs may occur and must be ignored or rejected according to caller policy.
+Extensions are optional for clients and authenticators. Missing requested extension outputs are surfaced as not accepted by the relevant handler. Unsolicited extension outputs may occur and must be ignored or rejected according to caller policy.
 
-Extension outputs must not be elevated into security facts unless the extension handler has validated them and the relying-party policy accepts them.
+Extension outputs must not be elevated into security facts unless the extension handler has validated them and the relying-party policy accepts them. Unknown and unrequested extension outputs are preserved as untrusted raw results by default; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed behavior.
+
+The AppID extension is accepted for RP ID hash fallback only when the request included the same `appid` input, the caller configured the same AppID in policy, and the client output reports that AppID was used.
 
 ## Privacy defaults
 
