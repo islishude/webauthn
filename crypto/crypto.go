@@ -3,6 +3,7 @@ package crypto
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/islishude/webauthn/protocol"
@@ -45,12 +46,12 @@ type Certificate struct {
 
 // NewCertificate stores a defensive copy of raw certificate bytes.
 func NewCertificate(raw []byte) Certificate {
-	return Certificate{raw: cloneBytes(raw)}
+	return Certificate{raw: slices.Clone(raw)}
 }
 
 // Raw returns a defensive copy of the certificate bytes.
 func (c Certificate) Raw() []byte {
-	return cloneBytes(c.raw)
+	return slices.Clone(c.raw)
 }
 
 // CertificateChain is a leaf-first certificate chain.
@@ -83,12 +84,12 @@ type JWSToken struct {
 
 // NewJWSToken stores a defensive copy of raw JWS/JWT bytes.
 func NewJWSToken(raw []byte) JWSToken {
-	return JWSToken{raw: cloneBytes(raw)}
+	return JWSToken{raw: slices.Clone(raw)}
 }
 
 // Raw returns a defensive copy of the token bytes.
 func (t JWSToken) Raw() []byte {
-	return cloneBytes(t.raw)
+	return slices.Clone(t.raw)
 }
 
 // JWSVerification is the adapter's JWS/JWT verification result.
@@ -101,14 +102,4 @@ type JWSVerification struct {
 // JWSVerifier verifies JWS/JWT statements through an injected dependency.
 type JWSVerifier interface {
 	VerifyJWS(context.Context, JWSToken) (JWSVerification, error)
-}
-
-func cloneBytes(value []byte) []byte {
-	if value == nil {
-		return nil
-	}
-
-	out := make([]byte, len(value))
-	copy(out, value)
-	return out
 }

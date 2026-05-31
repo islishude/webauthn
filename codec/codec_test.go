@@ -48,6 +48,40 @@ func TestCodecContractsAcceptTestDouble(t *testing.T) {
 	}
 }
 
+func TestCredentialPublicKeyPublicKeyMaterialDefensiveCopies(t *testing.T) {
+	t.Parallel()
+
+	x := []byte{0x01, 0x02}
+	modulus := []byte{0x03, 0x04}
+	key := codec.NewCredentialPublicKeyWithMaterial(
+		-7,
+		"public-key",
+		[]byte{0xa0},
+		nil,
+		codec.CredentialPublicKeyMaterial{
+			EC2: &codec.EC2PublicKeyMaterial{
+				Curve: codec.EC2CurveP256,
+				X:     x,
+				Y:     []byte{0x05, 0x06},
+			},
+			RSA: &codec.RSAPublicKeyMaterial{
+				Modulus:  modulus,
+				Exponent: 65537,
+			},
+		},
+	)
+	x[0] = 0xff
+	modulus[0] = 0xff
+
+	material := key.PublicKeyMaterial()
+	material.EC2.X[0] = 0xee
+	material.RSA.Modulus[0] = 0xee
+	material = key.PublicKeyMaterial()
+	if material.EC2.X[0] != 0x01 || material.RSA.Modulus[0] != 0x03 {
+		t.Fatalf("PublicKeyMaterial() returned aliased material: %+v", material)
+	}
+}
+
 type fakeDecoders struct{}
 
 func (fakeDecoders) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {

@@ -1,11 +1,13 @@
 package cbor_test
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
 	fxcbor "github.com/fxamacker/cbor/v2"
 
+	"github.com/islishude/webauthn/codec"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -83,6 +85,90 @@ func TestDecoderCredentialPublicKeyReportsU2FPublicKey(t *testing.T) {
 	}
 }
 
+func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  map[int]any
+		want func(codecMaterial) bool
+	}{
+		{
+			name: "ec2 p256",
+			key:  coseKeyMap(-7, 1, []byte("01234567890123456789012345678901"), []byte("abcdefghijklmnopqrstuvwxyzabcdef")),
+			want: func(material codecMaterial) bool {
+				return material.ec2Curve == "P-256" &&
+					bytes.Equal(material.ec2X, []byte("01234567890123456789012345678901")) &&
+					bytes.Equal(material.ec2Y, []byte("abcdefghijklmnopqrstuvwxyzabcdef"))
+			},
+		},
+		{
+			name: "ec2 p384",
+			key:  coseKeyMap(-35, 2, bytes.Repeat([]byte{0x01}, 48), bytes.Repeat([]byte{0x02}, 48)),
+			want: func(material codecMaterial) bool {
+				return material.ec2Curve == "P-384" &&
+					bytes.Equal(material.ec2X, bytes.Repeat([]byte{0x01}, 48)) &&
+					bytes.Equal(material.ec2Y, bytes.Repeat([]byte{0x02}, 48))
+			},
+		},
+		{
+			name: "rsa",
+			key: map[int]any{
+				1:  3,
+				3:  -257,
+				-1: bytes.Repeat([]byte{0x03}, 256),
+				-2: []byte{0x01, 0x00, 0x01},
+			},
+			want: func(material codecMaterial) bool {
+				return bytes.Equal(material.rsaModulus, bytes.Repeat([]byte{0x03}, 256)) && material.rsaExponent == 65537
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
+			if err != nil {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
+			}
+			if !tt.want(materialView(key.PublicKeyMaterial())) {
+				t.Fatalf("PublicKeyMaterial() = %+v", key.PublicKeyMaterial())
+			}
+		})
+	}
+}
+
+func TestDecoderCredentialPublicKeyOmitsPublicKeyMaterialForWrongShape(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  map[int]any
+	}{
+		{name: "ec2 short x", key: coseKeyMap(-7, 1, []byte("short"), bytes.Repeat([]byte{0x02}, 32))},
+		{name: "ec2 unknown curve", key: coseKeyMap(-7, 9, bytes.Repeat([]byte{0x01}, 32), bytes.Repeat([]byte{0x02}, 32))},
+		{name: "rsa missing exponent", key: map[int]any{1: 3, 3: -257, -1: bytes.Repeat([]byte{0x03}, 256)}},
+		{name: "rsa oversized exponent", key: map[int]any{1: 3, 3: -257, -1: bytes.Repeat([]byte{0x03}, 256), -2: []byte{0x01, 0x00, 0x00, 0x00, 0x01}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
+			if err != nil {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
+			}
+			material := key.PublicKeyMaterial()
+			if material.EC2 != nil || material.RSA != nil {
+				t.Fatalf("PublicKeyMaterial() = %+v, want empty", material)
+			}
+		})
+	}
+}
+
 func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) {
 	t.Parallel()
 
@@ -126,6 +212,29 @@ func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) 
 			}
 		})
 	}
+}
+
+type codecMaterial struct {
+	ec2Curve    string
+	ec2X        []byte
+	ec2Y        []byte
+	rsaModulus  []byte
+	rsaExponent uint32
+}
+
+func materialView(material codec.CredentialPublicKeyMaterial) codecMaterial {
+	var out codecMaterial
+	if material.EC2 != nil {
+		out.ec2Curve = material.EC2.Curve
+		out.ec2X = material.EC2.X
+		out.ec2Y = material.EC2.Y
+	}
+	if material.RSA != nil {
+		out.rsaModulus = material.RSA.Modulus
+		out.rsaExponent = material.RSA.Exponent
+	}
+
+	return out
 }
 
 func TestDecoderRejectsMalformedCBOR(t *testing.T) {

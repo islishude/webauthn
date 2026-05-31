@@ -183,6 +183,13 @@ The initial Plan 05 and Plan 07 slice added tests for:
 - default rejection of non-`none` attestation when no caller trust policy is supplied;
 - continued root import graph independence from optional attestation format packages.
 
+The TPM Plan 05 slice added tests for:
+
+- optional `attestation/tpm` EC2 and RSA valid paths;
+- malformed TPM statement fields, unsupported algorithms, public-area parse failures, credential/public-area mismatch, certInfo magic/type/extraData/name mismatch, TPMT_SIGNATURE algorithm/hash mismatch, invalid signatures, and AIK certificate requirement failures;
+- optional `codec/cbor` EC2/RSA public key material extraction and wrong-shape omission behavior;
+- continued root import graph independence from optional attestation format packages.
+
 ## Fuzzing targets
 
 Fuzzing should be added for:

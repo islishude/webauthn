@@ -3,6 +3,7 @@
 package cbor
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -91,11 +92,12 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicK
 		return codec.CredentialPublicKey{}, ErrMalformedCBOR
 	}
 
-	return codec.NewCredentialPublicKeyWithU2F(
+	return codec.NewCredentialPublicKeyWithMaterial(
 		protocol.COSEAlgorithmIdentifier(key.Alg()),
 		key,
 		raw[:consumed],
 		u2fPublicKey(key),
+		publicKeyMaterial(key),
 	), nil
 }
 
@@ -147,6 +149,79 @@ func u2fPublicKey(key cosekey.Key) []byte {
 	out = append(out, y...)
 
 	return out
+}
+
+func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
+	switch key.Kty() {
+	case iana.KeyTypeEC2:
+		return ec2PublicKeyMaterial(key)
+	case iana.KeyTypeRSA:
+		return rsaPublicKeyMaterial(key)
+	default:
+		return codec.CredentialPublicKeyMaterial{}
+	}
+}
+
+func ec2PublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
+	curve, err := key.GetInt(iana.EC2KeyParameterCrv)
+	if err != nil {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+	x, err := key.GetBytes(iana.EC2KeyParameterX)
+	if err != nil {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+	y, err := key.GetBytes(iana.EC2KeyParameterY)
+	if err != nil {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	curveName, coordinateLength, ok := ec2Curve(curve)
+	if !ok || len(x) != coordinateLength || len(y) != coordinateLength {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	return codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{
+		Curve: curveName,
+		X:     x,
+		Y:     y,
+	}}
+}
+
+func rsaPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
+	modulus, err := key.GetBytes(iana.RSAKeyParameterN)
+	if err != nil || len(modulus) == 0 {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+	exponentBytes, err := key.GetBytes(iana.RSAKeyParameterE)
+	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	var padded [4]byte
+	copy(padded[len(padded)-len(exponentBytes):], exponentBytes)
+	exponent := binary.BigEndian.Uint32(padded[:])
+	if exponent == 0 {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	return codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{
+		Modulus:  modulus,
+		Exponent: exponent,
+	}}
+}
+
+func ec2Curve(curve int) (string, int, bool) {
+	switch curve {
+	case iana.EllipticCurveP_256:
+		return codec.EC2CurveP256, 32, true
+	case iana.EllipticCurveP_384:
+		return codec.EC2CurveP384, 48, true
+	case iana.EllipticCurveP_521:
+		return codec.EC2CurveP521, 66, true
+	default:
+		return "", 0, false
+	}
 }
 
 var _ codec.Decoders = (*Decoder)(nil)
