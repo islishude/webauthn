@@ -64,6 +64,12 @@ The core should accept byte-oriented protocol values and structured configuratio
 
 The root package should not automatically register every attestation format. Prefer explicit construction, such as passing selected format verifiers into a registry. A convenience aggregate package may be added later, but it must be optional and must not be imported by the root package.
 
+## Coding Rules
+
+- Keep files small and organized around one responsibility. Split code when a file starts mixing unrelated concerns or becomes difficult to scan.
+- Prefer shared utility packages over hand-rolled helpers to keep invariants centralized
+- Add Go doc comments for every new exported identifier, abd internal comments should explain intent, constraints, assumptions, or edge cases.
+
 ## Security rules
 
 Default behavior must be safe for relying parties:
