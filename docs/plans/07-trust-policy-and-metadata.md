@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: Not started.
+Status: In progress, 2026-05-31.
 
 ## Purpose
 
@@ -46,3 +46,7 @@ Separate attestation cryptographic validity from relying-party trust decisions, 
 ## Completion update requirements
 
 When complete, update `docs/plans.md`, this file, `docs/security-model.md`, and README feature status.
+
+## Progress updates
+
+2026-05-31: Delivered the minimal trust-policy interface required by the first attestation-format slice. Added `attestation.TrustPolicy`, `TrustPolicyFunc`, `TrustRequest`, and `TrustResult`; registration now accepts an optional caller trust policy after attestation format verification. The default remains conservative: `none` follows the existing `AllowNone` policy and non-`none` attestation is rejected unless caller policy accepts it. Scope remaining: built-in accept/reject policies, trust-root evaluation, AAGUID policy, metadata provider, certificate status behavior, and restricted enrollment examples.

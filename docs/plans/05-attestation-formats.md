@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: Not started.
+Status: In progress, 2026-05-31.
 
 ## Purpose
 
@@ -17,15 +17,15 @@ Implement all WebAuthn Level 2 attestation statement formats as optional package
 
 ## Required formats
 
-| Format              | Package direction              | Key requirements                                                                                 |
-| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `none`              | `attestation/none`             | Empty statement, no trust path, policy acceptance.                                               |
-| `packed`            | `attestation/packed`           | x5c/basic/AttCA, self attestation, algorithm matching, AAGUID certificate extension check.       |
-| `tpm`               | `attestation/tpm`              | TPM statement shape, public area binding, certInfo binding, TPM manufacturer/version fields.     |
-| `android-key`       | `attestation/androidkey`       | Android key certificate extension, challenge binding, authorization list checks.                 |
-| `android-safetynet` | `attestation/androidsafetynet` | JWS response verification through dependency, nonce binding, service certificate/trust handling. |
-| `fido-u2f`          | `attestation/fidou2f`          | ES256 requirement, U2F registration signature base, x5c trust path.                              |
-| `apple`             | `attestation/apple`            | Apple anonymous attestation nonce and certificate checks.                                        |
+| Format              | Package direction              | Key requirements                                                                                 | Progress                                                                                     |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `none`              | `attestation/none`             | Empty statement, no trust path, policy acceptance.                                               | Complete, 2026-05-31.                                                                        |
+| `packed`            | `attestation/packed`           | x5c/basic/AttCA, self attestation, algorithm matching, AAGUID certificate extension check.       | Initial verifier complete, 2026-05-31; x5c trust classification remains Plan 07 policy work. |
+| `tpm`               | `attestation/tpm`              | TPM statement shape, public area binding, certInfo binding, TPM manufacturer/version fields.     | Not started.                                                                                 |
+| `android-key`       | `attestation/androidkey`       | Android key certificate extension, challenge binding, authorization list checks.                 | Not started.                                                                                 |
+| `android-safetynet` | `attestation/androidsafetynet` | JWS response verification through dependency, nonce binding, service certificate/trust handling. | Not started.                                                                                 |
+| `fido-u2f`          | `attestation/fidou2f`          | ES256 requirement, U2F registration signature base, x5c trust path.                              | Initial verifier complete, 2026-05-31; Basic vs AttCA classification remains Plan 07 work.   |
+| `apple`             | `attestation/apple`            | Apple anonymous attestation nonce and certificate checks.                                        | Not started.                                                                                 |
 
 ## Modular import requirements
 
@@ -64,3 +64,9 @@ Each format must include:
 ## Completion update requirements
 
 When each format is complete, update this file's table with completion date. When all formats are complete, update `docs/plans.md` plan 05 status.
+
+## Progress updates
+
+2026-05-31: Delivered the first P1 slice. Added optional `attestation/packed` with explicit construction, self-attestation verification, x5c signature verification, packed certificate shape checks, AAGUID extension matching when present, and per-format tests. No new third-party dependency was added; X.509 parsing uses the Go standard library and signatures are delegated through `crypto.SignatureVerifier`. Scope change: x5c returns `TypeUncertain` until Plan 07 metadata/trust policy work can distinguish Basic from AttCA.
+
+2026-05-31: Delivered the second P1 slice. Added optional `attestation/fidou2f` with explicit construction, ES256 credential-key requirement, U2F registration verification data construction, single-certificate x5c trust path handling, P-256 attestation certificate key checks, and per-format tests. Added optional U2F raw public-key extraction to the `codec.CredentialPublicKey` contract and `codec/cbor` adapter. No new third-party dependency was added. Scope change: `fido-u2f` returns `TypeUncertain` until Plan 07 metadata/trust policy work can distinguish Basic from AttCA.

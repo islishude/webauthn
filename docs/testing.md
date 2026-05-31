@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: authentication coverage started, revised 2026-05-31.
+Status: authentication coverage and initial packed/FIDO U2F attestation coverage started, revised 2026-05-31.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -172,6 +172,16 @@ Plan 04 added tests for:
 - zero/zero, incrementing, and rollback sign counter comparison behavior;
 - authentication extension absent, unsolicited ignored, and unsolicited rejected behavior;
 - authenticator data parser behavior for authentication ED extension bytes and unexpected trailing bytes.
+
+The initial Plan 05 and Plan 07 slice added tests for:
+
+- optional `attestation/packed` self and x5c valid paths;
+- packed malformed statement, missing field, algorithm mismatch, invalid signature, certificate subject/basic-constraints failure, and AAGUID mismatch paths;
+- optional `attestation/fidou2f` valid path, malformed statement, wrong credential key, missing/malformed U2F public key, wrong certificate key, and invalid signature paths;
+- optional `codec/cbor` U2F public key extraction and wrong-shape omission behavior;
+- registration trust policy accepting and rejecting non-`none` attestation;
+- default rejection of non-`none` attestation when no caller trust policy is supplied;
+- continued root import graph independence from optional attestation format packages.
 
 ## Fuzzing targets
 

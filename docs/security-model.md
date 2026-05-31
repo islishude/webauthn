@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony implemented, revised 2026-05-31.
+Status: authentication ceremony and initial attestation trust hook implemented, revised 2026-05-31.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -63,6 +63,8 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
+The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed` and `fido-u2f` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
+
 ## Extension policy
 
 Extensions are optional for clients and authenticators. Missing requested extension outputs must be handled explicitly. Unsolicited extension outputs may occur and must be ignored or rejected according to caller policy.
@@ -109,6 +111,7 @@ Before stable release, defaults should be:
 - user presence required;
 - user verification enforced when policy says required;
 - `none` attestation accepted only when policy allows it;
+- non-`none` attestation accepted only when caller trust policy accepts it;
 - unsupported attestation formats rejected;
 - unsupported algorithms rejected;
 - unsolicited extensions ignored or rejected by configured policy;

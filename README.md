@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 04 registration and authentication ceremony behavior is implemented. Registration supports the `none` attestation path; non-`none` attestation formats have not been implemented yet.
+Current status: Plan 04 registration and authentication ceremony behavior is implemented. Plan 05 and Plan 07 are in progress: registration supports the `none` attestation path, optional `packed` self/x5c and `fido-u2f` attestation verification, and caller-supplied attestation trust policy hooks. Other non-`none` attestation formats have not been implemented yet.
 
 ## Goals
 
@@ -73,8 +73,10 @@ The package layout keeps the root package small and stable. Format-specific and 
 - `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder using explicit dependencies;
 - `crypto`: narrow contracts for hashing, algorithm policy, signature verification, X.509 chain verification, and JWS/JWT handoff;
-- `attestation`: format verifier contract and duplicate-rejecting registry;
+- `attestation`: format verifier contract, duplicate-rejecting registry, and minimal trust policy contract;
 - `attestation/none`: optional `none` attestation verifier;
+- `attestation/packed`: optional `packed` attestation verifier for self and x5c paths;
+- `attestation/fidou2f`: optional `fido-u2f` attestation verifier;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
-Optional non-`none` attestation format packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.
+Optional TPM, Android, SafetyNet, Apple attestation packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.

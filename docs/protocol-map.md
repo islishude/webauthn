@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: initial design, created 2026-05-29.
+Status: initial packed and FIDO U2F attestation slices implemented, revised 2026-05-31.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 
@@ -86,15 +86,15 @@ The library must support both username-first and discoverable-credential flows. 
 
 The stable completeness target includes all WebAuthn Level 2 defined attestation statement formats.
 
-| Format identifier   | Planned package                | Modular dependency notes                                                         | Stable target                  |
-| ------------------- | ------------------------------ | -------------------------------------------------------------------------------- | ------------------------------ |
-| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                    | P0 for first registration flow |
-| `packed`            | `attestation/packed`           | COSE algorithm and X.509 verification through adapters                           | P1                             |
-| `tpm`               | `attestation/tpm`              | TPM structures and X.509 requirements through dedicated package dependencies     | P1                             |
-| `android-key`       | `attestation/androidkey`       | Android key attestation extension parsing delegated where possible               | P1                             |
-| `android-safetynet` | `attestation/androidsafetynet` | JWS/JWT verification delegated to adapter/dependency                             | P1                             |
-| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters         | P1                             |
-| `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through package-specific verifier | P1                             |
+| Format identifier   | Planned package                | Modular dependency notes                                                         | Stable target  |
+| ------------------- | ------------------------------ | -------------------------------------------------------------------------------- | -------------- |
+| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                    | P0 complete    |
+| `packed`            | `attestation/packed`           | Signature verification through adapter; X.509 parsing uses Go standard library   | P1 in progress |
+| `tpm`               | `attestation/tpm`              | TPM structures and X.509 requirements through dedicated package dependencies     | P1             |
+| `android-key`       | `attestation/androidkey`       | Android key attestation extension parsing delegated where possible               | P1             |
+| `android-safetynet` | `attestation/androidsafetynet` | JWS/JWT verification delegated to adapter/dependency                             | P1             |
+| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters         | P1 in progress |
+| `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through package-specific verifier | P1             |
 
 The root package must not import these packages automatically. A separate optional aggregate may be added only after individual packages are stable.
 

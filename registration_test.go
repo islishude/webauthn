@@ -254,6 +254,95 @@ func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(
 	}
 }
 
+func TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+
+	registry, err := attestation.NewRegistry(fakeRegistrationAttestationVerifier{
+		format: "packed",
+		result: attestation.VerificationResult{
+			Type:                   attestation.TypeSelf,
+			TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathNone},
+			CryptographicallyValid: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options.AttestationRegistry = registry
+	options.AttestationTrustPolicy = attestation.TrustPolicyFunc(func(_ context.Context, request attestation.TrustRequest) (attestation.TrustResult, error) {
+		if request.Format != "packed" || request.Result.Type != attestation.TypeSelf {
+			t.Fatalf("trust request = %+v, want packed self attestation", request)
+		}
+
+		return attestation.TrustResult{Accepted: true, Reason: "test policy accepted self attestation"}, nil
+	})
+
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+	if !result.AttestationTrust.Accepted || result.Credential.AttestationType != attestation.TypeSelf {
+		t.Fatalf("result attestation = %+v trust = %+v", result.Attestation, result.AttestationTrust)
+	}
+}
+
+func TestRegistrationAttestationTrustPolicyRejectsNonNoneAttestation(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+
+	registry, err := attestation.NewRegistry(fakeRegistrationAttestationVerifier{
+		format: "packed",
+		result: attestation.VerificationResult{
+			Type:                   attestation.TypeSelf,
+			CryptographicallyValid: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options.AttestationRegistry = registry
+	options.AttestationTrustPolicy = attestation.TrustPolicyFunc(func(context.Context, attestation.TrustRequest) (attestation.TrustResult, error) {
+		return attestation.TrustResult{Accepted: false, Reason: "test policy rejected self attestation"}, nil
+	})
+
+	_, err = webauthn.FinishRegistration(context.Background(), options)
+	if !errors.Is(err, webauthn.ErrRejectedAttestationPolicy) {
+		t.Fatalf("FinishRegistration() error = %v, want ErrRejectedAttestationPolicy", err)
+	}
+}
+
+func TestRegistrationRejectsNonNoneAttestationWithoutTrustPolicy(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+
+	registry, err := attestation.NewRegistry(fakeRegistrationAttestationVerifier{
+		format: "packed",
+		result: attestation.VerificationResult{
+			Type:                   attestation.TypeSelf,
+			CryptographicallyValid: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options.AttestationRegistry = registry
+
+	_, err = webauthn.FinishRegistration(context.Background(), options)
+	if !errors.Is(err, webauthn.ErrRejectedAttestationPolicy) {
+		t.Fatalf("FinishRegistration() error = %v, want ErrRejectedAttestationPolicy", err)
+	}
+}
+
 type registrationFixture struct {
 	challenge    protocol.Challenge
 	credentialID []byte
@@ -451,3 +540,18 @@ func checkedUint16Length(t *testing.T, length int) uint16 {
 
 	return uint16(length) //nolint:gosec // length is bounded by MaxCredentialIDLength before conversion.
 }
+
+type fakeRegistrationAttestationVerifier struct {
+	format string
+	result attestation.VerificationResult
+}
+
+func (v fakeRegistrationAttestationVerifier) Format() string {
+	return v.format
+}
+
+func (v fakeRegistrationAttestationVerifier) VerifyAttestation(context.Context, attestation.VerificationRequest) (attestation.VerificationResult, error) {
+	return v.result, nil
+}
+
+var _ attestation.Verifier = fakeRegistrationAttestationVerifier{}

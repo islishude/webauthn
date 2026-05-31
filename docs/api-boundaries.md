@@ -1,6 +1,6 @@
 # API boundaries
 
-Status: registration and authentication ceremony APIs implemented, revised 2026-05-31.
+Status: registration and authentication ceremony APIs plus minimal attestation trust policy implemented, revised 2026-05-31.
 
 This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs.
 
@@ -19,8 +19,10 @@ Current package boundaries:
 - `codec`: CBOR attestation object, COSE key, and extension map decoder contracts;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind `codec.Decoders`;
 - `crypto`: hashing, algorithm policy, signature, certificate, and JWS/JWT verifier contracts;
-- `attestation`: format verifier contract and duplicate-rejecting registry;
+- `attestation`: format verifier contract, duplicate-rejecting registry, and minimal trust policy contract;
 - `attestation/none`: optional `none` format verifier selected explicitly by callers;
+- `attestation/packed`: optional `packed` format verifier selected explicitly by callers;
+- `attestation/fidou2f`: optional `fido-u2f` format verifier selected explicitly by callers;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
 ## Ceremony API shape
@@ -54,7 +56,7 @@ Plan 03 implements `FinishRegistration(ctx, RegistrationFinishOptions)`. Inputs 
 - stored ceremony state;
 - client credential response in structured form;
 - selected attestation format registry;
-- attestation trust policy;
+- attestation trust policy, either the legacy `AllowNone` policy or an explicit `attestation.TrustPolicy`;
 - extension policy;
 - optional credential uniqueness result or callback output supplied by the application.
 
@@ -72,6 +74,8 @@ Outputs include:
 - persistence-ready credential record.
 
 The core does not insert the credential into a database.
+
+If `RegistrationFinishOptions.AttestationTrustPolicy` is nil, the root package preserves its initial safe default: only `none` attestation can be accepted, and only when `RegistrationAttestationPolicy.AllowNone` is true. Any non-`none` format, including `packed`, requires a caller-supplied trust policy that explicitly accepts the verified attestation result.
 
 ### Authentication start
 
@@ -151,6 +155,8 @@ JSON decoding of `clientDataJSON` may use the Go standard library. Parsing must 
 
 Plan 03 adds optional `codec/cbor` using `github.com/fxamacker/cbor/v2` and `github.com/ldclabs/cose`. This package remains replaceable because public registration APIs accept `codec.Decoders` and return `codec.CredentialPublicKey`, not concrete dependency types.
 
+`codec.CredentialPublicKey` may also carry an optional U2F raw public key representation. This is exposed as bytes through `U2FPublicKey()` so `attestation/fidou2f` can build the U2F verification message without depending on a concrete COSE key type.
+
 ## Attestation registry boundary
 
 An attestation verifier should be addressable by the exact `fmt` identifier. Matching is case-sensitive. The registry must reject duplicate registrations unless explicitly overridden in tests.
@@ -164,6 +170,12 @@ A verifier should return at least:
 - data needed by trust policy, such as certificates or AAGUID bindings.
 
 Trust evaluation should be outside the verifier or clearly layered on top of it. Format verification answers whether the statement is well-formed and cryptographically valid. Trust policy answers whether the relying party accepts it.
+
+The minimal trust policy contract is `attestation.TrustPolicy`. It receives verified format evidence, authenticator data, the credential public key, and raw attestation object context, then returns an accepted/rejected trust result. Built-in trust-root, metadata, AAGUID, and certificate-status policies remain future Plan 07 work.
+
+`attestation/packed` verifies self attestation and x5c attestation signatures. For x5c it parses the leaf-first certificate chain, validates packed attestation certificate shape requirements, and returns the x5c trust path without deciding whether the chain is trusted by the relying party.
+
+`attestation/fidou2f` verifies the FIDO U2F registration signature base using an ES256 P-256 credential public key and a single x5c attestation certificate. It returns an x5c trust path without deciding whether the certificate represents Basic or AttCA trust.
 
 ## Extension boundary
 

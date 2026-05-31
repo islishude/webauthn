@@ -245,10 +245,7 @@ type RegistrationAttestationPolicy struct {
 }
 
 // AttestationTrustResult records the RP policy outcome.
-type AttestationTrustResult struct {
-	Accepted bool
-	Reason   string
-}
+type AttestationTrustResult = attestation.TrustResult
 
 // RegistrationExtensionPolicy controls extension output handling.
 type RegistrationExtensionPolicy struct {
@@ -262,6 +259,7 @@ type RegistrationFinishOptions struct {
 	Decoders                    codec.Decoders
 	AttestationRegistry         *attestation.Registry
 	AttestationPolicy           RegistrationAttestationPolicy
+	AttestationTrustPolicy      attestation.TrustPolicy
 	ExtensionRegistry           *extension.Registry
 	ExtensionPolicy             RegistrationExtensionPolicy
 	CredentialAlreadyRegistered bool
@@ -352,6 +350,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 
 	attestationResult, trustResult, err := verifyRegistrationAttestation(ctx, registrationAttestationInputs{
 		policy:              options.AttestationPolicy,
+		trustPolicy:         options.AttestationTrustPolicy,
 		registry:            options.AttestationRegistry,
 		decodedAttestation:  decodedAttestation,
 		credentialPublicKey: credentialPublicKey,
@@ -375,7 +374,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		Attestation:      attestationResult,
 		AttestationTrust: trustResult,
 		Extensions:       extensionResults,
-		Warnings:         append(slices.Clone(attestationResult.Warnings), clientDataWarnings(clientData)...),
+		Warnings:         registrationWarnings(attestationResult, trustResult, clientData),
 	}
 
 	return result, nil
@@ -516,6 +515,7 @@ func decodeCredentialPublicKeyAndExtensions(decoders codec.Decoders, parsed prot
 
 type registrationAttestationInputs struct {
 	policy              RegistrationAttestationPolicy
+	trustPolicy         attestation.TrustPolicy
 	registry            *attestation.Registry
 	decodedAttestation  codec.DecodedAttestationObject
 	credentialPublicKey codec.CredentialPublicKey
@@ -541,6 +541,23 @@ func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttes
 	}
 	if !result.CryptographicallyValid {
 		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrInvalidAttestation
+	}
+	if inputs.trustPolicy != nil {
+		trustResult, err := inputs.trustPolicy.EvaluateAttestationTrust(ctx, attestation.TrustRequest{
+			Format:               inputs.decodedAttestation.Format,
+			Result:               result,
+			AuthenticatorData:    inputs.decodedAttestation.AuthenticatorData,
+			CredentialPublicKey:  inputs.credentialPublicKey,
+			RawAttestationObject: inputs.decodedAttestation.Raw,
+		})
+		if err != nil {
+			return attestation.VerificationResult{}, AttestationTrustResult{}, fmt.Errorf("%w: %w", ErrRejectedAttestationPolicy, err)
+		}
+		if !trustResult.Accepted {
+			return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
+		}
+
+		return result, trustResult, nil
 	}
 	if result.Type == attestation.TypeNone {
 		if !inputs.policy.AllowNone {
@@ -674,6 +691,14 @@ func timeoutState(timeout time.Duration) (uint32, time.Time, error) {
 
 func clientDataWarnings(protocol.CollectedClientData) []string {
 	return nil
+}
+
+func registrationWarnings(attestationResult attestation.VerificationResult, trustResult AttestationTrustResult, clientData protocol.CollectedClientData) []string {
+	warnings := slices.Clone(attestationResult.Warnings)
+	warnings = append(warnings, trustResult.Warnings...)
+	warnings = append(warnings, clientDataWarnings(clientData)...)
+
+	return warnings
 }
 
 func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {

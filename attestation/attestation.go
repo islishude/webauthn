@@ -65,6 +65,38 @@ type VerificationResult struct {
 	Evidence               map[string]any
 }
 
+// TrustRequest is the evidence passed to relying-party attestation trust
+// policy after format verification succeeds.
+type TrustRequest struct {
+	Format               string
+	Result               VerificationResult
+	AuthenticatorData    protocol.AuthenticatorData
+	CredentialPublicKey  codec.CredentialPublicKey
+	RawAttestationObject protocol.AttestationObject
+}
+
+// TrustResult records whether relying-party policy accepts attestation
+// evidence after cryptographic format verification.
+type TrustResult struct {
+	Accepted bool
+	Reason   string
+	Warnings []string
+}
+
+// TrustPolicy decides whether verified attestation evidence is acceptable for
+// a relying party.
+type TrustPolicy interface {
+	EvaluateAttestationTrust(context.Context, TrustRequest) (TrustResult, error)
+}
+
+// TrustPolicyFunc adapts a function into a TrustPolicy.
+type TrustPolicyFunc func(context.Context, TrustRequest) (TrustResult, error)
+
+// EvaluateAttestationTrust calls f(ctx, request).
+func (f TrustPolicyFunc) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
+	return f(ctx, request)
+}
+
 // Verifier verifies one exact attestation statement format identifier.
 type Verifier interface {
 	Format() string

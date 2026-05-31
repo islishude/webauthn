@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	fxcbor "github.com/fxamacker/cbor/v2"
+	"github.com/ldclabs/cose/iana"
 	cosekey "github.com/ldclabs/cose/key"
 
 	"github.com/islishude/webauthn/codec"
@@ -90,10 +91,11 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicK
 		return codec.CredentialPublicKey{}, ErrMalformedCBOR
 	}
 
-	return codec.NewCredentialPublicKey(
+	return codec.NewCredentialPublicKeyWithU2F(
 		protocol.COSEAlgorithmIdentifier(key.Alg()),
 		key,
 		raw[:consumed],
+		u2fPublicKey(key),
 	), nil
 }
 
@@ -119,6 +121,32 @@ func (d *Decoder) decode(data []byte, out any) error {
 	}
 
 	return nil
+}
+
+func u2fPublicKey(key cosekey.Key) []byte {
+	if key.Kty() != iana.KeyTypeEC2 || int(key.Alg()) != iana.AlgorithmES256 {
+		return nil
+	}
+
+	curve, err := key.GetInt(iana.EC2KeyParameterCrv)
+	if err != nil || curve != iana.EllipticCurveP_256 {
+		return nil
+	}
+	x, err := key.GetBytes(iana.EC2KeyParameterX)
+	if err != nil || len(x) != 32 {
+		return nil
+	}
+	y, err := key.GetBytes(iana.EC2KeyParameterY)
+	if err != nil || len(y) != 32 {
+		return nil
+	}
+
+	out := make([]byte, 1, 65)
+	out[0] = 0x04
+	out = append(out, x...)
+	out = append(out, y...)
+
+	return out
 }
 
 var _ codec.Decoders = (*Decoder)(nil)

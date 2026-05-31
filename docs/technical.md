@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration and authentication ceremonies implemented, revised 2026-05-31.
+Status: registration, authentication, and initial attestation trust hooks implemented, revised 2026-05-31.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -38,17 +38,17 @@ The library should not own the account model. User lookup, session creation, acc
 
 Plan 02 fixed the initial package names. The dependency direction must remain stable.
 
-| Area                        | Responsibility                                                                                          | Root dependency direction                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Root package                | Module documentation plus registration and authentication ceremony entry points                         | Does not import optional packages or `net/http`                       |
-| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values | No attestation format dependencies                                    |
-| `attestation`               | Format verifier contract, result types, and duplicate-rejecting registry                                | Root accepts explicit format verifiers                                |
-| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                        | `none` implemented as optional import; others future work             |
-| `extension`                 | Extension handler contract, result types, and duplicate-rejecting registry                              | Root accepts explicit extension handlers or built-in Level 2 handlers |
-| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                      | Behind narrow contracts                                               |
-| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                 | Behind narrow contracts                                               |
-| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                             | Not imported by root; replaceable behind `codec.Decoders`             |
-| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                      | Must not be imported by the root package                              |
+| Area                        | Responsibility                                                                                          | Root dependency direction                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Root package                | Module documentation plus registration and authentication ceremony entry points                         | Does not import optional packages or `net/http`                                      |
+| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values | No attestation format dependencies                                                   |
+| `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract | Root accepts explicit format verifiers and trust policy                              |
+| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                        | `none`, `packed`, and `fido-u2f` implemented as optional imports; others future work |
+| `extension`                 | Extension handler contract, result types, and duplicate-rejecting registry                              | Root accepts explicit extension handlers or built-in Level 2 handlers                |
+| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                      | Behind narrow contracts                                                              |
+| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                 | Behind narrow contracts                                                              |
+| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                             | Not imported by root; replaceable behind `codec.Decoders`                            |
+| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                      | Must not be imported by the root package                                             |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -157,6 +157,10 @@ The implementation should prefer standard library support for SHA-256, X.509 par
 
 Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs still accept narrow codec/crypto interfaces, so replacing these dependencies does not change root API compatibility.
 
+Plan 05's initial `attestation/packed` slice adds no dependency. It uses Go standard library X.509 parsing for packed attestation certificate shape checks and delegates attestation signature verification through `crypto.SignatureVerifier`. X.509 trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
+
+Plan 05's initial `attestation/fidou2f` slice also adds no dependency. It uses `codec.CredentialPublicKey.U2FPublicKey` to obtain the U2F raw public key form from the selected codec, uses Go standard library X.509 parsing for the single attestation certificate, and delegates ES256 signature verification through `crypto.SignatureVerifier`.
+
 ## Compatibility and passkey behavior
 
 The library should support both username-first and discoverable-credential authentication flows. Passkey-oriented behavior requires correct user handle processing, resident/discoverable credential options, user verification policy, authenticator attachment preferences, and extension results such as credential properties where supported.
@@ -172,9 +176,9 @@ Implementation should follow `docs/plans.md`. The required order is:
 3. core protocol model and adapter contracts (complete, 2026-05-31);
 4. registration ceremony with `none` attestation (complete, 2026-05-31);
 5. authentication ceremony (complete, 2026-05-31);
-6. modular attestation formats;
+6. modular attestation formats (in progress: `none`, `packed`, and `fido-u2f`);
 7. extensions;
-8. trust and metadata policy;
+8. trust and metadata policy (in progress: minimal trust hook);
 9. conformance tests;
 10. optional adapters, examples, and release hardening.
 

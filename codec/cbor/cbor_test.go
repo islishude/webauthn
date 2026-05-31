@@ -68,6 +68,66 @@ func TestDecoderCredentialPublicKeyReportsConsumedRaw(t *testing.T) {
 	}
 }
 
+func TestDecoderCredentialPublicKeyReportsU2FPublicKey(t *testing.T) {
+	t.Parallel()
+
+	key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCOSEKey(t))
+	if err != nil {
+		t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
+	}
+
+	want := append([]byte{0x04}, []byte("01234567890123456789012345678901")...)
+	want = append(want, []byte("abcdefghijklmnopqrstuvwxyzabcdef")...)
+	if got := key.U2FPublicKey(); len(got) != 65 || !equalBytes(got, want) {
+		t.Fatalf("U2FPublicKey() = %x, want %x", got, want)
+	}
+}
+
+func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  map[int]any
+	}{
+		{
+			name: "wrong algorithm",
+			key:  coseKeyMap(-257, 1, []byte("01234567890123456789012345678901"), []byte("abcdefghijklmnopqrstuvwxyzabcdef")),
+		},
+		{
+			name: "wrong curve",
+			key:  coseKeyMap(-7, 2, []byte("01234567890123456789012345678901"), []byte("abcdefghijklmnopqrstuvwxyzabcdef")),
+		},
+		{
+			name: "short x",
+			key:  coseKeyMap(-7, 1, []byte("short"), []byte("abcdefghijklmnopqrstuvwxyzabcdef")),
+		},
+		{
+			name: "missing y",
+			key: map[int]any{
+				1:  2,
+				3:  -7,
+				-1: 1,
+				-2: []byte("01234567890123456789012345678901"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
+			if err != nil {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
+			}
+			if got := key.U2FPublicKey(); got != nil {
+				t.Fatalf("U2FPublicKey() = %x, want nil", got)
+			}
+		})
+	}
+}
+
 func TestDecoderRejectsMalformedCBOR(t *testing.T) {
 	t.Parallel()
 
@@ -82,13 +142,22 @@ func TestDecoderRejectsMalformedCBOR(t *testing.T) {
 func mustCOSEKey(t *testing.T) []byte {
 	t.Helper()
 
-	return mustCBOR(t, map[int]any{
+	return mustCBOR(t, coseKeyMap(
+		-7,
+		1,
+		[]byte("01234567890123456789012345678901"),
+		[]byte("abcdefghijklmnopqrstuvwxyzabcdef"),
+	))
+}
+
+func coseKeyMap(algorithm int, curve int, x []byte, y []byte) map[int]any {
+	return map[int]any{
 		1:  2,
-		3:  -7,
-		-1: 1,
-		-2: []byte("01234567890123456789012345678901"),
-		-3: []byte("abcdefghijklmnopqrstuvwxyzabcdef"),
-	})
+		3:  algorithm,
+		-1: curve,
+		-2: x,
+		-3: y,
+	}
 }
 
 func mustCBOR(t *testing.T, value any) []byte {
@@ -100,4 +169,17 @@ func mustCBOR(t *testing.T, value any) []byte {
 	}
 
 	return encoded
+}
+
+func equalBytes(a []byte, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
