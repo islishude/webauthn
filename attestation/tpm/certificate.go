@@ -5,10 +5,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"fmt"
 	"slices"
 
-	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -23,25 +22,6 @@ var (
 	oidTPMVersion      = asn1.ObjectIdentifier{2, 23, 133, 2, 3}
 )
 
-func parseCertificateChain(rawChain [][]byte) (webcrypto.CertificateChain, []*x509.Certificate, error) {
-	if len(rawChain) == 0 {
-		return nil, nil, ErrInvalidStatement
-	}
-
-	chain := make(webcrypto.CertificateChain, len(rawChain))
-	certificates := make([]*x509.Certificate, len(rawChain))
-	for i, raw := range rawChain {
-		certificate, err := x509.ParseCertificate(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrInvalidStatement, err)
-		}
-		chain[i] = webcrypto.NewCertificate(raw)
-		certificates[i] = certificate
-	}
-
-	return chain, certificates, nil
-}
-
 func validateAIKCertificate(certificate *x509.Certificate, aaguid protocol.AAGUID) error {
 	if certificate.Version != 3 {
 		return ErrCertificateRequirements
@@ -49,13 +29,13 @@ func validateAIKCertificate(certificate *x509.Certificate, aaguid protocol.AAGUI
 	if !subjectEmpty(certificate.Subject) {
 		return ErrCertificateRequirements
 	}
-	if !hasExtension(certificate, oidExtensionSubjectAltName) || !hasTPMSANAttributes(certificate) {
+	if !x509util.HasExtension(certificate, oidExtensionSubjectAltName) || !hasTPMSANAttributes(certificate) {
 		return ErrCertificateRequirements
 	}
 	if !hasAIKEKU(certificate) {
 		return ErrCertificateRequirements
 	}
-	if !hasExtension(certificate, oidExtensionBasicConstraints) || !certificate.BasicConstraintsValid || certificate.IsCA {
+	if !x509util.HasExtension(certificate, oidExtensionBasicConstraints) || !certificate.BasicConstraintsValid || certificate.IsCA {
 		return ErrCertificateRequirements
 	}
 
@@ -83,7 +63,7 @@ func hasAIKEKU(certificate *x509.Certificate) bool {
 }
 
 func hasTPMSANAttributes(certificate *x509.Certificate) bool {
-	extension, ok := findExtension(certificate, oidExtensionSubjectAltName)
+	extension, ok := x509util.FindExtension(certificate, oidExtensionSubjectAltName)
 	if !ok {
 		return false
 	}
@@ -131,7 +111,7 @@ func rdnSequenceHasTPMAttributes(rdnSequence pkix.RDNSequence) bool {
 }
 
 func validateAAGUIDExtension(certificate *x509.Certificate, aaguid protocol.AAGUID) error {
-	extension, ok := findExtension(certificate, oidExtensionFIDOAAGUID)
+	extension, ok := x509util.FindExtension(certificate, oidExtensionFIDOAAGUID)
 	if !ok {
 		return nil
 	}
@@ -149,19 +129,4 @@ func validateAAGUIDExtension(certificate *x509.Certificate, aaguid protocol.AAGU
 	}
 
 	return nil
-}
-
-func hasExtension(certificate *x509.Certificate, oid asn1.ObjectIdentifier) bool {
-	_, ok := findExtension(certificate, oid)
-	return ok
-}
-
-func findExtension(certificate *x509.Certificate, oid asn1.ObjectIdentifier) (pkix.Extension, bool) {
-	for _, extension := range certificate.Extensions {
-		if extension.Id.Equal(oid) {
-			return extension, true
-		}
-	}
-
-	return pkix.Extension{}, false
 }

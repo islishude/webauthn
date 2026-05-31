@@ -204,6 +204,13 @@ The Android SafetyNet Plan 05 slice added tests for:
 - shared attestation statement string helper reuse across optional format packages;
 - continued root import graph independence from optional attestation format packages.
 
+The Apple Plan 05 slice added tests for:
+
+- optional `attestation/apple` EC2 and RSA valid paths;
+- malformed statement fields, missing or empty x5c, malformed certificates, missing or malformed nonce extension, nonce mismatch, missing credential public key material, leaf public-key mismatch, and leaf-first trust path preservation;
+- shared X.509 certificate-chain, extension lookup, and certificate public-key binding helpers across optional format packages;
+- continued root import graph independence from optional attestation format packages.
+
 ## Fuzzing targets
 
 Fuzzing should be added for:

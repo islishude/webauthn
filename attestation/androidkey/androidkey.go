@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -66,15 +67,15 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 
-	chain, certificates, err := parseCertificateChain(statement.x5c)
+	chain, certificates, err := x509util.ParseCertificateChain(statement.x5c, ErrInvalidStatement)
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
 	leaf := certificates[0]
-	if err := validateCertificatePublicKey(leaf, request.CredentialPublicKey.PublicKeyMaterial()); err != nil {
+	if err := x509util.ValidatePublicKey(leaf.PublicKey, request.CredentialPublicKey.PublicKeyMaterial(), ErrUnsupportedKey, ErrPublicKeyMismatch); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	extension, ok := findExtension(leaf, oidExtensionAndroidKeyAttestation)
+	extension, ok := x509util.FindExtension(leaf, oidExtensionAndroidKeyAttestation)
 	if !ok {
 		return attestation.VerificationResult{}, ErrCertificateRequirements
 	}

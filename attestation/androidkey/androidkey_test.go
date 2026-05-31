@@ -510,6 +510,20 @@ func cloneStatement(statement codec.AttestationStatement) codec.AttestationState
 	return out
 }
 
+func fixedBytes(value *big.Int, length int) []byte {
+	if value == nil {
+		return nil
+	}
+	bytes := value.Bytes()
+	if len(bytes) >= length {
+		return bytes[len(bytes)-length:]
+	}
+	out := make([]byte, length)
+	copy(out[length-len(bytes):], bytes)
+
+	return out
+}
+
 type signatureVerifier struct {
 	t             *testing.T
 	wantAlgorithm protocol.COSEAlgorithmIdentifier

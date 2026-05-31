@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 04 registration and authentication ceremony behavior is implemented. Plan 05 and Plan 07 are in progress: registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, and `android-safetynet` attestation verification, and caller-supplied attestation trust policy hooks. Apple attestation has not been implemented yet.
+Current status: Plan 04 registration and authentication ceremony behavior is implemented. Plan 05 is complete and Plan 07 is in progress: registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification, and caller-supplied attestation trust policy hooks.
 
 ## Goals
 
@@ -80,6 +80,7 @@ The package layout keeps the root package small and stable. Format-specific and 
 - `attestation/tpm`: optional `tpm` attestation verifier;
 - `attestation/androidkey`: optional `android-key` attestation verifier;
 - `attestation/androidsafetynet`: optional `android-safetynet` attestation verifier;
+- `attestation/apple`: optional `apple` anonymous attestation verifier;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
-Optional Apple attestation packages, browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.
+Optional browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.

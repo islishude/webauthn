@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: In progress, 2026-05-31.
+Status: Complete, 2026-05-31.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ Implement all WebAuthn Level 2 attestation statement formats as optional package
 | `android-key`       | `attestation/androidkey`       | Android key certificate extension, challenge binding, authorization list checks.                 | Initial verifier complete, 2026-05-31; trust-chain acceptance remains Plan 07 policy work.   |
 | `android-safetynet` | `attestation/androidsafetynet` | JWS response verification through dependency, nonce binding, service certificate/trust handling. | Initial verifier complete, 2026-05-31; trust-chain acceptance remains Plan 07 policy work.   |
 | `fido-u2f`          | `attestation/fidou2f`          | ES256 requirement, U2F registration signature base, x5c trust path.                              | Initial verifier complete, 2026-05-31; Basic vs AttCA classification remains Plan 07 work.   |
-| `apple`             | `attestation/apple`            | Apple anonymous attestation nonce and certificate checks.                                        | Not started.                                                                                 |
+| `apple`             | `attestation/apple`            | Apple anonymous attestation nonce and certificate checks.                                        | Initial verifier complete, 2026-05-31; trust-chain acceptance remains Plan 07 policy work.   |
 
 ## Modular import requirements
 
@@ -76,3 +76,5 @@ When each format is complete, update this file's table with completion date. Whe
 2026-05-31: Delivered the fourth P1 slice. Added optional `attestation/androidkey` with explicit construction, exact Android Key attestation statement field parsing, signature verification over authenticator data plus client data hash, EC2 and RSA leaf certificate public-key binding to codec-derived credential public key material, Android Key attestation extension challenge and authorization-list checks, x5c trust path output, and per-format tests. Shared attestation statement field helpers now live under `attestation/internal/attstmt` to avoid duplicated x5c and byte cloning logic across optional format packages. No new third-party dependency was added. Scope change: trust-chain acceptance remains Plan 07 relying-party policy work.
 
 2026-05-31: Delivered the fifth P1 slice. Added optional `attestation/androidsafetynet` with explicit construction, exact Android SafetyNet attestation statement field parsing, SafetyNet compact JWS verification delegated through `crypto.JWSVerifier`, nonce binding to authenticator data plus client data hash, `ctsProfileMatch` and timestamp shape checks, SafetyNet service hostname validation, x5c trust path output, and per-format tests. Shared attestation statement string parsing now lives under `attestation/internal/attstmt`. No new third-party dependency was added. Scope change: trust-chain acceptance and richer SafetyNet risk interpretation remain Plan 07 relying-party policy work.
+
+2026-05-31: Delivered the sixth P1 slice and completed Plan 05. Added optional `attestation/apple` with explicit construction, exact Apple attestation statement field parsing, Apple anonymous attestation nonce extension validation, EC2 and RSA leaf certificate public-key binding to codec-derived credential public key material, x5c trust path output, and per-format tests. Shared X.509 certificate-chain parsing, extension lookup, and certificate public-key binding helpers now live under `attestation/internal/x509util` and are reused by existing optional format packages. No new third-party dependency was added. Scope change: trust-chain acceptance remains Plan 07 relying-party policy work.

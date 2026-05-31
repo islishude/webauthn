@@ -26,6 +26,7 @@ Current package boundaries:
 - `attestation/tpm`: optional `tpm` format verifier selected explicitly by callers;
 - `attestation/androidkey`: optional `android-key` format verifier selected explicitly by callers;
 - `attestation/androidsafetynet`: optional `android-safetynet` format verifier selected explicitly by callers;
+- `attestation/apple`: optional `apple` format verifier selected explicitly by callers;
 - `extension`: extension handler contract and duplicate-rejecting registry.
 
 ## Ceremony API shape
@@ -160,7 +161,7 @@ Plan 03 adds optional `codec/cbor` using `github.com/fxamacker/cbor/v2` and `git
 
 `codec.CredentialPublicKey` may also carry an optional U2F raw public key representation. This is exposed as bytes through `U2FPublicKey()` so `attestation/fidou2f` can build the U2F verification message without depending on a concrete COSE key type.
 
-`codec.CredentialPublicKey` may also carry codec-derived EC2 or RSA public key material. This is exposed through `PublicKeyMaterial()` so `attestation/tpm` and `attestation/androidkey` can compare WebAuthn credential public-key values to format-specific public key material without depending on a concrete COSE key type.
+`codec.CredentialPublicKey` may also carry codec-derived EC2 or RSA public key material. This is exposed through `PublicKeyMaterial()` so `attestation/tpm`, `attestation/androidkey`, and `attestation/apple` can compare WebAuthn credential public-key values to format-specific public key material without depending on a concrete COSE key type.
 
 ## Attestation registry boundary
 
@@ -187,6 +188,8 @@ The minimal trust policy contract is `attestation.TrustPolicy`. It receives veri
 `attestation/androidkey` verifies Android Key attestation statements by checking the signature over authenticator data plus client data hash, binding the leaf certificate public key to codec-derived EC2 or RSA credential public key material, validating the WebAuthn-required Android Key attestation extension fields, and returning `TypeBasic` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
 
 `attestation/androidsafetynet` verifies Android SafetyNet attestation statements by delegating compact JWS verification to `crypto.JWSVerifier`, checking the SafetyNet nonce against authenticator data plus client data hash, requiring `ctsProfileMatch`, validating the SafetyNet service certificate hostname, and returning `TypeBasic` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
+
+`attestation/apple` verifies Apple anonymous attestation statements by checking the Apple nonce certificate extension against authenticator data plus client data hash, binding the leaf certificate public key to codec-derived EC2 or RSA credential public key material, and returning `TypeAnonymizationCA` with the leaf-first x5c trust path. The relying party still decides whether that trust path is accepted.
 
 ## Extension boundary
 

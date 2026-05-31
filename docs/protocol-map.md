@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: initial packed, TPM, Android Key, and FIDO U2F attestation slices implemented, revised 2026-05-31.
+Status: all initial WebAuthn Level 2 attestation format slices implemented, revised 2026-05-31.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 
@@ -86,15 +86,15 @@ The library must support both username-first and discoverable-credential flows. 
 
 The stable completeness target includes all WebAuthn Level 2 defined attestation statement formats.
 
-| Format identifier   | Planned package                | Modular dependency notes                                                            | Stable target  |
-| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | -------------- |
-| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                       | P0 complete    |
-| `packed`            | `attestation/packed`           | Signature verification through adapter; X.509 parsing uses Go standard library      | P1 in progress |
-| `tpm`               | `attestation/tpm`              | Narrow TPM structure parsing and X.509 requirement checks using Go standard library | P1 in progress |
-| `android-key`       | `attestation/androidkey`       | Android Key extension parsing with Go standard library ASN.1/X.509 support          | P1 in progress |
-| `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`                | P1 in progress |
-| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters            | P1 in progress |
-| `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through package-specific verifier    | P1             |
+| Format identifier   | Planned package                | Modular dependency notes                                                            | Stable target |
+| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------- |
+| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                       | P0 complete   |
+| `packed`            | `attestation/packed`           | Signature verification through adapter; X.509 parsing uses Go standard library      | P1 complete   |
+| `tpm`               | `attestation/tpm`              | Narrow TPM structure parsing and X.509 requirement checks using Go standard library | P1 complete   |
+| `android-key`       | `attestation/androidkey`       | Android Key extension parsing with Go standard library ASN.1/X.509 support          | P1 complete   |
+| `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`                | P1 complete   |
+| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters            | P1 complete   |
+| `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through Go standard library X.509    | P1 complete   |
 
 The root package must not import these packages automatically. A separate optional aggregate may be added only after individual packages are stable.
 

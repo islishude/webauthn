@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -111,7 +112,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		return attestation.VerificationResult{}, err
 	}
 
-	chain, certificates, err := parseCertificateChain(statement.x5c)
+	chain, certificates, err := x509util.ParseCertificateChain(statement.x5c, ErrInvalidStatement)
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
