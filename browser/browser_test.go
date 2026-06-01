@@ -19,6 +19,7 @@ func TestCredentialCreationOptionsFromProtocolEncodesBinaryFields(t *testing.T) 
 	userHandle := mustUserHandle(t, []byte("user-1"))
 	credentialID := mustCredentialID(t, []byte("credential-1"))
 	read := true
+	prfSalt := []byte("prf-salt")
 	options := protocol.PublicKeyCredentialCreationOptions{
 		RP: protocol.RPEntity{ID: "example.com", Name: "Example"},
 		User: protocol.UserEntity{
@@ -40,9 +41,12 @@ func TestCredentialCreationOptionsFromProtocolEncodesBinaryFields(t *testing.T) 
 			ResidentKey:      protocol.ResidentKeyRequired,
 			UserVerification: protocol.UserVerificationRequired,
 		},
-		Attestation: protocol.AttestationDirect,
+		Hints:              []protocol.PublicKeyCredentialHint{protocol.HintClientDevice},
+		Attestation:        protocol.AttestationDirect,
+		AttestationFormats: []string{"packed", "none"},
 		Extensions: protocol.ExtensionInputs{
 			extension.IDLargeBlob: extension.LargeBlobInput{Read: &read, Write: []byte("blob")},
+			extension.IDPRF:       extension.PRFInput{Eval: &extension.PRFValues{First: prfSalt}},
 			"future":              map[string]any{"unchanged": true},
 		},
 	}
@@ -64,6 +68,20 @@ func TestCredentialCreationOptionsFromProtocolEncodesBinaryFields(t *testing.T) 
 	if largeBlob["write"] != encode([]byte("blob")) || largeBlob["read"] != true {
 		t.Fatalf("largeBlob extension = %#v", largeBlob)
 	}
+	prf, ok := dto.Extensions[extension.IDPRF].(map[string]any)
+	if !ok {
+		t.Fatalf("prf extension = %T", dto.Extensions[extension.IDPRF])
+	}
+	prfEval := prf["eval"].(map[string]any)
+	if prfEval["first"] != encode(prfSalt) {
+		t.Fatalf("prf eval first = %#v", prfEval["first"])
+	}
+	if len(dto.Hints) != 1 || dto.Hints[0] != protocol.HintClientDevice {
+		t.Fatalf("Hints = %#v", dto.Hints)
+	}
+	if len(dto.AttestationFormats) != 2 || dto.AttestationFormats[0] != "packed" {
+		t.Fatalf("AttestationFormats = %#v", dto.AttestationFormats)
+	}
 }
 
 func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *testing.T) {
@@ -80,6 +98,12 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 			Transports: []protocol.AuthenticatorTransport{protocol.TransportUSB},
 		}},
 		UserVerification: protocol.UserVerificationPreferred,
+		Hints:            []protocol.PublicKeyCredentialHint{protocol.HintHybrid},
+		Extensions: protocol.ExtensionInputs{
+			extension.IDPRF: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
+				encode([]byte("credential-1")): {First: []byte("salt")},
+			}},
+		},
 	}
 
 	dto := browser.CredentialRequestOptionsFromProtocol(options)
@@ -88,6 +112,15 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 	}
 	if dto.AllowCredentials[0].ID != encode([]byte("credential-1")) {
 		t.Fatalf("AllowCredentials[0].ID = %q", dto.AllowCredentials[0].ID)
+	}
+	if len(dto.Hints) != 1 || dto.Hints[0] != protocol.HintHybrid {
+		t.Fatalf("Hints = %#v", dto.Hints)
+	}
+	prf := dto.Extensions[extension.IDPRF].(map[string]any)
+	byCredential := prf["evalByCredential"].(map[string]any)
+	eval := byCredential[encode([]byte("credential-1"))].(map[string]any)
+	if eval["first"] != encode([]byte("salt")) {
+		t.Fatalf("prf evalByCredential first = %#v", eval["first"])
 	}
 }
 
@@ -114,16 +147,27 @@ func TestRegistrationResponseFromJSON(t *testing.T) {
 	t.Parallel()
 
 	payload := map[string]any{
-		"type":  protocol.CredentialTypePublicKey,
-		"rawId": encode([]byte("credential-1")),
+		"type":                    protocol.CredentialTypePublicKey,
+		"rawId":                   encode([]byte("credential-1")),
+		"authenticatorAttachment": "platform",
 		"response": map[string]any{
-			"clientDataJSON":    encode([]byte(`{"type":"webauthn.create"}`)),
-			"attestationObject": encode([]byte{0xa0}),
-			"transports":        []string{"internal"},
+			"clientDataJSON":     encode([]byte(`{"type":"webauthn.create"}`)),
+			"authenticatorData":  encode(make([]byte, protocol.MinAuthenticatorDataLength)),
+			"publicKey":          encode([]byte("public-key")),
+			"publicKeyAlgorithm": -8,
+			"attestationObject":  encode([]byte{0xa0}),
+			"transports":         []string{"internal"},
 		},
 		"clientExtensionResults": map[string]any{
 			extension.IDLargeBlob: map[string]any{"blob": encode([]byte("blob"))},
-			"future":              map[string]any{"unchanged": true},
+			extension.IDPRF: map[string]any{
+				"enabled": true,
+				"results": map[string]any{
+					"first":  encode(bytesOf(0x01, 32)),
+					"second": encode(bytesOf(0x02, 32)),
+				},
+			},
+			"future": map[string]any{"unchanged": true},
 		},
 	}
 	data := mustJSON(t, payload)
@@ -138,9 +182,20 @@ func TestRegistrationResponseFromJSON(t *testing.T) {
 	if string(response.ClientDataJSON.Bytes()) != `{"type":"webauthn.create"}` {
 		t.Fatalf("ClientDataJSON = %q", response.ClientDataJSON.Bytes())
 	}
+	if response.AuthenticatorAttachment != protocol.AuthenticatorAttachmentPlatform {
+		t.Fatalf("AuthenticatorAttachment = %q", response.AuthenticatorAttachment)
+	}
+	if string(response.PublicKey) != "public-key" || response.PublicKeyAlgorithm != protocol.AlgorithmEdDSA {
+		t.Fatalf("public key fields = %q %d", response.PublicKey, response.PublicKeyAlgorithm)
+	}
 	largeBlob := response.ClientExtensionResults[extension.IDLargeBlob].(map[string]any)
 	if string(largeBlob["blob"].([]byte)) != "blob" {
 		t.Fatalf("largeBlob blob = %#v", largeBlob["blob"])
+	}
+	prf := response.ClientExtensionResults[extension.IDPRF].(map[string]any)
+	results := prf["results"].(map[string]any)
+	if string(results["first"].([]byte)) != string(bytesOf(0x01, 32)) {
+		t.Fatalf("prf results.first = %#v", results["first"])
 	}
 	if response.ClientExtensionResults["future"].(map[string]any)["unchanged"] != true {
 		t.Fatalf("future extension = %#v", response.ClientExtensionResults["future"])
@@ -151,8 +206,9 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 	t.Parallel()
 
 	payload := map[string]any{
-		"type":  protocol.CredentialTypePublicKey,
-		"rawId": encode([]byte("credential-1")),
+		"type":                    protocol.CredentialTypePublicKey,
+		"rawId":                   encode([]byte("credential-1")),
+		"authenticatorAttachment": "cross-platform",
 		"response": map[string]any{
 			"clientDataJSON":    encode([]byte(`{"type":"webauthn.get"}`)),
 			"authenticatorData": encode(append(make([]byte, 37), 1)),
@@ -161,6 +217,9 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 		},
 		"clientExtensionResults": map[string]any{
 			extension.IDLargeBlob: map[string]any{"blob": encode([]byte("blob"))},
+			extension.IDPRF: map[string]any{
+				"results": map[string]any{"first": encode(bytesOf(0x03, 32))},
+			},
 		},
 	}
 	data := mustJSON(t, payload)
@@ -177,6 +236,14 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 	}
 	if string(response.Signature.Bytes()) != "signature" {
 		t.Fatalf("Signature = %q", response.Signature.Bytes())
+	}
+	if response.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform {
+		t.Fatalf("AuthenticatorAttachment = %q", response.AuthenticatorAttachment)
+	}
+	prf := response.ClientExtensionResults[extension.IDPRF].(map[string]any)
+	results := prf["results"].(map[string]any)
+	if string(results["first"].([]byte)) != string(bytesOf(0x03, 32)) {
+		t.Fatalf("prf results.first = %#v", results["first"])
 	}
 }
 
@@ -288,4 +355,13 @@ func mustJSON(t *testing.T, value any) []byte {
 
 func encode(value []byte) string {
 	return base64.RawURLEncoding.EncodeToString(value)
+}
+
+func bytesOf(value byte, length int) []byte {
+	out := make([]byte, length)
+	for i := range out {
+		out[i] = value
+	}
+
+	return out
 }

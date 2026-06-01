@@ -120,6 +120,8 @@ func (AppIDExcludeHandler) HandleExtension(_ context.Context, request Request) (
 }
 
 // UVMEntry is one user verification method extension entry.
+//
+// Deprecated: The uvm extension is deprecated in WebAuthn Level 3.
 type UVMEntry struct {
 	UserVerificationMethod uint32
 	KeyProtectionType      uint16
@@ -127,14 +129,20 @@ type UVMEntry struct {
 }
 
 // UVMResult is the parsed user verification method extension output.
+//
+// Deprecated: The uvm extension is deprecated in WebAuthn Level 3.
 type UVMResult struct {
 	Entries []UVMEntry
 }
 
 // UVMHandler validates the user verification method extension.
+//
+// Deprecated: The uvm extension is deprecated in WebAuthn Level 3.
 type UVMHandler struct{}
 
 // ID returns "uvm".
+//
+// Deprecated: The uvm extension is deprecated in WebAuthn Level 3.
 func (UVMHandler) ID() string {
 	return IDUVM
 }
@@ -171,7 +179,7 @@ func (UVMHandler) HandleExtension(_ context.Context, request Request) (Result, e
 	}
 
 	output := UVMResult{Entries: cloneUVMEntries(entries)}
-	return Result{ID: IDUVM, Accepted: haveOutput, Outputs: map[string]any{IDUVM: output}}, nil
+	return Result{ID: IDUVM, Accepted: haveOutput, Deprecated: true, Outputs: map[string]any{IDUVM: output}}, nil
 }
 
 // CredentialPropertiesResult is the parsed credential properties output.

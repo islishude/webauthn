@@ -51,3 +51,7 @@ When complete, update `docs/plans.md`, this file, README, `docs/ci.md`, and rele
 ## Completion notes
 
 2026-06-01: Completed Plan 09. Added optional `browser` DTO conversion helpers for creation/request options, credential descriptors, registration responses, authentication responses, and known largeBlob byte fields using unpadded base64url. Added optional `transport/http` standard-library JSON read/write helpers with bounded body reads and generic error responses. Added compile-checked examples for manual integration, HTTP helpers, passkey/discoverable credential authentication, and selected attestation policy. Added `make example-build`, `make readme-check`, GitHub Actions example builds, README checks, and `docs/release.md`. Updated README, CI/testing/security/API/technical/protocol documentation, and the plan index. Scope changes: no third-party dependencies, storage adapter, session/cookie handling, router abstraction, frontend framework package, hidden trust roots, metadata network client, or root-package transport dependency was added.
+
+2026-06-01 Level 3 update: Plans 11, 12, and 14 extend the optional browser and
+HTTP helpers with Level 3 DTO fields, PRF byte-field conversion, and examples
+using Level 3 registry helpers. Plan 09 remains the adapter baseline.

@@ -28,7 +28,7 @@ func newHandler(signatureVerifier webcrypto.SignatureVerifier) (*handler, error)
 	if err != nil {
 		return nil, err
 	}
-	extensions, err := extension.NewLevel2Registry()
+	extensions, err := extension.NewLevel3RegistryWithDeprecated()
 	if err != nil {
 		return nil, err
 	}
@@ -49,13 +49,11 @@ func (h *handler) beginRegistration(response http.ResponseWriter, request *http.
 	}
 
 	start, err := webauthn.StartRegistration(request.Context(), webauthn.RegistrationStartOptions{
-		RP:             protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:           protocol.UserEntity{ID: userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
-		AllowedOrigins: []string{"https://example.com"},
-		PubKeyCredParams: []protocol.CredentialParameter{
-			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
-		},
-		Attestation: protocol.AttestationNone,
+		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:             protocol.UserEntity{ID: userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
+		Attestation:      protocol.AttestationNone,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)
@@ -98,8 +96,8 @@ func (h *handler) beginAuthentication(response http.ResponseWriter, request *htt
 	}
 
 	start, err := webauthn.StartAuthentication(request.Context(), webauthn.AuthenticationStartOptions{
-		RPID:           credential.RPID,
-		AllowedOrigins: []string{"https://example.com"},
+		RPID:         credential.RPID,
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		AllowCredentials: []protocol.CredentialDescriptor{{
 			Type:       protocol.CredentialTypePublicKey,
 			ID:         credential.ID,

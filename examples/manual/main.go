@@ -28,7 +28,7 @@ func newServer(signatureVerifier webcrypto.SignatureVerifier) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
-	extensions, err := extension.NewLevel2Registry()
+	extensions, err := extension.NewLevel3RegistryWithDeprecated()
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +45,10 @@ func newServer(signatureVerifier webcrypto.SignatureVerifier) (*server, error) {
 
 func (s *server) beginRegistration(ctx context.Context, sessionID string, user protocol.UserEntity) (browser.CredentialCreationOptionsJSON, error) {
 	start, err := webauthn.StartRegistration(ctx, webauthn.RegistrationStartOptions{
-		RP:             protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:           user,
-		AllowedOrigins: []string{"https://example.com"},
-		PubKeyCredParams: []protocol.CredentialParameter{
-			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
-			{Type: protocol.CredentialTypePublicKey, Algorithm: -257},
-		},
+		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:             user,
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
 		Attestation:      protocol.AttestationNone,
 		UserVerification: protocol.UserVerificationPreferred,
 		Extensions:       protocol.ExtensionInputs{extension.IDCredProps: true},
@@ -93,8 +90,8 @@ func (s *server) finishRegistration(ctx context.Context, sessionID string, body 
 
 func (s *server) beginAuthentication(ctx context.Context, sessionID string, credential webauthn.CredentialRecord) (browser.CredentialRequestOptionsJSON, error) {
 	start, err := webauthn.StartAuthentication(ctx, webauthn.AuthenticationStartOptions{
-		RPID:           credential.RPID,
-		AllowedOrigins: []string{"https://example.com"},
+		RPID:         credential.RPID,
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		AllowCredentials: []protocol.CredentialDescriptor{{
 			Type:       protocol.CredentialTypePublicKey,
 			ID:         credential.ID,

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -33,14 +35,13 @@ var (
 // AuthenticationStartOptions configures assertion option creation.
 type AuthenticationStartOptions struct {
 	RPID               string
-	AllowedOrigins     []string
-	AllowCrossOrigin   bool
-	TokenBindingID     string
+	OriginPolicy       OriginPolicy
 	Challenge          protocol.Challenge
 	ChallengeGenerator ChallengeGenerator
 	Timeout            time.Duration
 	AllowCredentials   []protocol.CredentialDescriptor
 	UserVerification   protocol.UserVerificationRequirement
+	Hints              []protocol.PublicKeyCredentialHint
 	Extensions         protocol.ExtensionInputs
 	ExpectedUserHandle protocol.UserHandle
 }
@@ -57,9 +58,7 @@ type AuthenticationStartResult struct {
 type AuthenticationState struct {
 	Challenge                 protocol.Challenge
 	RPID                      string
-	AllowedOrigins            []string
-	AllowCrossOrigin          bool
-	TokenBindingID            string
+	OriginPolicy              OriginPolicy
 	RequestedUserVerification protocol.UserVerificationRequirement
 	RequestedExtensions       protocol.ExtensionInputs
 	AllowCredentials          []protocol.CredentialDescriptor
@@ -75,7 +74,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if options.RPID == "" {
 		return AuthenticationStartResult{}, errors.New("rp id is required")
 	}
-	if err := validateOrigins(options.AllowedOrigins); err != nil {
+	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
 		return AuthenticationStartResult{}, err
 	}
 	for _, descriptor := range options.AllowCredentials {
@@ -116,7 +115,8 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		RPID:                options.RPID,
 		AllowCredentials:    cloneCredentialDescriptors(options.AllowCredentials),
 		UserVerification:    userVerification,
-		Extensions:          cloneExtensionInputs(options.Extensions),
+		Hints:               slices.Clone(options.Hints),
+		Extensions:          maps.Clone(options.Extensions),
 	}
 	if err := requestOptions.Validate(); err != nil {
 		return AuthenticationStartResult{}, err
@@ -125,11 +125,9 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	state := AuthenticationState{
 		Challenge:                 challenge,
 		RPID:                      options.RPID,
-		AllowedOrigins:            slices.Clone(options.AllowedOrigins),
-		AllowCrossOrigin:          options.AllowCrossOrigin,
-		TokenBindingID:            options.TokenBindingID,
+		OriginPolicy:              options.OriginPolicy.clone(),
 		RequestedUserVerification: userVerification,
-		RequestedExtensions:       cloneExtensionInputs(options.Extensions),
+		RequestedExtensions:       maps.Clone(options.Extensions),
 		AllowCredentials:          cloneCredentialDescriptors(options.AllowCredentials),
 		ExpectedUserHandle:        options.ExpectedUserHandle,
 		ExpiresAt:                 expiresAt,
@@ -141,13 +139,14 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 // AuthenticationResponse is the structured, transport-neutral browser
 // assertion response input.
 type AuthenticationResponse struct {
-	Type                   protocol.PublicKeyCredentialType
-	RawID                  protocol.RawID
-	ClientDataJSON         protocol.ClientDataJSON
-	AuthenticatorData      protocol.AuthenticatorData
-	Signature              protocol.Signature
-	UserHandle             protocol.UserHandle
-	ClientExtensionResults map[string]any
+	Type                    protocol.PublicKeyCredentialType
+	RawID                   protocol.RawID
+	ClientDataJSON          protocol.ClientDataJSON
+	AuthenticatorData       protocol.AuthenticatorData
+	Signature               protocol.Signature
+	UserHandle              protocol.UserHandle
+	AuthenticatorAttachment protocol.AuthenticatorAttachment
+	ClientExtensionResults  map[string]any
 }
 
 // AuthenticationExtensionPolicy controls authentication extension behavior.
@@ -196,8 +195,10 @@ type AuthenticationFinishOptions struct {
 // CredentialUpdate is the persistence-ready credential update after
 // authentication.
 type CredentialUpdate struct {
-	ID        protocol.CredentialID
-	SignCount uint32
+	ID             protocol.CredentialID
+	SignCount      uint32
+	BackupEligible bool
+	BackupState    bool
 }
 
 // AuthenticationResult is the verified authentication ceremony output.
@@ -269,14 +270,24 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 
 	credential := options.Credential
 	credential.SignCount = parsedAuthData.SignCount
+	credential.BackupEligible = parsedAuthData.Flags.BackupEligible()
+	credential.BackupState = parsedAuthData.Flags.BackupState()
+	if options.Response.AuthenticatorAttachment != "" {
+		credential.AuthenticatorAttachment = options.Response.AuthenticatorAttachment
+	}
 
 	return AuthenticationResult{
 		Credential:      credential,
 		AuthenticatedAs: credential.UserHandle,
 		Counter:         counter,
-		Update:          CredentialUpdate{ID: credential.ID, SignCount: parsedAuthData.SignCount},
-		Extensions:      extensionResults,
-		Warnings:        authenticationWarnings(counter),
+		Update: CredentialUpdate{
+			ID:             credential.ID,
+			SignCount:      parsedAuthData.SignCount,
+			BackupEligible: parsedAuthData.Flags.BackupEligible(),
+			BackupState:    parsedAuthData.Flags.BackupState(),
+		},
+		Extensions: extensionResults,
+		Warnings:   authenticationWarnings(counter),
 	}, nil
 }
 
@@ -303,7 +314,7 @@ func validateAuthenticationState(state AuthenticationState, now time.Time) error
 	if state.Challenge.Len() == 0 || state.RPID == "" {
 		return ErrMalformedResponse
 	}
-	if err := validateOrigins(state.AllowedOrigins); err != nil {
+	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
 		return err
 	}
 	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
@@ -380,14 +391,8 @@ func verifyAuthenticationClientData(state AuthenticationState, raw protocol.Clie
 	if !state.Challenge.EqualBytes(challengeBytes) {
 		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
 	}
-	if !slices.Contains(state.AllowedOrigins, clientData.Origin) {
-		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
-	}
-	if clientData.CrossOrigin != nil && *clientData.CrossOrigin && !state.AllowCrossOrigin {
-		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
-	}
-	if clientData.TokenBinding != nil && state.TokenBindingID != "" && clientData.TokenBinding.ID != state.TokenBindingID {
-		return protocol.CollectedClientData{}, nil, ErrMalformedResponse
+	if err := verifyCollectedClientOrigin(state.OriginPolicy, clientData); err != nil {
+		return protocol.CollectedClientData{}, nil, err
 	}
 
 	hash := sha256.Sum256(raw.Bytes())
@@ -482,6 +487,9 @@ func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationEx
 	results := make([]extension.Result, 0, len(ids))
 	for id := range ids {
 		clientInput, requested := inputs.state.RequestedExtensions[id]
+		if id == extension.IDPRF {
+			clientInput = attachAllowedCredentialIDsToPRFInput(clientInput, inputs.state.AllowCredentials)
+		}
 		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
 		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
 
@@ -535,6 +543,25 @@ func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationEx
 	}
 
 	return results, nil
+}
+
+func attachAllowedCredentialIDsToPRFInput(input any, credentials []protocol.CredentialDescriptor) any {
+	allowed := make([]string, len(credentials))
+	for i, credential := range credentials {
+		allowed[i] = base64.RawURLEncoding.EncodeToString(credential.ID.Bytes())
+	}
+
+	switch typed := input.(type) {
+	case extension.PRFInput:
+		typed.AllowCredentials = allowed
+		return typed
+	case map[string]any:
+		out := maps.Clone(typed)
+		out["allowCredentials"] = allowed
+		return out
+	default:
+		return input
+	}
 }
 
 func verifyAuthenticationSignature(ctx context.Context, verifier webcrypto.SignatureVerifier, credential CredentialRecord, response AuthenticationResponse, clientDataHash []byte) error {

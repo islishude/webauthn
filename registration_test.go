@@ -53,12 +53,14 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 
 	result, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
-		RP:             protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:           protocol.UserEntity{ID: userID, Name: "user@example.com", DisplayName: "Example User"},
-		AllowedOrigins: []string{"https://example.com"},
+		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:         protocol.UserEntity{ID: userID, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
 		},
+		Hints:              []protocol.PublicKeyCredentialHint{protocol.HintClientDevice},
+		AttestationFormats: []string{"packed", "none"},
 	})
 	if err != nil {
 		t.Fatalf("StartRegistration() error = %v", err)
@@ -68,6 +70,12 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 	if result.Options.Attestation != protocol.AttestationNone {
 		t.Fatalf("Attestation = %q, want none", result.Options.Attestation)
+	}
+	if len(result.Options.Hints) != 1 || result.Options.Hints[0] != protocol.HintClientDevice {
+		t.Fatalf("Hints = %#v", result.Options.Hints)
+	}
+	if len(result.Options.AttestationFormats) != 2 || result.Options.AttestationFormats[0] != "packed" {
+		t.Fatalf("AttestationFormats = %#v", result.Options.AttestationFormats)
 	}
 }
 
@@ -111,15 +119,6 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 				options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientData(t, f.challenge.Bytes(), "https://example.com", true))
 			},
 			wantErr: webauthn.ErrOriginMismatch,
-		},
-		{
-			name: "token binding mismatch",
-			mutate: func(t *testing.T, f *registrationFixture, options *webauthn.RegistrationFinishOptions) {
-				t.Helper()
-				options.State.TokenBindingID = "expected-binding"
-				options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTokenBinding(t, f.challenge.Bytes(), "actual-binding"))
-			},
-			wantErr: webauthn.ErrMalformedResponse,
 		},
 		{
 			name: "rp id hash mismatch",
@@ -237,6 +236,90 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRegistrationIgnoresReservedTokenBinding(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTokenBinding(t, fixture.challenge.Bytes(), "reserved-binding"))
+
+	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
+		t.Fatalf("FinishRegistration() error = %v, want tokenBinding ignored", err)
+	}
+}
+
+func TestRegistrationTopOriginPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accepts allowed top origin", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.State.OriginPolicy = webauthn.OriginPolicy{
+			AllowedOrigins:    []string{"https://frame.example"},
+			AllowedTopOrigins: []string{"https://top.example"},
+		}
+		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
+			t,
+			fixture.challenge.Bytes(),
+			"https://frame.example",
+			true,
+			"https://top.example",
+		))
+
+		if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
+			t.Fatalf("FinishRegistration() error = %v", err)
+		}
+	})
+
+	t.Run("rejects unlisted top origin", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.State.OriginPolicy = webauthn.OriginPolicy{
+			AllowedOrigins:    []string{"https://frame.example"},
+			AllowedTopOrigins: []string{"https://top.example"},
+		}
+		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
+			t,
+			fixture.challenge.Bytes(),
+			"https://frame.example",
+			true,
+			"https://evil.example",
+		))
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrOriginMismatch) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrOriginMismatch", err)
+		}
+	})
+
+	t.Run("rejects top origin without cross origin", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newRegistrationFixture(t)
+		options := fixture.finishOptions()
+		options.State.OriginPolicy = webauthn.OriginPolicy{
+			AllowedOrigins:    []string{"https://frame.example"},
+			AllowedTopOrigins: []string{"https://top.example"},
+		}
+		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
+			t,
+			fixture.challenge.Bytes(),
+			"https://frame.example",
+			false,
+			"https://top.example",
+		))
+
+		_, err := webauthn.FinishRegistration(context.Background(), options)
+		if !errors.Is(err, webauthn.ErrOriginMismatch) {
+			t.Fatalf("FinishRegistration() error = %v, want ErrOriginMismatch", err)
+		}
+	})
 }
 
 func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(t *testing.T) {
@@ -616,7 +699,7 @@ func newRegistrationFixture(t *testing.T) *registrationFixture {
 	start, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
 		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
 		User:             protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
-		AllowedOrigins:   []string{"https://example.com"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		Challenge:        challenge,
 		UserVerification: protocol.UserVerificationPreferred,
 		PubKeyCredParams: []protocol.CredentialParameter{
@@ -705,10 +788,24 @@ func registrationClientData(t *testing.T, challenge []byte, origin string, cross
 	return []byte(`{"type":"webauthn.create","challenge":"` + base64.RawURLEncoding.EncodeToString(challenge) + `","origin":"` + origin + `"}`)
 }
 
+func registrationClientDataWithTopOrigin(t *testing.T, challenge []byte, origin string, crossOrigin bool, topOrigin string) []byte {
+	t.Helper()
+
+	return []byte(`{"type":"webauthn.create","challenge":"` + base64.RawURLEncoding.EncodeToString(challenge) + `","origin":"` + origin + `","crossOrigin":` + boolJSON(crossOrigin) + `,"topOrigin":"` + topOrigin + `"}`)
+}
+
 func registrationClientDataWithTokenBinding(t *testing.T, challenge []byte, tokenBindingID string) []byte {
 	t.Helper()
 
 	return []byte(`{"type":"webauthn.create","challenge":"` + base64.RawURLEncoding.EncodeToString(challenge) + `","origin":"https://example.com","tokenBinding":{"status":"present","id":"` + tokenBindingID + `"}}`)
+}
+
+func boolJSON(value bool) string {
+	if value {
+		return "true"
+	}
+
+	return "false"
 }
 
 func authenticatorDataWithoutAttestation(t *testing.T) []byte {
@@ -895,6 +992,17 @@ func mustLevel2Registry(t *testing.T) *extension.Registry {
 	registry, err := extension.NewLevel2Registry()
 	if err != nil {
 		t.Fatalf("NewLevel2Registry() error = %v", err)
+	}
+
+	return registry
+}
+
+func mustLevel3Registry(t *testing.T) *extension.Registry {
+	t.Helper()
+
+	registry, err := extension.NewLevel3RegistryWithDeprecated()
+	if err != nil {
+		t.Fatalf("NewLevel3RegistryWithDeprecated() error = %v", err)
 	}
 
 	return registry

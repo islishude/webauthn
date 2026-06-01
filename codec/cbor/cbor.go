@@ -53,9 +53,9 @@ func MustNewDecoder() *Decoder {
 // DecodeAttestationObject decodes a WebAuthn attestationObject CBOR map.
 func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {
 	var decoded struct {
-		Format            string                     `cbor:"fmt"`
-		AuthenticatorData []byte                     `cbor:"authData"`
-		Statement         codec.AttestationStatement `cbor:"attStmt"`
+		Format            string            `cbor:"fmt"`
+		AuthenticatorData []byte            `cbor:"authData"`
+		Statement         fxcbor.RawMessage `cbor:"attStmt"`
 	}
 
 	if err := d.decode(raw.Bytes(), &decoded); err != nil {
@@ -63,6 +63,10 @@ func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec
 	}
 	if decoded.Format == "" || len(decoded.AuthenticatorData) == 0 || decoded.Statement == nil {
 		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
+	}
+	statement, err := d.decodeAttestationStatement(decoded.Format, decoded.Statement)
+	if err != nil {
+		return codec.DecodedAttestationObject{}, err
 	}
 
 	authData, err := protocol.NewAuthenticatorData(decoded.AuthenticatorData)
@@ -73,9 +77,47 @@ func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec
 	return codec.DecodedAttestationObject{
 		Format:            decoded.Format,
 		AuthenticatorData: authData,
-		Statement:         decoded.Statement,
+		Statement:         statement,
 		Raw:               raw,
 	}, nil
+}
+
+func (d *Decoder) decodeAttestationStatement(format string, raw fxcbor.RawMessage) (codec.AttestationStatement, error) {
+	if format != "compound" {
+		var statement codec.AttestationStatement
+		if err := d.decode(raw, &statement); err != nil {
+			return nil, err
+		}
+		if statement == nil {
+			return nil, ErrMalformedCBOR
+		}
+
+		return statement, nil
+	}
+
+	var rawStatements []struct {
+		Format    string                     `cbor:"fmt"`
+		Statement codec.AttestationStatement `cbor:"attStmt"`
+	}
+	if err := d.decode(raw, &rawStatements); err != nil {
+		return nil, err
+	}
+	if len(rawStatements) < 2 {
+		return nil, ErrMalformedCBOR
+	}
+
+	statements := make([]codec.CompoundSubStatement, 0, len(rawStatements))
+	for _, rawStatement := range rawStatements {
+		if rawStatement.Format == "" || rawStatement.Format == "compound" || rawStatement.Statement == nil {
+			return nil, ErrMalformedCBOR
+		}
+		statements = append(statements, codec.CompoundSubStatement{
+			Format:    rawStatement.Format,
+			Statement: rawStatement.Statement,
+		})
+	}
+
+	return codec.AttestationStatement{codec.CompoundSubStatementsKey: statements}, nil
 }
 
 // DecodeCredentialPublicKey decodes the first CBOR item as a COSE_Key and
@@ -164,6 +206,8 @@ func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 		return ec2PublicKeyMaterial(key)
 	case iana.KeyTypeRSA:
 		return rsaPublicKeyMaterial(key)
+	case iana.KeyTypeOKP:
+		return okpPublicKeyMaterial(key)
 	default:
 		return codec.CredentialPublicKeyMaterial{}
 	}
@@ -192,6 +236,30 @@ func ec2PublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 		Curve: curveName,
 		X:     x,
 		Y:     y,
+	}}
+}
+
+func okpPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
+	curve, err := key.GetInt(iana.OKPKeyParameterCrv)
+	if err != nil {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+	x, err := key.GetBytes(iana.OKPKeyParameterX)
+	if err != nil {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	curveName, coordinateLength, ok := okpCurve(curve)
+	if !ok || len(x) != coordinateLength {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+	if protocol.COSEAlgorithmIdentifier(key.Alg()) == protocol.AlgorithmEdDSA && curve != iana.EllipticCurveEd25519 {
+		return codec.CredentialPublicKeyMaterial{}
+	}
+
+	return codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{
+		Curve: curveName,
+		X:     x,
 	}}
 }
 
@@ -226,6 +294,17 @@ func ec2Curve(curve int) (string, int, bool) {
 		return codec.EC2CurveP384, 48, true
 	case iana.EllipticCurveP_521:
 		return codec.EC2CurveP521, 66, true
+	default:
+		return "", 0, false
+	}
+}
+
+func okpCurve(curve int) (string, int, bool) {
+	switch curve {
+	case iana.EllipticCurveEd25519:
+		return codec.OKPCurveEd25519, 32, true
+	case iana.EllipticCurveEd448:
+		return codec.OKPCurveEd448, 57, true
 	default:
 		return "", 0, false
 	}

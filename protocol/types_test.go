@@ -15,6 +15,9 @@ func TestDOMStringValuesPreserveUnknownsUntilValidation(t *testing.T) {
 	if transport.Known() {
 		t.Fatal("unknown transport Known() = true")
 	}
+	if !protocol.TransportHybrid.Known() || !protocol.TransportSmartCard.Known() {
+		t.Fatalf("Level 3 transports not known")
+	}
 
 	credentialType := protocol.PublicKeyCredentialType("future-type")
 	if credentialType.Known() {
@@ -24,6 +27,33 @@ func TestDOMStringValuesPreserveUnknownsUntilValidation(t *testing.T) {
 	err := credentialType.Validate()
 	if !errors.Is(err, protocol.ErrUnsupportedValue) {
 		t.Fatalf("Validate() error = %v, want ErrUnsupportedValue", err)
+	}
+}
+
+func TestLevel3EnumerationsAndRecommendedParameters(t *testing.T) {
+	t.Parallel()
+
+	if !protocol.HintSecurityKey.Known() || !protocol.HintClientDevice.Known() || !protocol.HintHybrid.Known() {
+		t.Fatal("Level 3 credential hints are not known")
+	}
+	if !protocol.ClientCapabilityRelatedOrigins.Known() ||
+		!protocol.ClientCapabilitySignalUnknownCredential.Known() ||
+		!protocol.ClientCapabilityUserVerifyingPlatformAuthenticator.Known() {
+		t.Fatal("Level 3 client capabilities are not known")
+	}
+
+	parameters := protocol.RecommendedLevel3CredentialParameters()
+	if len(parameters) != 3 {
+		t.Fatalf("RecommendedLevel3CredentialParameters() length = %d, want 3", len(parameters))
+	}
+	if parameters[0].Algorithm != protocol.AlgorithmEdDSA ||
+		parameters[1].Algorithm != protocol.AlgorithmES256 ||
+		parameters[2].Algorithm != protocol.AlgorithmRS256 {
+		t.Fatalf("recommended algorithms = %#v", parameters)
+	}
+	parameters[0].Algorithm = 0
+	if protocol.RecommendedLevel3CredentialParameters()[0].Algorithm != protocol.AlgorithmEdDSA {
+		t.Fatal("RecommendedLevel3CredentialParameters() returned aliased slice")
 	}
 }
 

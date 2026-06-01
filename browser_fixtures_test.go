@@ -73,8 +73,8 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 			Name:        fixture.User.Name,
 			DisplayName: fixture.User.DisplayName,
 		},
-		AllowedOrigins: []string{fixture.Origin},
-		Challenge:      challenge,
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{fixture.Origin}},
+		Challenge:    challenge,
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
 		},
@@ -103,7 +103,7 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 		Decoders:            codeccbor.MustNewDecoder(),
 		AttestationRegistry: registry,
 		AttestationPolicy:   webauthn.RegistrationAttestationPolicy{AllowNone: true},
-		ExtensionRegistry:   mustLevel2Registry(t),
+		ExtensionRegistry:   mustLevel3Registry(t),
 	})
 	if err != nil {
 		t.Fatalf("FinishRegistration() error = %v", err)
@@ -136,7 +136,7 @@ func browserFixtureAuthenticationOptions(t *testing.T, fixture browserFixture, c
 	challenge := mustChallengeFromBase64URL(t, fixture.Authentication.Challenge)
 	startOptions := webauthn.AuthenticationStartOptions{
 		RPID:             fixture.RPID,
-		AllowedOrigins:   []string{fixture.Origin},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{fixture.Origin}},
 		Challenge:        challenge,
 		UserVerification: fixture.Authentication.UserVerification,
 	}
@@ -167,7 +167,7 @@ func browserFixtureAuthenticationOptions(t *testing.T, fixture browserFixture, c
 		Credential:        credential,
 		SignatureVerifier: browserFixtureSignatureVerifier{publicKey: credential.PublicKey},
 		AlgorithmPolicy:   browserFixtureAlgorithmPolicy{},
-		ExtensionRegistry: mustLevel2Registry(t),
+		ExtensionRegistry: mustLevel3Registry(t),
 	}
 }
 

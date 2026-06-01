@@ -74,3 +74,8 @@ Scope changes:
 
 - Browser JSON DTO conversion remains out of scope for Plan 09; byte-like largeBlob values are represented in core as `[]byte`.
 - Unknown and unrequested outputs are observable but never marked accepted unless a registered handler validates a requested extension.
+
+Level 3 update:
+
+- Plan 12 adds `prf` in `extension/level3.go` and keeps `uvm` as deprecated
+  opt-in support. Plan 06 remains the Level 2 compatibility baseline.

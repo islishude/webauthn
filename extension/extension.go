@@ -40,10 +40,11 @@ type Request struct {
 
 // Result is the handler's interpretation of extension output.
 type Result struct {
-	ID       string
-	Accepted bool
-	Outputs  map[string]any
-	Warnings []string
+	ID         string
+	Accepted   bool
+	Deprecated bool
+	Outputs    map[string]any
+	Warnings   []string
 }
 
 // Handler validates and interprets one exact extension identifier.

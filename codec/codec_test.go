@@ -53,6 +53,7 @@ func TestCredentialPublicKeyPublicKeyMaterialDefensiveCopies(t *testing.T) {
 
 	x := []byte{0x01, 0x02}
 	modulus := []byte{0x03, 0x04}
+	okpX := []byte{0x07, 0x08}
 	key := codec.NewCredentialPublicKeyWithMaterial(
 		-7,
 		"public-key",
@@ -68,16 +69,22 @@ func TestCredentialPublicKeyPublicKeyMaterialDefensiveCopies(t *testing.T) {
 				Modulus:  modulus,
 				Exponent: 65537,
 			},
+			OKP: &codec.OKPPublicKeyMaterial{
+				Curve: codec.OKPCurveEd25519,
+				X:     okpX,
+			},
 		},
 	)
 	x[0] = 0xff
 	modulus[0] = 0xff
+	okpX[0] = 0xff
 
 	material := key.PublicKeyMaterial()
 	material.EC2.X[0] = 0xee
 	material.RSA.Modulus[0] = 0xee
+	material.OKP.X[0] = 0xee
 	material = key.PublicKeyMaterial()
-	if material.EC2.X[0] != 0x01 || material.RSA.Modulus[0] != 0x03 {
+	if material.EC2.X[0] != 0x01 || material.RSA.Modulus[0] != 0x03 || material.OKP.X[0] != 0x07 {
 		t.Fatalf("PublicKeyMaterial() returned aliased material: %+v", material)
 	}
 }

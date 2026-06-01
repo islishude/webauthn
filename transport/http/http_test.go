@@ -29,6 +29,8 @@ func TestWriteCreationOptions(t *testing.T) {
 			Type:      protocol.CredentialTypePublicKey,
 			Algorithm: -7,
 		}},
+		Hints:              []protocol.PublicKeyCredentialHint{protocol.HintClientDevice},
+		AttestationFormats: []string{"packed"},
 	})
 	if err != nil {
 		t.Fatalf("WriteCreationOptions() error = %v", err)
@@ -46,6 +48,9 @@ func TestWriteCreationOptions(t *testing.T) {
 	}
 	if body["challenge"] != encode([]byte("0123456789abcdef")) {
 		t.Fatalf("challenge = %#v", body["challenge"])
+	}
+	if body["hints"].([]any)[0] != string(protocol.HintClientDevice) {
+		t.Fatalf("hints = %#v", body["hints"])
 	}
 }
 
@@ -115,7 +120,7 @@ func TestWriteErrorUsesGenericMessage(t *testing.T) {
 }
 
 func registrationResponseJSON() string {
-	return `{"type":"public-key","rawId":"` + encode([]byte("credential-1")) + `","response":{"clientDataJSON":"` + encode([]byte("{}")) + `","attestationObject":"` + encode([]byte{0xa0}) + `"}}`
+	return `{"type":"public-key","rawId":"` + encode([]byte("credential-1")) + `","response":{"clientDataJSON":"` + encode([]byte("{}")) + `","authenticatorData":"` + encode(make([]byte, 37)) + `","publicKeyAlgorithm":-7,"attestationObject":"` + encode([]byte{0xa0}) + `"}}`
 }
 
 func authenticationResponseJSON() string {

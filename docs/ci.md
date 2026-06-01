@@ -1,6 +1,6 @@
 # Local and GitHub Actions quality workflow
 
-Status: Plan 09 adapter and example checks active, revised 2026-06-01.
+Status: Plan 14 Level 3 checks active, revised 2026-06-01.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
@@ -69,7 +69,10 @@ Run these commands from the repository root.
 | `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                                   |
 | `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
 
-`make ci` is the required pre-PR command. It runs README checks, formatting, linting, unit tests, race tests, fuzz smoke tests, example builds, import graph checks, dependency license checks, and module hygiene.
+`make ci` is the required pre-PR command. It runs documentation presence checks
+including Level 3 plan files, README checks, formatting, linting, unit tests,
+race tests, fuzz smoke tests, example builds, import graph checks, dependency
+license checks, and module hygiene.
 
 ## Formatting policy
 

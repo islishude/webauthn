@@ -123,6 +123,11 @@ ci-docs:
 	@test -f docs/plans/07-trust-policy-and-metadata.md
 	@test -f docs/plans/08-testing-and-conformance.md
 	@test -f docs/plans/09-adapters-examples-release.md
+	@test -f docs/plans/10-webauthn-level3-baseline.md
+	@test -f docs/plans/11-level3-ceremonies-and-json.md
+	@test -f docs/plans/12-level3-extensions.md
+	@test -f docs/plans/13-level3-attestation-and-algorithms.md
+	@test -f docs/plans/14-level3-conformance-release.md
 	@test -f .github/workflows/ci.yml
 	@test -f .golangci.yml
 	@test -f .gitattributes

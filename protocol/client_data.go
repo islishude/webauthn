@@ -21,6 +21,7 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 		Challenge    string         `json:"challenge"`
 		Origin       string         `json:"origin"`
 		CrossOrigin  *bool          `json:"crossOrigin"`
+		TopOrigin    string         `json:"topOrigin"`
 		TokenBinding *TokenBinding  `json:"tokenBinding"`
 	}
 
@@ -30,23 +31,12 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 	if decoded.Type == "" || decoded.Challenge == "" || decoded.Origin == "" {
 		return CollectedClientData{}, ErrMalformedClientData
 	}
-	if decoded.TokenBinding != nil {
-		switch decoded.TokenBinding.Status {
-		case TokenBindingPresent:
-			if decoded.TokenBinding.ID == "" {
-				return CollectedClientData{}, ErrMalformedClientData
-			}
-		case TokenBindingSupported:
-		default:
-			return CollectedClientData{}, ErrMalformedClientData
-		}
-	}
-
 	return CollectedClientData{
 		Type:         decoded.Type,
 		Challenge:    decoded.Challenge,
 		Origin:       decoded.Origin,
 		CrossOrigin:  decoded.CrossOrigin,
+		TopOrigin:    decoded.TopOrigin,
 		TokenBinding: decoded.TokenBinding,
 		Raw:          raw,
 	}, nil

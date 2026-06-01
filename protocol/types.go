@@ -50,16 +50,37 @@ func (t PublicKeyCredentialType) Validate() error {
 type AuthenticatorTransport string
 
 const (
-	TransportUSB      AuthenticatorTransport = "usb"
-	TransportNFC      AuthenticatorTransport = "nfc"
-	TransportBLE      AuthenticatorTransport = "ble"
-	TransportInternal AuthenticatorTransport = "internal"
+	TransportUSB       AuthenticatorTransport = "usb"
+	TransportNFC       AuthenticatorTransport = "nfc"
+	TransportBLE       AuthenticatorTransport = "ble"
+	TransportSmartCard AuthenticatorTransport = "smart-card"
+	TransportHybrid    AuthenticatorTransport = "hybrid"
+	TransportInternal  AuthenticatorTransport = "internal"
 )
 
 // Known reports whether the value is known by this package.
 func (t AuthenticatorTransport) Known() bool {
 	switch t {
-	case TransportUSB, TransportNFC, TransportBLE, TransportInternal:
+	case TransportUSB, TransportNFC, TransportBLE, TransportSmartCard, TransportHybrid, TransportInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// PublicKeyCredentialHint guides the user agent's ceremony UI.
+type PublicKeyCredentialHint string
+
+const (
+	HintSecurityKey  PublicKeyCredentialHint = "security-key"
+	HintClientDevice PublicKeyCredentialHint = "client-device"
+	HintHybrid       PublicKeyCredentialHint = "hybrid"
+)
+
+// Known reports whether the value is known by this package.
+func (h PublicKeyCredentialHint) Known() bool {
+	switch h {
+	case HintSecurityKey, HintClientDevice, HintHybrid:
 		return true
 	default:
 		return false
@@ -145,6 +166,28 @@ func (r ResidentKeyRequirement) Known() bool {
 // COSEAlgorithmIdentifier identifies a COSE signing algorithm.
 type COSEAlgorithmIdentifier int64
 
+const (
+	AlgorithmEdDSA   COSEAlgorithmIdentifier = -8
+	AlgorithmES256   COSEAlgorithmIdentifier = -7
+	AlgorithmESP256  COSEAlgorithmIdentifier = -9
+	AlgorithmES384   COSEAlgorithmIdentifier = -35
+	AlgorithmESP384  COSEAlgorithmIdentifier = -51
+	AlgorithmES512   COSEAlgorithmIdentifier = -36
+	AlgorithmESP512  COSEAlgorithmIdentifier = -52
+	AlgorithmRS256   COSEAlgorithmIdentifier = -257
+	AlgorithmEd25519 COSEAlgorithmIdentifier = -19
+)
+
+// RecommendedLevel3CredentialParameters returns the WebAuthn Level 3 baseline
+// public-key credential algorithm preference order.
+func RecommendedLevel3CredentialParameters() []CredentialParameter {
+	return []CredentialParameter{
+		{Type: CredentialTypePublicKey, Algorithm: AlgorithmEdDSA},
+		{Type: CredentialTypePublicKey, Algorithm: AlgorithmES256},
+		{Type: CredentialTypePublicKey, Algorithm: AlgorithmRS256},
+	}
+}
+
 // CredentialParameter describes an accepted public-key algorithm.
 type CredentialParameter struct {
 	Type      PublicKeyCredentialType
@@ -219,7 +262,7 @@ func (d CredentialDescriptor) Validate() error {
 func (d CredentialDescriptor) Clone() CredentialDescriptor {
 	return CredentialDescriptor{
 		Type:       d.Type,
-		ID:         CredentialID{byteValue: d.ID.byteValue},
+		ID:         CredentialID{byteValue: byteValue{value: d.ID.bytes()}},
 		Transports: slices.Clone(d.Transports),
 	}
 }
@@ -249,6 +292,39 @@ func (c *AuthenticatorSelectionCriteria) Clone() *AuthenticatorSelectionCriteria
 // ExtensionInputs preserves client extension inputs by identifier.
 type ExtensionInputs map[string]any
 
+// ClientCapability identifies a client capability reported by WebAuthn Level 3.
+type ClientCapability string
+
+const (
+	ClientCapabilityConditionalCreate                  ClientCapability = "conditionalCreate"
+	ClientCapabilityConditionalGet                     ClientCapability = "conditionalGet"
+	ClientCapabilityHybridTransport                    ClientCapability = "hybridTransport"
+	ClientCapabilityPasskeyPlatformAuthenticator       ClientCapability = "passkeyPlatformAuthenticator"
+	ClientCapabilityUserVerifyingPlatformAuthenticator ClientCapability = "userVerifyingPlatformAuthenticator"
+	ClientCapabilityRelatedOrigins                     ClientCapability = "relatedOrigins"
+	ClientCapabilitySignalAllAcceptedCredentials       ClientCapability = "signalAllAcceptedCredentials"
+	ClientCapabilitySignalCurrentUserDetails           ClientCapability = "signalCurrentUserDetails"
+	ClientCapabilitySignalUnknownCredential            ClientCapability = "signalUnknownCredential"
+)
+
+// Known reports whether the value is known by this package.
+func (c ClientCapability) Known() bool {
+	switch c {
+	case ClientCapabilityConditionalCreate,
+		ClientCapabilityConditionalGet,
+		ClientCapabilityHybridTransport,
+		ClientCapabilityPasskeyPlatformAuthenticator,
+		ClientCapabilityUserVerifyingPlatformAuthenticator,
+		ClientCapabilityRelatedOrigins,
+		ClientCapabilitySignalAllAcceptedCredentials,
+		ClientCapabilitySignalCurrentUserDetails,
+		ClientCapabilitySignalUnknownCredential:
+		return true
+	default:
+		return false
+	}
+}
+
 // PublicKeyCredentialCreationOptions is the core creation options model before
 // any browser JSON transport encoding.
 type PublicKeyCredentialCreationOptions struct {
@@ -259,7 +335,9 @@ type PublicKeyCredentialCreationOptions struct {
 	TimeoutMilliseconds    uint32
 	ExcludeCredentials     []CredentialDescriptor
 	AuthenticatorSelection *AuthenticatorSelectionCriteria
+	Hints                  []PublicKeyCredentialHint
 	Attestation            AttestationConveyancePreference
+	AttestationFormats     []string
 	Extensions             ExtensionInputs
 }
 
@@ -299,6 +377,7 @@ type PublicKeyCredentialRequestOptions struct {
 	RPID                string
 	AllowCredentials    []CredentialDescriptor
 	UserVerification    UserVerificationRequirement
+	Hints               []PublicKeyCredentialHint
 	Extensions          ExtensionInputs
 }
 
@@ -334,7 +413,10 @@ func (t ClientDataType) Known() bool {
 	}
 }
 
-// TokenBindingStatus is the collected client data token binding status.
+// TokenBindingStatus is the reserved collected client data token binding status.
+//
+// Deprecated: WebAuthn Level 3 reserves tokenBinding and does not use it for
+// relying-party verification.
 type TokenBindingStatus string
 
 const (
@@ -342,7 +424,10 @@ const (
 	TokenBindingSupported TokenBindingStatus = "supported"
 )
 
-// TokenBinding is the collected client data token binding member.
+// TokenBinding is the reserved collected client data token binding member.
+//
+// Deprecated: WebAuthn Level 3 reserves tokenBinding and does not use it for
+// relying-party verification.
 type TokenBinding struct {
 	Status TokenBindingStatus
 	ID     string
@@ -355,6 +440,7 @@ type CollectedClientData struct {
 	Challenge    string
 	Origin       string
 	CrossOrigin  *bool
+	TopOrigin    string
 	TokenBinding *TokenBinding
 	Raw          ClientDataJSON
 }

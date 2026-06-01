@@ -19,7 +19,7 @@ type passkeyStore interface {
 func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
 	start, err := webauthn.StartAuthentication(ctx, webauthn.AuthenticationStartOptions{
 		RPID:             "example.com",
-		AllowedOrigins:   []string{"https://example.com"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		UserVerification: protocol.UserVerificationRequired,
 		Extensions:       protocol.ExtensionInputs{extension.IDUVM: true},
 	})
@@ -43,7 +43,7 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
-	extensions, err := extension.NewLevel2Registry()
+	extensions, err := extension.NewLevel3RegistryWithDeprecated()
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}

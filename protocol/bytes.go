@@ -66,6 +66,14 @@ func (v byteValue) equalBytes(other []byte) bool {
 	return subtle.ConstantTimeCompare(v.value, other) == 1
 }
 
+func (v byteValue) Equal(other byteValue) bool {
+	return v.equalBytes(other.value)
+}
+
+func (v byteValue) IsNil() bool {
+	return v.value == nil
+}
+
 // Challenge is a server-generated WebAuthn challenge.
 type Challenge struct {
 	byteValue

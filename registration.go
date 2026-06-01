@@ -100,16 +100,16 @@ func (g RandomChallengeGenerator) GenerateChallenge(ctx context.Context) (protoc
 type RegistrationStartOptions struct {
 	RP                     protocol.RPEntity
 	User                   protocol.UserEntity
-	AllowedOrigins         []string
-	AllowCrossOrigin       bool
-	TokenBindingID         string
+	OriginPolicy           OriginPolicy
 	Challenge              protocol.Challenge
 	ChallengeGenerator     ChallengeGenerator
 	PubKeyCredParams       []protocol.CredentialParameter
 	Timeout                time.Duration
 	ExcludeCredentials     []protocol.CredentialDescriptor
 	AuthenticatorSelection *protocol.AuthenticatorSelectionCriteria
+	Hints                  []protocol.PublicKeyCredentialHint
 	Attestation            protocol.AttestationConveyancePreference
+	AttestationFormats     []string
 	UserVerification       protocol.UserVerificationRequirement
 	Extensions             protocol.ExtensionInputs
 }
@@ -125,9 +125,7 @@ type RegistrationStartResult struct {
 type RegistrationState struct {
 	Challenge                 protocol.Challenge
 	RPID                      string
-	AllowedOrigins            []string
-	AllowCrossOrigin          bool
-	TokenBindingID            string
+	OriginPolicy              OriginPolicy
 	User                      protocol.UserEntity
 	RequestedUserVerification protocol.UserVerificationRequirement
 	RequestedExtensions       protocol.ExtensionInputs
@@ -147,7 +145,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err := options.User.Validate(); err != nil {
 		return RegistrationStartResult{}, err
 	}
-	if err := validateOrigins(options.AllowedOrigins); err != nil {
+	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
 		return RegistrationStartResult{}, err
 	}
 	if len(options.PubKeyCredParams) == 0 {
@@ -203,8 +201,10 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		TimeoutMilliseconds:    timeoutMilliseconds,
 		ExcludeCredentials:     cloneCredentialDescriptors(options.ExcludeCredentials),
 		AuthenticatorSelection: authenticatorSelection,
+		Hints:                  slices.Clone(options.Hints),
 		Attestation:            attestationConveyance,
-		Extensions:             cloneExtensionInputs(options.Extensions),
+		AttestationFormats:     slices.Clone(options.AttestationFormats),
+		Extensions:             maps.Clone(options.Extensions),
 	}
 	if err := creationOptions.Validate(); err != nil {
 		return RegistrationStartResult{}, err
@@ -213,12 +213,10 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	state := RegistrationState{
 		Challenge:                 challenge,
 		RPID:                      options.RP.ID,
-		AllowedOrigins:            slices.Clone(options.AllowedOrigins),
-		AllowCrossOrigin:          options.AllowCrossOrigin,
-		TokenBindingID:            options.TokenBindingID,
+		OriginPolicy:              options.OriginPolicy.clone(),
 		User:                      options.User,
 		RequestedUserVerification: userVerification,
-		RequestedExtensions:       cloneExtensionInputs(options.Extensions),
+		RequestedExtensions:       maps.Clone(options.Extensions),
 		AllowedAlgorithms:         algorithmsFromParameters(options.PubKeyCredParams),
 		Attestation:               attestationConveyance,
 		ExpiresAt:                 expiresAt,
@@ -230,12 +228,16 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 // RegistrationResponse is the structured, transport-neutral browser
 // registration response input.
 type RegistrationResponse struct {
-	Type                   protocol.PublicKeyCredentialType
-	RawID                  protocol.RawID
-	ClientDataJSON         protocol.ClientDataJSON
-	AttestationObject      protocol.AttestationObject
-	Transports             []protocol.AuthenticatorTransport
-	ClientExtensionResults map[string]any
+	Type                    protocol.PublicKeyCredentialType
+	RawID                   protocol.RawID
+	ClientDataJSON          protocol.ClientDataJSON
+	AuthenticatorData       protocol.AuthenticatorData
+	AttestationObject       protocol.AttestationObject
+	PublicKey               []byte
+	PublicKeyAlgorithm      protocol.COSEAlgorithmIdentifier
+	Transports              []protocol.AuthenticatorTransport
+	AuthenticatorAttachment protocol.AuthenticatorAttachment
+	ClientExtensionResults  map[string]any
 }
 
 // RegistrationAttestationPolicy controls attestation acceptance after format
@@ -270,14 +272,17 @@ type RegistrationFinishOptions struct {
 // CredentialRecord is the persistence-ready credential material returned after
 // registration verification.
 type CredentialRecord struct {
-	ID              protocol.CredentialID
-	PublicKey       codec.CredentialPublicKey
-	UserHandle      protocol.UserHandle
-	RPID            string
-	AAGUID          protocol.AAGUID
-	SignCount       uint32
-	Transports      []protocol.AuthenticatorTransport
-	AttestationType attestation.Type
+	ID                      protocol.CredentialID
+	PublicKey               codec.CredentialPublicKey
+	UserHandle              protocol.UserHandle
+	RPID                    string
+	AAGUID                  protocol.AAGUID
+	SignCount               uint32
+	Transports              []protocol.AuthenticatorTransport
+	BackupEligible          bool
+	BackupState             bool
+	AuthenticatorAttachment protocol.AuthenticatorAttachment
+	AttestationType         attestation.Type
 }
 
 // RegistrationResult is the verified registration ceremony output.
@@ -318,6 +323,10 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		return RegistrationResult{}, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
 
+	if !options.Response.AuthenticatorData.IsNil() && !bytes.Equal(options.Response.AuthenticatorData.Bytes(), decodedAttestation.AuthenticatorData.Bytes()) {
+		return RegistrationResult{}, ErrMalformedResponse
+	}
+
 	parsedAuthData, err := verifyRegistrationAuthenticatorData(options.State, decodedAttestation.AuthenticatorData)
 	if err != nil {
 		return RegistrationResult{}, err
@@ -336,6 +345,9 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	}
 	if !slices.Contains(options.State.AllowedAlgorithms, credentialPublicKey.Algorithm) {
 		return RegistrationResult{}, ErrUnsupportedAlgorithm
+	}
+	if options.Response.PublicKeyAlgorithm != 0 && options.Response.PublicKeyAlgorithm != credentialPublicKey.Algorithm {
+		return RegistrationResult{}, ErrMalformedResponse
 	}
 
 	extensionResults, err := verifyRegistrationExtensions(ctx, registrationExtensionInputs{
@@ -364,14 +376,17 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 
 	result := RegistrationResult{
 		Credential: CredentialRecord{
-			ID:              attested.CredentialID,
-			PublicKey:       credentialPublicKey,
-			UserHandle:      options.State.User.ID,
-			RPID:            options.State.RPID,
-			AAGUID:          attested.AAGUID,
-			SignCount:       parsedAuthData.SignCount,
-			Transports:      slices.Clone(options.Response.Transports),
-			AttestationType: attestationResult.Type,
+			ID:                      attested.CredentialID,
+			PublicKey:               credentialPublicKey,
+			UserHandle:              options.State.User.ID,
+			RPID:                    options.State.RPID,
+			AAGUID:                  attested.AAGUID,
+			SignCount:               parsedAuthData.SignCount,
+			Transports:              slices.Clone(options.Response.Transports),
+			BackupEligible:          parsedAuthData.Flags.BackupEligible(),
+			BackupState:             parsedAuthData.Flags.BackupState(),
+			AuthenticatorAttachment: options.Response.AuthenticatorAttachment,
+			AttestationType:         attestationResult.Type,
 		},
 		Attestation:      attestationResult,
 		AttestationTrust: trustResult,
@@ -405,7 +420,7 @@ func validateRegistrationState(state RegistrationState, now time.Time) error {
 	if state.Challenge.Len() == 0 || state.RPID == "" {
 		return ErrMalformedResponse
 	}
-	if err := validateOrigins(state.AllowedOrigins); err != nil {
+	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
 		return err
 	}
 	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
@@ -447,14 +462,8 @@ func verifyRegistrationClientData(state RegistrationState, raw protocol.ClientDa
 	if !state.Challenge.EqualBytes(challengeBytes) {
 		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
 	}
-	if !slices.Contains(state.AllowedOrigins, clientData.Origin) {
-		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
-	}
-	if clientData.CrossOrigin != nil && *clientData.CrossOrigin && !state.AllowCrossOrigin {
-		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
-	}
-	if clientData.TokenBinding != nil && state.TokenBindingID != "" && clientData.TokenBinding.ID != state.TokenBindingID {
-		return protocol.CollectedClientData{}, nil, ErrMalformedResponse
+	if err := verifyCollectedClientOrigin(state.OriginPolicy, clientData); err != nil {
+		return protocol.CollectedClientData{}, nil, err
 	}
 
 	hash := sha256.Sum256(raw.Bytes())
@@ -712,17 +721,6 @@ func validateUserVerification(value protocol.UserVerificationRequirement) error 
 	return nil
 }
 
-func validateOrigins(origins []string) error {
-	if len(origins) == 0 {
-		return errors.New("allowed origins are required")
-	}
-	if slices.Contains(origins, "") {
-		return errors.New("allowed origins must not contain empty values")
-	}
-
-	return nil
-}
-
 func algorithmsFromParameters(parameters []protocol.CredentialParameter) []protocol.COSEAlgorithmIdentifier {
 	algorithms := make([]protocol.COSEAlgorithmIdentifier, len(parameters))
 	for i, parameter := range parameters {
@@ -761,16 +759,5 @@ func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []p
 	for i, descriptor := range descriptors {
 		out[i] = descriptor.Clone()
 	}
-	return out
-}
-
-func cloneExtensionInputs(inputs protocol.ExtensionInputs) protocol.ExtensionInputs {
-	if inputs == nil {
-		return nil
-	}
-
-	out := make(protocol.ExtensionInputs, len(inputs))
-	maps.Copy(out, inputs)
-
 	return out
 }

@@ -39,6 +39,99 @@ func TestDecoderDecodesAttestationObject(t *testing.T) {
 	}
 }
 
+func TestDecoderDecodesCompoundAttestationObject(t *testing.T) {
+	t.Parallel()
+
+	decoder := codeccbor.MustNewDecoder()
+	authData, err := protocol.NewAuthenticatorData(make([]byte, protocol.MinAuthenticatorDataLength))
+	if err != nil {
+		t.Fatalf("NewAuthenticatorData() error = %v", err)
+	}
+	encoded := mustCBOR(t, map[string]any{
+		"fmt":      "compound",
+		"authData": authData.Bytes(),
+		"attStmt": []any{
+			map[string]any{"fmt": "none", "attStmt": map[string]any{}},
+			map[string]any{"fmt": "packed", "attStmt": map[string]any{"alg": -7, "sig": []byte("signature")}},
+		},
+	})
+	raw, err := protocol.NewAttestationObject(encoded)
+	if err != nil {
+		t.Fatalf("NewAttestationObject() error = %v", err)
+	}
+
+	decoded, err := decoder.DecodeAttestationObject(raw)
+	if err != nil {
+		t.Fatalf("DecodeAttestationObject() error = %v", err)
+	}
+	statements, ok := decoded.Statement[codec.CompoundSubStatementsKey].([]codec.CompoundSubStatement)
+	if !ok || len(statements) != 2 {
+		t.Fatalf("compound statements = %#v, want two", decoded.Statement[codec.CompoundSubStatementsKey])
+	}
+	if statements[0].Format != "none" || statements[1].Format != "packed" {
+		t.Fatalf("compound statements = %#v", statements)
+	}
+}
+
+func TestDecoderRejectsMalformedCompoundAttestationObject(t *testing.T) {
+	t.Parallel()
+
+	decoder := codeccbor.MustNewDecoder()
+	authData, err := protocol.NewAuthenticatorData(make([]byte, protocol.MinAuthenticatorDataLength))
+	if err != nil {
+		t.Fatalf("NewAuthenticatorData() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		stmt    any
+		wantErr error
+	}{
+		{
+			name:    "one sub-statement",
+			stmt:    []any{map[string]any{"fmt": "none", "attStmt": map[string]any{}}},
+			wantErr: codeccbor.ErrMalformedCBOR,
+		},
+		{
+			name: "nested compound",
+			stmt: []any{
+				map[string]any{"fmt": "none", "attStmt": map[string]any{}},
+				map[string]any{"fmt": "compound", "attStmt": []any{}},
+			},
+			wantErr: codeccbor.ErrMalformedCBOR,
+		},
+		{
+			name: "missing statement",
+			stmt: []any{
+				map[string]any{"fmt": "none", "attStmt": map[string]any{}},
+				map[string]any{"fmt": "packed"},
+			},
+			wantErr: codeccbor.ErrMalformedCBOR,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded := mustCBOR(t, map[string]any{
+				"fmt":      "compound",
+				"authData": authData.Bytes(),
+				"attStmt":  tt.stmt,
+			})
+			raw, err := protocol.NewAttestationObject(encoded)
+			if err != nil {
+				t.Fatalf("NewAttestationObject() error = %v", err)
+			}
+
+			_, err = decoder.DecodeAttestationObject(raw)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("DecodeAttestationObject() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestDecoderRejectsDuplicateMapKeys(t *testing.T) {
 	t.Parallel()
 
@@ -123,6 +216,19 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 				return bytes.Equal(material.rsaModulus, bytes.Repeat([]byte{0x03}, 256)) && material.rsaExponent == 65537
 			},
 		},
+		{
+			name: "okp ed25519",
+			key: map[int]any{
+				1:  1,
+				3:  -8,
+				-1: 6,
+				-2: bytes.Repeat([]byte{0x04}, 32),
+			},
+			want: func(material codecMaterial) bool {
+				return material.okpCurve == codec.OKPCurveEd25519 &&
+					bytes.Equal(material.okpX, bytes.Repeat([]byte{0x04}, 32))
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -151,6 +257,8 @@ func TestDecoderCredentialPublicKeyOmitsPublicKeyMaterialForWrongShape(t *testin
 		{name: "ec2 unknown curve", key: coseKeyMap(-7, 9, bytes.Repeat([]byte{0x01}, 32), bytes.Repeat([]byte{0x02}, 32))},
 		{name: "rsa missing exponent", key: map[int]any{1: 3, 3: -257, -1: bytes.Repeat([]byte{0x03}, 256)}},
 		{name: "rsa oversized exponent", key: map[int]any{1: 3, 3: -257, -1: bytes.Repeat([]byte{0x03}, 256), -2: []byte{0x01, 0x00, 0x00, 0x00, 0x01}}},
+		{name: "okp wrong curve for eddsa", key: map[int]any{1: 1, 3: -8, -1: 7, -2: bytes.Repeat([]byte{0x04}, 57)}},
+		{name: "okp short x", key: map[int]any{1: 1, 3: -8, -1: 6, -2: []byte("short")}},
 	}
 
 	for _, tt := range tests {
@@ -162,7 +270,7 @@ func TestDecoderCredentialPublicKeyOmitsPublicKeyMaterialForWrongShape(t *testin
 				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
 			}
 			material := key.PublicKeyMaterial()
-			if material.EC2 != nil || material.RSA != nil {
+			if material.EC2 != nil || material.RSA != nil || material.OKP != nil {
 				t.Fatalf("PublicKeyMaterial() = %+v, want empty", material)
 			}
 		})
@@ -229,6 +337,8 @@ type codecMaterial struct {
 	ec2Y        []byte
 	rsaModulus  []byte
 	rsaExponent uint32
+	okpCurve    string
+	okpX        []byte
 }
 
 func materialView(material codec.CredentialPublicKeyMaterial) codecMaterial {
@@ -241,6 +351,10 @@ func materialView(material codec.CredentialPublicKeyMaterial) codecMaterial {
 	if material.RSA != nil {
 		out.rsaModulus = material.RSA.Modulus
 		out.rsaExponent = material.RSA.Exponent
+	}
+	if material.OKP != nil {
+		out.okpCurve = material.OKP.Curve
+		out.okpX = material.OKP.X
 	}
 
 	return out

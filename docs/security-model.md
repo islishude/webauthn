@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony, Level 2 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-01.
+Status: authentication ceremony, Level 3 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-01.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -20,9 +20,14 @@ Challenge mismatch is a hard protocol failure. The library must not offer a perm
 
 The core library must not infer trusted origins from HTTP request headers. The caller supplies allowed origins and RP ID policy explicitly.
 
-Registration and authentication verification must compare `CollectedClientData.origin` to the configured origin policy. Authenticator data `rpIdHash` must match SHA-256 of the expected RP ID, except when authentication explicitly uses the AppID extension and the client output indicates AppID was used.
+Registration and authentication verification must compare `CollectedClientData.origin` to the configured origin policy. If `topOrigin` is present, it must be explicitly allowed and must be paired with `crossOrigin`. Authenticator data `rpIdHash` must match SHA-256 of the expected RP ID, except when authentication explicitly uses the AppID extension and the client output indicates AppID was used.
 
 Cross-origin use must be policy-controlled. The presence of `crossOrigin` must not be ignored if the application has configured a strict policy.
+
+`CollectedClientData.tokenBinding` is reserved in the Level 3 target. The parser
+preserves it for callers that inspect raw client data, but relying-party
+verification does not accept or reject ceremonies based on token binding status
+or ID.
 
 ## User presence and user verification
 
@@ -63,7 +68,7 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
-The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
+The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
 The `attestation` package provides explicit trust policy building blocks for `none`, self attestation, format and type allow-lists, x5c trust-root verification through caller-provided certificate verifiers, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies do not include built-in trust anchors, network fetching, metadata caches, or automatic restricted-enrollment defaults.
 
@@ -74,6 +79,15 @@ Extensions are optional for clients and authenticators. Missing requested extens
 Extension outputs must not be elevated into security facts unless the extension handler has validated them and the relying-party policy accepts them. Unknown and unrequested extension outputs are preserved as untrusted raw results by default; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed behavior.
 
 The AppID extension is accepted for RP ID hash fallback only when the request included the same `appid` input, the caller configured the same AppID in policy, and the client output reports that AppID was used.
+
+The PRF extension validates requested inputs, output result lengths, and
+`evalByCredential` binding to the authentication allow-credentials list. PRF
+outputs are extension results for caller policy and storage; they are not login
+success criteria by themselves.
+
+The `uvm` extension is deprecated in Level 3. It is retained as explicit opt-in
+support and marks parsed results as deprecated so callers can phase out policy
+dependencies without losing compatibility with existing responses.
 
 ## Privacy defaults
 
@@ -117,6 +131,7 @@ Before stable release, defaults should be:
 - 32-byte server-generated random challenges;
 - exact challenge comparison;
 - explicit allowed origins;
+- explicit allowed top origins for cross-origin ceremonies;
 - explicit RP ID;
 - user presence required;
 - user verification enforced when policy says required;

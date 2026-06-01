@@ -53,14 +53,18 @@ func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 
 	result, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
 		RPID:             "example.com",
-		AllowedOrigins:   []string{"https://example.com"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		UserVerification: protocol.UserVerificationPreferred,
+		Hints:            []protocol.PublicKeyCredentialHint{protocol.HintHybrid},
 	})
 	if err != nil {
 		t.Fatalf("StartAuthentication() error = %v", err)
 	}
 	if result.State.Challenge.Len() != protocol.RecommendedChallengeLength {
 		t.Fatalf("challenge length = %d, want %d", result.State.Challenge.Len(), protocol.RecommendedChallengeLength)
+	}
+	if len(result.Options.Hints) != 1 || result.Options.Hints[0] != protocol.HintHybrid {
+		t.Fatalf("Hints = %#v", result.Options.Hints)
 	}
 }
 
@@ -307,11 +311,12 @@ func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 	}
 
 	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDUVM)
+	//nolint:staticcheck // UVM is intentionally tested as deprecated Level 3 support.
 	output, ok := extensionResult.Outputs[extension.IDUVM].(extension.UVMResult)
 	if !ok {
 		t.Fatalf("uvm output = %T, want UVMResult", extensionResult.Outputs[extension.IDUVM])
 	}
-	if !extensionResult.Accepted || len(output.Entries) != 1 || output.Entries[0].KeyProtectionType != 4 {
+	if !extensionResult.Accepted || !extensionResult.Deprecated || len(output.Entries) != 1 || output.Entries[0].KeyProtectionType != 4 {
 		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
 	}
 }
@@ -345,6 +350,39 @@ func TestAuthenticationLevel2LargeBlobExtension(t *testing.T) {
 	}
 }
 
+func TestAuthenticationLevel3PRFExtension(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	credentialID := base64.RawURLEncoding.EncodeToString(fixture.credentialID)
+	options.State.RequestedExtensions = protocol.ExtensionInputs{
+		extension.IDPRF: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
+			credentialID: {First: []byte("salt")},
+		}},
+	}
+	options.Response.ClientExtensionResults = map[string]any{
+		extension.IDPRF: map[string]any{
+			"results": map[string]any{"first": bytes.Repeat([]byte{0x05}, 32)},
+		},
+	}
+	options.ExtensionRegistry = mustLevel3Registry(t)
+
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+
+	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDPRF)
+	output, ok := extensionResult.Outputs[extension.IDPRF].(extension.PRFResult)
+	if !ok {
+		t.Fatalf("prf output = %T, want PRFResult", extensionResult.Outputs[extension.IDPRF])
+	}
+	if !extensionResult.Accepted || output.Results == nil || len(output.EvalByCredential) != 1 {
+		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	}
+}
+
 type authenticationFixture struct {
 	challenge    protocol.Challenge
 	credentialID []byte
@@ -366,7 +404,7 @@ func newAuthenticationFixture(t *testing.T, usernameFirst bool) *authenticationF
 
 	startOptions := webauthn.AuthenticationStartOptions{
 		RPID:             "example.com",
-		AllowedOrigins:   []string{"https://example.com"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		Challenge:        challenge,
 		UserVerification: protocol.UserVerificationPreferred,
 	}

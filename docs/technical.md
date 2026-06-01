@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, attestation formats, Level 2 extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-01.
+Status: registration, authentication, Level 3 attestation and extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-01.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -8,7 +8,7 @@ This document describes the target design for a Go server-side WebAuthn/passkey 
 
 ## Source basis
 
-The normative protocol baseline is W3C Web Authentication: An API for accessing Public Key Credentials, Level 2. MDN Web Authentication API documentation is used for browser-facing explanations, secure-context context, and passkey terminology. Implementation behavior must follow the W3C specification when there is any difference in emphasis.
+The normative protocol baseline is W3C Web Authentication: An API for accessing Public Key Credentials, Level 3. MDN Web Authentication API documentation is used for browser-facing explanations, secure-context context, and passkey terminology. Implementation behavior must follow the W3C specification when there is any difference in emphasis.
 
 No implementation code from public WebAuthn/passkey libraries may be used or consulted.
 
@@ -22,7 +22,7 @@ Second, it must be modular. The root package must not import all attestation for
 
 Third, it must avoid foundational crypto and codec implementation. WebAuthn-specific parsing is part of this project; general CBOR, COSE, ASN.1, JWS/JWT, X.509 path validation, JSON, base64url, and cryptographic primitives are not. Those must be delegated to the Go standard library, dependencies, or explicitly injected adapters.
 
-Fourth, it must aim at complete WebAuthn Level 2 relying-party support. The stable target includes registration and authentication ceremonies, all Level 2 attestation statement formats, Level 2 extensions, authenticator data parsing, collected client data validation, signature verification through a crypto adapter, attestation trust policy, and conformance-oriented tests.
+Fourth, it must aim at complete WebAuthn Level 3 relying-party support. The stable target includes registration and authentication ceremonies, Level 3 attestation and extension behavior, authenticator data parsing, collected client data validation, signature verification through a crypto adapter, attestation trust policy, and conformance-oriented tests.
 
 ## Core architecture
 
@@ -38,18 +38,18 @@ The library should not own the account model. User lookup, session creation, acc
 
 Plan 02 fixed the initial package names. The dependency direction must remain stable.
 
-| Area                        | Responsibility                                                                                               | Root dependency direction                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| Root package                | Module documentation plus registration and authentication ceremony entry points                              | Does not import optional packages or `net/http`                                                     |
-| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values      | No attestation format dependencies                                                                  |
-| `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract      | Root accepts explicit format verifiers and trust policy                                             |
-| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, `apple`                             | All WebAuthn Level 2 attestation formats implemented as optional imports; root does not import them |
-| `extension`                 | Operation-aware extension handler contract, Level 2 handlers, result types, and duplicate-rejecting registry | Root accepts explicit extension handlers or built-in Level 2 handlers                               |
-| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                           | Behind narrow contracts                                                                             |
-| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                      | Behind narrow contracts                                                                             |
-| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                  | Not imported by root; replaceable behind `codec.Decoders`                                           |
-| `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                         | Optional package; not imported by the root package                                                  |
-| `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                      | Optional package; not imported by the root package                                                  |
+| Area                        | Responsibility                                                                                                                               | Root dependency direction                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Root package                | Module documentation plus registration and authentication ceremony entry points                                                              | Does not import optional packages or `net/http`                                         |
+| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values                                      | No attestation format dependencies                                                      |
+| `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract                                      | Root accepts explicit format verifiers and trust policy                                 |
+| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, legacy `android-safetynet`, `fido-u2f`, `apple`, `compound`                                          | WebAuthn attestation formats implemented as optional imports; root does not import them |
+| `extension`                 | Operation-aware extension handler contract, Level 2 compatibility handlers, Level 3 handlers, result types, and duplicate-rejecting registry | Root accepts explicit extension handlers or built-in Level 3 handlers                   |
+| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                                                           | Behind narrow contracts                                                                 |
+| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                                                      | Behind narrow contracts                                                                 |
+| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                                                  | Not imported by root; replaceable behind `codec.Decoders`                               |
+| `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                                                         | Optional package; not imported by the root package                                      |
+| `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                                                      | Optional package; not imported by the root package                                      |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -92,7 +92,7 @@ Registration verification must include these categories:
 2. `clientDataJSON` decoding and collected client data validation;
 3. expected challenge comparison;
 4. expected origin and cross-origin policy checks;
-5. token binding handling where present;
+5. `topOrigin` policy and reserved `tokenBinding` handling;
 6. attestation object CBOR decoding through a codec adapter;
 7. authenticator data parsing and RP ID hash check;
 8. user presence and user verification policy checks;
@@ -174,6 +174,13 @@ Plan 06 adds no dependency. It implements WebAuthn Level 2 extension handlers in
 
 Plan 09 adds no dependency. It implements optional `browser` DTO conversion helpers, optional `transport/http` JSON helpers, and compile-checked examples. Browser and HTTP helpers remain outside the root dependency graph, and HTTP helpers do not manage routing, sessions, cookies, CSRF, persistence, account lookup, or trust policy.
 
+Plans 10 through 14 add no dependency. They move the normative baseline to
+WebAuthn Level 3, replace legacy origin fields with `OriginPolicy`, parse and
+policy-check `topOrigin`, treat `tokenBinding` as reserved client data, add
+Level 3 hints and attestation format fields, add PRF extension handling in
+`extension/level3.go`, retain `uvm` as deprecated opt-in support, add optional
+`attestation/compound`, and extend codec key material to OKP.
+
 ## Compatibility and passkey behavior
 
 The library should support both username-first and discoverable-credential authentication flows. Passkey-oriented behavior requires correct user handle processing, resident/discoverable credential options, user verification policy, authenticator attachment preferences, and extension results such as credential properties where supported.
@@ -193,6 +200,11 @@ Implementation should follow `docs/plans.md`. The required order is:
 7. extensions (complete, 2026-06-01);
 8. trust and metadata policy (complete, 2026-06-01);
 9. conformance tests (complete, 2026-06-01);
-10. optional adapters, examples, and release hardening (complete, 2026-06-01).
+10. optional adapters, examples, and release hardening (complete, 2026-06-01);
+11. WebAuthn Level 3 baseline (complete, 2026-06-01);
+12. Level 3 ceremonies and JSON (complete, 2026-06-01);
+13. Level 3 extensions (complete, 2026-06-01);
+14. Level 3 attestation and algorithms (complete, 2026-06-01);
+15. Level 3 conformance and release alignment (complete, 2026-06-01).
 
 The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces README checks, Go formatting, linting, tests, race checks, fuzz smoke checks, example builds, import graph checks, dependency license checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so implementation work remains gated by local and CI behavior.

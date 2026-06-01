@@ -13,27 +13,32 @@ import (
 
 // RegistrationCredentialJSON is the browser JSON shape for a registration credential response.
 type RegistrationCredentialJSON struct {
-	ID                     string                           `json:"id,omitempty"`
-	RawID                  string                           `json:"rawId"`
-	Type                   protocol.PublicKeyCredentialType `json:"type"`
-	Response               AttestationResponseJSON          `json:"response"`
-	ClientExtensionResults map[string]any                   `json:"clientExtensionResults,omitempty"`
+	ID                      string                           `json:"id,omitempty"`
+	RawID                   string                           `json:"rawId"`
+	Type                    protocol.PublicKeyCredentialType `json:"type"`
+	Response                AttestationResponseJSON          `json:"response"`
+	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
+	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults,omitempty"`
 }
 
 // AttestationResponseJSON is the browser JSON shape for an authenticator attestation response.
 type AttestationResponseJSON struct {
-	ClientDataJSON    string                            `json:"clientDataJSON"`
-	AttestationObject string                            `json:"attestationObject"`
-	Transports        []protocol.AuthenticatorTransport `json:"transports,omitempty"`
+	ClientDataJSON     string                            `json:"clientDataJSON"`
+	AuthenticatorData  string                            `json:"authenticatorData"`
+	Transports         []protocol.AuthenticatorTransport `json:"transports,omitempty"`
+	PublicKey          *string                           `json:"publicKey,omitempty"`
+	PublicKeyAlgorithm protocol.COSEAlgorithmIdentifier  `json:"publicKeyAlgorithm"`
+	AttestationObject  string                            `json:"attestationObject"`
 }
 
 // AuthenticationCredentialJSON is the browser JSON shape for an authentication credential response.
 type AuthenticationCredentialJSON struct {
-	ID                     string                           `json:"id,omitempty"`
-	RawID                  string                           `json:"rawId"`
-	Type                   protocol.PublicKeyCredentialType `json:"type"`
-	Response               AssertionResponseJSON            `json:"response"`
-	ClientExtensionResults map[string]any                   `json:"clientExtensionResults,omitempty"`
+	ID                      string                           `json:"id,omitempty"`
+	RawID                   string                           `json:"rawId"`
+	Type                    protocol.PublicKeyCredentialType `json:"type"`
+	Response                AssertionResponseJSON            `json:"response"`
+	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
+	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults,omitempty"`
 }
 
 // AssertionResponseJSON is the browser JSON shape for an authenticator assertion response.
@@ -62,7 +67,15 @@ func RegistrationResponseFromJSON(data []byte) (webauthn.RegistrationResponse, e
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
+	authenticatorData, err := optionalAuthenticatorDataFromBase64URL("response.authenticatorData", dto.Response.AuthenticatorData)
+	if err != nil {
+		return webauthn.RegistrationResponse{}, err
+	}
 	attestationObject, err := attestationObjectFromBase64URL("response.attestationObject", dto.Response.AttestationObject)
+	if err != nil {
+		return webauthn.RegistrationResponse{}, err
+	}
+	publicKey, err := optionalBytesFromBase64URL("response.publicKey", dto.Response.PublicKey)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
@@ -72,12 +85,16 @@ func RegistrationResponseFromJSON(data []byte) (webauthn.RegistrationResponse, e
 	}
 
 	return webauthn.RegistrationResponse{
-		Type:                   dto.Type,
-		RawID:                  rawID,
-		ClientDataJSON:         clientDataJSON,
-		AttestationObject:      attestationObject,
-		Transports:             append([]protocol.AuthenticatorTransport(nil), dto.Response.Transports...),
-		ClientExtensionResults: clientExtensions,
+		Type:                    dto.Type,
+		RawID:                   rawID,
+		ClientDataJSON:          clientDataJSON,
+		AuthenticatorData:       authenticatorData,
+		AttestationObject:       attestationObject,
+		PublicKey:               publicKey,
+		PublicKeyAlgorithm:      dto.Response.PublicKeyAlgorithm,
+		Transports:              append([]protocol.AuthenticatorTransport(nil), dto.Response.Transports...),
+		AuthenticatorAttachment: dto.AuthenticatorAttachment,
+		ClientExtensionResults:  clientExtensions,
 	}, nil
 }
 
@@ -117,13 +134,14 @@ func AuthenticationResponseFromJSON(data []byte) (webauthn.AuthenticationRespons
 	}
 
 	return webauthn.AuthenticationResponse{
-		Type:                   dto.Type,
-		RawID:                  rawID,
-		ClientDataJSON:         clientDataJSON,
-		AuthenticatorData:      authenticatorData,
-		Signature:              signature,
-		UserHandle:             userHandle,
-		ClientExtensionResults: clientExtensions,
+		Type:                    dto.Type,
+		RawID:                   rawID,
+		ClientDataJSON:          clientDataJSON,
+		AuthenticatorData:       authenticatorData,
+		Signature:               signature,
+		UserHandle:              userHandle,
+		AuthenticatorAttachment: dto.AuthenticatorAttachment,
+		ClientExtensionResults:  clientExtensions,
 	}, nil
 }
 
@@ -210,6 +228,14 @@ func authenticatorDataFromBase64URL(field string, encoded string) (protocol.Auth
 	return value, nil
 }
 
+func optionalAuthenticatorDataFromBase64URL(field string, encoded string) (protocol.AuthenticatorData, error) {
+	if encoded == "" {
+		return protocol.AuthenticatorData{}, nil
+	}
+
+	return authenticatorDataFromBase64URL(field, encoded)
+}
+
 func signatureFromBase64URL(field string, encoded string) (protocol.Signature, error) {
 	bytes, err := decodeBase64URL(field, encoded)
 	if err != nil {
@@ -239,6 +265,14 @@ func optionalUserHandleFromBase64URL(field string, encoded *string) (protocol.Us
 	return value, nil
 }
 
+func optionalBytesFromBase64URL(field string, encoded *string) ([]byte, error) {
+	if encoded == nil {
+		return nil, nil
+	}
+
+	return decodeBase64URL(field, *encoded)
+}
+
 func decodeBase64URL(field string, encoded string) ([]byte, error) {
 	bytes, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
@@ -260,6 +294,14 @@ func clientExtensionResultsFromJSON(results map[string]any) (map[string]any, err
 	out := make(map[string]any, len(results))
 	for id, value := range results {
 		if id != extension.IDLargeBlob {
+			if id == extension.IDPRF {
+				converted, err := prfOutputFromJSON(value)
+				if err != nil {
+					return nil, err
+				}
+				out[id] = converted
+				continue
+			}
 			out[id] = value
 			continue
 		}
@@ -270,6 +312,41 @@ func clientExtensionResultsFromJSON(results map[string]any) (map[string]any, err
 		out[id] = converted
 	}
 
+	return out, nil
+}
+
+func prfOutputFromJSON(value any) (any, error) {
+	fields, ok := value.(map[string]any)
+	if !ok {
+		return value, nil
+	}
+
+	out := maps.Clone(fields)
+	rawResults, ok := out["results"]
+	if !ok {
+		return out, nil
+	}
+	results, ok := rawResults.(map[string]any)
+	if !ok {
+		return out, nil
+	}
+	converted := maps.Clone(results)
+	for _, field := range []string{"first", "second"} {
+		raw, ok := converted[field]
+		if !ok {
+			continue
+		}
+		encoded, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		decoded, err := decodeBase64URL("clientExtensionResults.prf.results."+field, encoded)
+		if err != nil {
+			return nil, err
+		}
+		converted[field] = decoded
+	}
+	out["results"] = converted
 	return out, nil
 }
 

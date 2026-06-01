@@ -3,11 +3,12 @@
 This repository is `github.com/islishude/webauthn`, a Go server-side
 WebAuthn/passkey relying-party library.
 
-Current project state: Plan 09 is complete. The repository now contains the
-root ceremony APIs, protocol types, codec and crypto contracts, optional
-attestation format packages, Level 2 extension handling, optional browser and
-HTTP transport helpers, compile-checked examples, conformance-oriented tests,
-fuzz smoke targets, import graph checks, dependency license checks, and release
+Current project state: All plans are complete. The repository now
+contains the root ceremony APIs, protocol types, codec and crypto contracts,
+optional attestation format packages including compound attestation, Level 3
+extension handling with deprecated `uvm` retained, optional browser and HTTP
+transport helpers, compile-checked examples, conformance-oriented tests, fuzz
+smoke targets, import graph checks, dependency license checks, and release
 documentation.
 
 Agents working in this repository must preserve the documented architecture and
@@ -22,7 +23,7 @@ the drift in the same change instead of treating the documents as stale notes.
    must come from specifications, independently authored fixtures, generated
    fixtures, browser outputs collected for this project, or public conformance
    data with documented source and license.
-3. Use W3C Web Authentication Level 2 as the normative protocol source. MDN Web
+3. Use W3C Web Authentication Level 3 as the normative protocol source. MDN Web
    Authentication API documentation is acceptable for browser-facing context,
    compatibility notes, and terminology, but not as a replacement for the
    specification.
@@ -105,7 +106,7 @@ Current package boundaries are documented in `docs/technical.md` and
   contracts;
 - `attestation` contains format verifier and trust policy contracts;
 - `attestation/*` packages are optional selected format verifiers;
-- `extension` contains operation-aware extension handling;
+- `extension` contains operation-aware Level 2 and Level 3 extension handling;
 - `browser` contains optional browser JSON DTO conversion helpers;
 - `transport/http` contains optional standard-library JSON request/response
   helpers.
@@ -137,6 +138,9 @@ Default behavior must be safe for relying parties:
 - challenges are generated server-side with sufficient entropy;
 - challenge comparisons are exact and constant-time where meaningful;
 - origins and RP IDs are explicit and policy-driven;
+- cross-origin `topOrigin` values are accepted only by explicit origin policy;
+- reserved `tokenBinding` client data is parsed for preservation but not used
+  for relying-party verification;
 - user presence is required;
 - user verification is checked according to ceremony policy;
 - signature counters are surfaced with clone-risk semantics;
@@ -228,7 +232,7 @@ Quality workflow files are:
 A release candidate must not be tagged until:
 
 - all P0 and P1 plans in `docs/plans.md` are complete;
-- Plan 09 release hardening is complete;
+- Plan 14 Level 3 release alignment is complete;
 - local `make ci` passes from a clean worktree;
 - GitHub Actions CI passes on the release branch;
 - the root package import graph does not include optional attestation formats,

@@ -51,7 +51,9 @@ type CredentialCreationOptionsJSON struct {
 	TimeoutMilliseconds    uint32                                   `json:"timeout,omitempty"`
 	ExcludeCredentials     []CredentialDescriptorJSON               `json:"excludeCredentials,omitempty"`
 	AuthenticatorSelection *AuthenticatorSelectionCriteriaJSON      `json:"authenticatorSelection,omitempty"`
+	Hints                  []protocol.PublicKeyCredentialHint       `json:"hints,omitempty"`
 	Attestation            protocol.AttestationConveyancePreference `json:"attestation,omitempty"`
+	AttestationFormats     []string                                 `json:"attestationFormats,omitempty"`
 	Extensions             map[string]any                           `json:"extensions,omitempty"`
 }
 
@@ -62,6 +64,7 @@ type CredentialRequestOptionsJSON struct {
 	RPID                string                               `json:"rpId,omitempty"`
 	AllowCredentials    []CredentialDescriptorJSON           `json:"allowCredentials,omitempty"`
 	UserVerification    protocol.UserVerificationRequirement `json:"userVerification,omitempty"`
+	Hints               []protocol.PublicKeyCredentialHint   `json:"hints,omitempty"`
 	Extensions          map[string]any                       `json:"extensions,omitempty"`
 }
 
@@ -81,7 +84,9 @@ func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialC
 		PubKeyCredParams:    credentialParametersToJSON(options.PubKeyCredParams),
 		TimeoutMilliseconds: options.TimeoutMilliseconds,
 		ExcludeCredentials:  credentialDescriptorsToJSON(options.ExcludeCredentials),
+		Hints:               append([]protocol.PublicKeyCredentialHint(nil), options.Hints...),
 		Attestation:         options.Attestation,
+		AttestationFormats:  append([]string(nil), options.AttestationFormats...),
 		Extensions:          extensionInputsToJSON(options.Extensions),
 	}
 	if options.AuthenticatorSelection != nil {
@@ -104,6 +109,7 @@ func CredentialRequestOptionsFromProtocol(options protocol.PublicKeyCredentialRe
 		RPID:                options.RPID,
 		AllowCredentials:    credentialDescriptorsToJSON(options.AllowCredentials),
 		UserVerification:    options.UserVerification,
+		Hints:               append([]protocol.PublicKeyCredentialHint(nil), options.Hints...),
 		Extensions:          extensionInputsToJSON(options.Extensions),
 	}
 }
@@ -157,9 +163,72 @@ func extensionInputsToJSON(inputs protocol.ExtensionInputs) map[string]any {
 			out[id] = largeBlobInputToJSON(value)
 			continue
 		}
+		if id == extension.IDPRF {
+			out[id] = prfInputToJSON(value)
+			continue
+		}
 		out[id] = value
 	}
 
+	return out
+}
+
+func prfInputToJSON(value any) any {
+	switch input := value.(type) {
+	case extension.PRFInput:
+		out := make(map[string]any, 2)
+		if input.Eval != nil {
+			out["eval"] = prfValuesToJSON(*input.Eval)
+		}
+		if len(input.EvalByCredential) != 0 {
+			byCredential := make(map[string]any, len(input.EvalByCredential))
+			for id, values := range input.EvalByCredential {
+				byCredential[id] = prfValuesToJSON(values)
+			}
+			out["evalByCredential"] = byCredential
+		}
+		return out
+	case map[string]any:
+		out := maps.Clone(input)
+		if raw, ok := out["eval"]; ok {
+			out["eval"] = prfValuesAnyToJSON(raw)
+		}
+		if raw, ok := out["evalByCredential"]; ok {
+			if byCredential, ok := raw.(map[string]any); ok {
+				converted := make(map[string]any, len(byCredential))
+				for id, values := range byCredential {
+					converted[id] = prfValuesAnyToJSON(values)
+				}
+				out["evalByCredential"] = converted
+			}
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func prfValuesAnyToJSON(value any) any {
+	switch values := value.(type) {
+	case extension.PRFValues:
+		return prfValuesToJSON(values)
+	case map[string]any:
+		out := maps.Clone(values)
+		encodeLargeBlobByteField(out, "first")
+		encodeLargeBlobByteField(out, "second")
+		return out
+	default:
+		return value
+	}
+}
+
+func prfValuesToJSON(values extension.PRFValues) map[string]any {
+	out := map[string]any{
+		"first": base64.RawURLEncoding.EncodeToString(values.First),
+	}
+	if values.Second != nil {
+		out["second"] = base64.RawURLEncoding.EncodeToString(values.Second)
+	}
 	return out
 }
 

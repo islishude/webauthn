@@ -10,6 +10,18 @@ import (
 // AttestationStatement is the decoded attestation statement map for a format.
 type AttestationStatement map[string]any
 
+const (
+	// CompoundSubStatementsKey is the normalized key used by decoders for the
+	// WebAuthn Level 3 compound attestation statement array.
+	CompoundSubStatementsKey = "statements"
+)
+
+// CompoundSubStatement is one normalized sub-statement in a compound attestation.
+type CompoundSubStatement struct {
+	Format    string
+	Statement AttestationStatement
+}
+
 // ExtensionMap is the decoded authenticator extension output map.
 type ExtensionMap map[string]any
 
@@ -69,6 +81,7 @@ func (k CredentialPublicKey) PublicKeyMaterial() CredentialPublicKeyMaterial {
 type CredentialPublicKeyMaterial struct {
 	EC2 *EC2PublicKeyMaterial
 	RSA *RSAPublicKeyMaterial
+	OKP *OKPPublicKeyMaterial
 }
 
 func (m CredentialPublicKeyMaterial) clone() CredentialPublicKeyMaterial {
@@ -84,6 +97,12 @@ func (m CredentialPublicKeyMaterial) clone() CredentialPublicKeyMaterial {
 		out.RSA = &RSAPublicKeyMaterial{
 			Modulus:  slices.Clone(m.RSA.Modulus),
 			Exponent: m.RSA.Exponent,
+		}
+	}
+	if m.OKP != nil {
+		out.OKP = &OKPPublicKeyMaterial{
+			Curve: m.OKP.Curve,
+			X:     slices.Clone(m.OKP.X),
 		}
 	}
 
@@ -111,6 +130,19 @@ type RSAPublicKeyMaterial struct {
 	Modulus  []byte
 	Exponent uint32
 }
+
+// OKPPublicKeyMaterial contains public values for a COSE OKP key.
+type OKPPublicKeyMaterial struct {
+	Curve string
+	X     []byte
+}
+
+const (
+	// OKPCurveEd25519 identifies Ed25519.
+	OKPCurveEd25519 = "Ed25519"
+	// OKPCurveEd448 identifies Ed448.
+	OKPCurveEd448 = "Ed448"
+)
 
 // DecodedAttestationObject is the WebAuthn shape expected after CBOR decoding.
 type DecodedAttestationObject struct {

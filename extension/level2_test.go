@@ -188,8 +188,9 @@ func TestUVMHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HandleExtension() error = %v", err)
 		}
+		//nolint:staticcheck // UVM is intentionally tested as deprecated Level 3 support.
 		output := typedOutput[extension.UVMResult](t, result, extension.IDUVM)
-		if !result.Accepted || len(output.Entries) != 1 || output.Entries[0].UserVerificationMethod != 2 {
+		if !result.Accepted || !result.Deprecated || len(output.Entries) != 1 || output.Entries[0].UserVerificationMethod != 2 {
 			t.Fatalf("result = %+v output = %+v", result, output)
 		}
 	})

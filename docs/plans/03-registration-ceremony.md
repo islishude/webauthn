@@ -21,7 +21,8 @@ Implement WebAuthn Level 2 registration option generation and registration respo
 2. Ceremony state output containing challenge, RP ID, allowed origins or origin policy reference, requested user verification, requested extensions, allowed algorithms, timeout/expiry metadata, and user binding.
 3. Registration response input model independent of HTTP and browser JSON conventions.
 4. Collected client data verification for `webauthn.create`.
-5. Challenge, origin, cross-origin, and token binding checks.
+5. Challenge, origin, cross-origin, `topOrigin`, and reserved `tokenBinding`
+   checks.
 6. Attestation object decoding through codec adapter.
 7. Authenticator data parsing with AT flag and attested credential data.
 8. RP ID hash check.
@@ -74,7 +75,11 @@ Delivered files and packages:
 Tests delivered:
 
 - successful registration with `none` attestation and explicit `AllowNone` policy;
-- malformed client data, challenge mismatch, origin, cross-origin, and token binding mismatch, RP ID hash mismatch, missing UP, missing UV when required, unsupported algorithm, unsupported attestation format, rejected `none` policy, truncated authenticator data, missing attested credential data, duplicate credential, and expired ceremony rejections;
+- malformed client data, challenge mismatch, origin, cross-origin, top-origin,
+  reserved token binding, RP ID hash mismatch, missing UP, missing UV when
+  required, unsupported algorithm, unsupported attestation format, rejected
+  `none` policy, truncated authenticator data, missing attested credential data,
+  duplicate credential, and expired ceremony rejections;
 - requested extension absent, unsolicited extension ignored, and unsolicited extension rejected behavior;
 - concrete CBOR/COSE decoder tests for attestation object shape, duplicate map key rejection, COSE_Key raw-consumption boundary, extension map decoding, and malformed CBOR;
 - `none` verifier tests for empty and non-empty attestation statements.

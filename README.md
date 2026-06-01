@@ -8,12 +8,13 @@ registration and authentication ceremonies, then returns credential records,
 counter updates, attestation results, extension results, and policy outcomes for
 the application to persist in its own storage.
 
-Current status: implementation is complete through Plan 09. The repository has
+Current status: implementation is complete through Plan 14. The repository has
 transport-neutral registration and authentication APIs, optional attestation
-format packages, WebAuthn Level 2 extension handlers, optional browser JSON and
-standard-library HTTP helpers, compile-checked examples, conformance-oriented
-tests, fuzz smoke targets, import graph checks, dependency license checks, and
-release documentation.
+format packages, WebAuthn Level 3 protocol fields, Level 3 extension handlers
+with deprecated `uvm` retained, optional browser JSON and standard-library HTTP
+helpers, compile-checked examples, conformance-oriented tests, fuzz smoke
+targets, import graph checks, dependency license checks, and release
+documentation.
 
 The release checklist is tracked in `docs/release.md`.
 
@@ -29,17 +30,17 @@ The root package supports the relying-party ceremony flow:
 
 Implemented areas:
 
-| Area                | Status                                                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Registration        | Transport-neutral start and finish APIs.                                                                               |
-| Authentication      | Username-first and discoverable credential/passkey flows.                                                              |
-| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` packages.                |
-| Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules. |
-| Extensions          | WebAuthn Level 2 `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob` handling.                                |
-| Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields.                 |
-| HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                          |
-| Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                       |
-| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.      |
+| Area                | Status                                                                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Registration        | Transport-neutral start and finish APIs.                                                                                   |
+| Authentication      | Username-first and discoverable credential/passkey flows.                                                                  |
+| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` packages. |
+| Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules.     |
+| Extensions          | WebAuthn Level 3 `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf` handling; deprecated `uvm` remains opt-in.   |
+| Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.    |
+| HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                              |
+| Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                           |
+| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.          |
 
 ## Design Principles
 
@@ -61,7 +62,7 @@ The library is built around a few constraints that are enforced by tests and CI:
 
 No implementation logic or tests may be copied, translated, adapted, or derived
 from public WebAuthn/passkey libraries. Protocol behavior is based on W3C Web
-Authentication Level 2, with MDN used only for browser-facing context and
+Authentication Level 3, with MDN used only for browser-facing context and
 terminology.
 
 ## Package Layout
@@ -84,7 +85,10 @@ The package graph is designed so applications only import what they need:
 - `attestation/androidkey`: optional `android-key` verifier;
 - `attestation/androidsafetynet`: optional `android-safetynet` verifier;
 - `attestation/apple`: optional Apple anonymous attestation verifier;
-- `extension`: operation-aware extension handler registry and Level 2 handlers;
+- `attestation/compound`: optional `compound` verifier that dispatches
+  sub-statements through a caller-supplied attestation registry;
+- `extension`: operation-aware extension handler registry, Level 2 compatibility
+  handlers, and Level 3 registry helpers;
 - `browser`: optional browser JSON DTO conversion helpers;
 - `transport/http`: optional standard-library HTTP JSON helpers;
 - `tools/checklicenses`: local dependency manifest checker.
@@ -120,6 +124,7 @@ Safe behavior is the default shape:
 
 - challenges are server-generated and compared exactly;
 - origins and RP IDs are explicit policy inputs;
+- cross-origin `topOrigin` checks are explicit `OriginPolicy` inputs;
 - user presence is required;
 - user verification is enforced according to ceremony policy;
 - signature counter rollback is surfaced as clone risk;
@@ -179,7 +184,7 @@ CI behavior is documented in `docs/ci.md`.
 
 - `AGENTS.md` defines repository rules for automated contributors.
 - `docs/technical.md` describes architecture and package boundaries.
-- `docs/protocol-map.md` maps WebAuthn Level 2 protocol areas to packages.
+- `docs/protocol-map.md` maps WebAuthn Level 3 protocol areas to packages.
 - `docs/api-boundaries.md` defines public API and transport boundaries.
 - `docs/security-model.md` records security and privacy decisions.
 - `docs/testing.md` defines the test and conformance strategy.
@@ -197,7 +202,7 @@ or quality gates change, update the relevant docs in the same change.
 A release candidate requires:
 
 - all P0 and P1 plans in `docs/plans.md` complete;
-- Plan 09 release hardening complete;
+- Plan 14 Level 3 release alignment complete;
 - local `make ci` passing from a clean worktree;
 - GitHub Actions passing on the release branch;
 - root import graph independence from optional attestation, browser, HTTP, and

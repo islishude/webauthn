@@ -12,7 +12,7 @@ func TestParseCollectedClientData(t *testing.T) {
 	t.Parallel()
 
 	challenge := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef"))
-	raw, err := protocol.NewClientDataJSON([]byte(`{"type":"webauthn.create","challenge":"` + challenge + `","origin":"https://example.com","unknown":true}`))
+	raw, err := protocol.NewClientDataJSON([]byte(`{"type":"webauthn.create","challenge":"` + challenge + `","origin":"https://example.com","crossOrigin":true,"topOrigin":"https://top.example","unknown":true}`))
 	if err != nil {
 		t.Fatalf("NewClientDataJSON() error = %v", err)
 	}
@@ -30,6 +30,9 @@ func TestParseCollectedClientData(t *testing.T) {
 	}
 	if string(gotChallenge) != "0123456789abcdef" {
 		t.Fatalf("ChallengeBytes() = %q", gotChallenge)
+	}
+	if clientData.CrossOrigin == nil || !*clientData.CrossOrigin || clientData.TopOrigin != "https://top.example" {
+		t.Fatalf("cross/top origin = %v %q", clientData.CrossOrigin, clientData.TopOrigin)
 	}
 }
 

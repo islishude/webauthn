@@ -78,3 +78,9 @@ Scope changes:
 - Browser interoperability fixtures use Chrome DevTools virtual authenticators, not hardware authenticators.
 - No external public conformance dataset was imported; dependency license review covers Go module dependencies only.
 - Example build checks remain in Plan 09 because public examples and optional adapters do not exist yet.
+
+Level 3 update:
+
+- Plan 14 updates `docs/testing.md` with Level 3 ceremony, PRF, compound
+  attestation, OKP material, DTO, and deprecated `uvm` coverage. Plan 08 remains
+  the original conformance and fuzzing baseline.

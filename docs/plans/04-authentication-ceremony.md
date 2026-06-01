@@ -23,7 +23,8 @@ Implement WebAuthn Level 2 authentication option generation and assertion verifi
 5. Username-first ownership checks using caller-supplied account and credential data.
 6. Discoverable-credential flow support requiring user handle mapping.
 7. Collected client data verification for `webauthn.get`.
-8. Challenge, origin, cross-origin, and token binding checks.
+8. Challenge, origin, cross-origin, `topOrigin`, and reserved `tokenBinding`
+   checks.
 9. Authenticator data parsing without AT flag requirement.
 10. RP ID hash check, including AppID extension policy path.
 11. User presence and user verification checks.
@@ -70,7 +71,11 @@ Delivered files and packages:
 
 - root authentication APIs: `StartAuthentication`, `FinishAuthentication`, `AuthenticationState`, structured assertion response input, counter policy/result types, and authentication result output;
 - username-first and discoverable-credential ownership checks using caller-supplied `CredentialRecord` values;
-- `webauthn.get` client data validation, challenge/origin/cross-origin/token-binding checks, allow-credentials enforcement, RP ID hash verification, AppID hash fallback, UP/UV checks, signature verification through `crypto.SignatureVerifier`, and sign counter comparison;
+- `webauthn.get` client data validation,
+  challenge/origin/cross-origin/top-origin/reserved-token-binding checks,
+  allow-credentials enforcement, RP ID hash verification, AppID hash fallback,
+  UP/UV checks, signature verification through `crypto.SignatureVerifier`, and
+  sign counter comparison;
 - authenticator extension data parsing for authentication assertions with the ED flag;
 - authentication extension policy handling for absent, ignored unsolicited, and rejected unsolicited results.
 
