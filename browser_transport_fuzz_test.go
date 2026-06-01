@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/islishude/webauthn/protocol"
+	"github.com/islishude/webauthn/browser"
 )
 
 func FuzzDecodeBrowserCredentialDescriptor(f *testing.F) {
@@ -17,7 +17,11 @@ func FuzzDecodeBrowserCredentialDescriptor(f *testing.F) {
 	f.Add([]byte{0xff, 0xfe, 0xfd})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		descriptor, err := decodeBrowserCredentialDescriptor(data)
+		var dto browser.CredentialDescriptorJSON
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return
+		}
+		descriptor, err := browser.CredentialDescriptorFromJSON(dto)
 		if err != nil {
 			return
 		}
@@ -25,35 +29,4 @@ func FuzzDecodeBrowserCredentialDescriptor(f *testing.F) {
 			t.Fatalf("decoded descriptor failed validation: %v", err)
 		}
 	})
-}
-
-func decodeBrowserCredentialDescriptor(data []byte) (protocol.CredentialDescriptor, error) {
-	var dto struct {
-		Type       protocol.PublicKeyCredentialType  `json:"type"`
-		ID         string                            `json:"id"`
-		Transports []protocol.AuthenticatorTransport `json:"transports"`
-	}
-	if err := json.Unmarshal(data, &dto); err != nil {
-		return protocol.CredentialDescriptor{}, err
-	}
-
-	idBytes, err := base64.RawURLEncoding.DecodeString(dto.ID)
-	if err != nil {
-		return protocol.CredentialDescriptor{}, err
-	}
-	credentialID, err := protocol.NewCredentialID(idBytes)
-	if err != nil {
-		return protocol.CredentialDescriptor{}, err
-	}
-
-	descriptor := protocol.CredentialDescriptor{
-		Type:       dto.Type,
-		ID:         credentialID,
-		Transports: dto.Transports,
-	}
-	if err := descriptor.Validate(); err != nil {
-		return protocol.CredentialDescriptor{}, err
-	}
-
-	return descriptor, nil
 }

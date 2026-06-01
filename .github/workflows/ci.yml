@@ -29,6 +29,9 @@ jobs:
       - name: Required documentation and config files
         run: make ci-docs
 
+      - name: README example references
+        run: make readme-check
+
       - name: Check text file line endings
         shell: bash
         run: |
@@ -92,6 +95,9 @@ jobs:
 
       - name: Unit tests
         run: make test
+
+      - name: Example builds
+        run: make example-build
 
       - name: Race tests
         run: make test-race

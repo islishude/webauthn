@@ -334,7 +334,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	if err != nil {
 		return RegistrationResult{}, err
 	}
-	if !algorithmAllowed(credentialPublicKey.Algorithm, options.State.AllowedAlgorithms) {
+	if !slices.Contains(options.State.AllowedAlgorithms, credentialPublicKey.Algorithm) {
 		return RegistrationResult{}, ErrUnsupportedAlgorithm
 	}
 
@@ -376,7 +376,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		Attestation:      attestationResult,
 		AttestationTrust: trustResult,
 		Extensions:       extensionResults,
-		Warnings:         registrationWarnings(attestationResult, trustResult, clientData),
+		Warnings:         slices.Concat(attestationResult.Warnings, trustResult.Warnings, clientDataWarnings(clientData)),
 	}
 
 	return result, nil
@@ -447,7 +447,7 @@ func verifyRegistrationClientData(state RegistrationState, raw protocol.ClientDa
 	if !state.Challenge.EqualBytes(challengeBytes) {
 		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
 	}
-	if !originAllowed(clientData.Origin, state.AllowedOrigins) {
+	if !slices.Contains(state.AllowedOrigins, clientData.Origin) {
 		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
 	}
 	if clientData.CrossOrigin != nil && *clientData.CrossOrigin && !state.AllowCrossOrigin {
@@ -723,14 +723,6 @@ func validateOrigins(origins []string) error {
 	return nil
 }
 
-func originAllowed(origin string, allowedOrigins []string) bool {
-	return slices.Contains(allowedOrigins, origin)
-}
-
-func algorithmAllowed(algorithm protocol.COSEAlgorithmIdentifier, allowed []protocol.COSEAlgorithmIdentifier) bool {
-	return slices.Contains(allowed, algorithm)
-}
-
 func algorithmsFromParameters(parameters []protocol.CredentialParameter) []protocol.COSEAlgorithmIdentifier {
 	algorithms := make([]protocol.COSEAlgorithmIdentifier, len(parameters))
 	for i, parameter := range parameters {
@@ -758,14 +750,6 @@ func timeoutState(timeout time.Duration) (uint32, time.Time, error) {
 
 func clientDataWarnings(protocol.CollectedClientData) []string {
 	return nil
-}
-
-func registrationWarnings(attestationResult attestation.VerificationResult, trustResult AttestationTrustResult, clientData protocol.CollectedClientData) []string {
-	warnings := slices.Clone(attestationResult.Warnings)
-	warnings = append(warnings, trustResult.Warnings...)
-	warnings = append(warnings, clientDataWarnings(clientData)...)
-
-	return warnings
 }
 
 func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {

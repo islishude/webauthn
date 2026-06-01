@@ -1,6 +1,6 @@
 # Protocol map
 
-Status: all initial WebAuthn Level 2 attestation format, trust-policy, and extension slices implemented, revised 2026-06-01.
+Status: all initial WebAuthn Level 2 attestation format, trust-policy, extension, adapter, and example slices implemented, revised 2026-06-01.
 
 This file maps WebAuthn Level 2 relying-party protocol surfaces to planned library components. It is a completeness checklist, not implementation code.
 
@@ -126,14 +126,14 @@ The extension system tolerates absent results and unknown extension keys. Unknow
 
 ## Out-of-scope for the core package
 
-The following may be examples or optional adapters later, but not core behavior:
+The following remain outside root core behavior. Browser JSON and small HTTP JSON helpers are available as optional packages, while application ownership stays explicit:
 
-- HTTP request parsing and response writing;
+- HTTP request parsing and response writing beyond optional `transport/http` JSON helpers;
 - session persistence;
 - database storage;
 - account lookup;
 - account recovery flows;
-- browser JavaScript helpers beyond documented JSON shapes;
+- browser JavaScript helpers beyond documented JSON DTO shapes;
 - authenticator implementation;
 - CTAP device communication;
 - public WebAuthn library compatibility shims.

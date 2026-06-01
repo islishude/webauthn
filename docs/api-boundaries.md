@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: registration and authentication ceremony APIs, Level 2 extension handlers, and minimal attestation trust policy implemented, revised 2026-06-01.
+Status: registration and authentication ceremony APIs, Level 2 extension handlers, attestation trust policy, optional browser/HTTP adapters, and examples implemented, revised 2026-06-01.
 
-This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs. Plan 06 added operation-aware extension handlers and WebAuthn Level 2 extension result types.
+This document defines public API boundaries. Plan 02 established the initial Go packages and contracts. Plan 03 added transport-neutral registration ceremony APIs. Plan 04 added transport-neutral authentication ceremony APIs. Plan 06 added operation-aware extension handlers and WebAuthn Level 2 extension result types. Plan 09 added optional browser JSON and HTTP helper packages outside the root dependency graph.
 
 ## Boundary principles
 
@@ -27,7 +27,9 @@ Current package boundaries:
 - `attestation/androidkey`: optional `android-key` format verifier selected explicitly by callers;
 - `attestation/androidsafetynet`: optional `android-safetynet` format verifier selected explicitly by callers;
 - `attestation/apple`: optional `apple` format verifier selected explicitly by callers;
-- `extension`: operation-aware extension handler contract, duplicate-rejecting registry, and built-in WebAuthn Level 2 handlers.
+- `extension`: operation-aware extension handler contract, duplicate-rejecting registry, and built-in WebAuthn Level 2 handlers;
+- `browser`: optional browser JSON DTO conversion helpers using unpadded base64url for WebAuthn binary fields;
+- `transport/http`: optional standard-library HTTP JSON read/write helpers that depend on `browser` but are not imported by the root package.
 
 ## Ceremony API shape
 
@@ -130,7 +132,9 @@ The core does not create a login session. Username-first flows are selected by `
 
 The browser API deals with binary fields as `ArrayBuffer` values. Many server/browser JSON bridges represent those values as base64url strings. This library should separate those concerns.
 
-Core protocol values should be byte-oriented. Optional transport packages can provide JSON-friendly DTOs and conversion helpers. The root package should not force a single JSON shape, because projects often already have frontend conventions.
+Core protocol values are byte-oriented. The optional `browser` package provides JSON-friendly DTOs and conversion helpers for projects that use unpadded base64url strings for browser `ArrayBuffer`-like fields. It covers creation/request options, credential descriptors, registration responses, authentication responses, and known Level 2 largeBlob byte fields while preserving unknown extension values.
+
+The optional `transport/http` package layers standard-library request/response helpers on top of `browser`. It reads bounded request bodies, decodes browser JSON responses, writes browser JSON options, and writes generic JSON errors. It does not own routing, sessions, cookies, CSRF, persistence, account lookup, credential lookup, or ceremony-state storage.
 
 ## Crypto boundary
 
@@ -210,12 +214,10 @@ Optional storage examples may be added later. They must not become part of the c
 
 ## Optional adapter boundary
 
-Optional packages may be added after core stabilization:
+Optional packages added after core stabilization:
 
-- browser JSON DTO conversion;
-- `net/http` examples and small helpers;
-- framework examples;
-- in-memory demonstration storage;
-- CLI or conformance harness helpers.
+- `browser` for browser JSON DTO conversion;
+- `transport/http` for small `net/http` JSON helpers;
+- compile-checked examples for manual integration, HTTP helpers, passkeys, and selected attestation policy.
 
-These packages must not be imported by the root package and must not define the canonical core API.
+These packages are not imported by the root package and do not define the canonical core API. Storage, sessions, cookies, framework adapters, CLI tools, and conformance harness helpers remain outside the core API.

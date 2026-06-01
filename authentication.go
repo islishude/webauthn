@@ -380,7 +380,7 @@ func verifyAuthenticationClientData(state AuthenticationState, raw protocol.Clie
 	if !state.Challenge.EqualBytes(challengeBytes) {
 		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
 	}
-	if !originAllowed(clientData.Origin, state.AllowedOrigins) {
+	if !slices.Contains(state.AllowedOrigins, clientData.Origin) {
 		return protocol.CollectedClientData{}, nil, ErrOriginMismatch
 	}
 	if clientData.CrossOrigin != nil && *clientData.CrossOrigin && !state.AllowCrossOrigin {

@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, attestation formats, Level 2 extensions, and initial attestation trust hooks implemented, revised 2026-06-01.
+Status: registration, authentication, attestation formats, Level 2 extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-01.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -48,7 +48,8 @@ Plan 02 fixed the initial package names. The dependency direction must remain st
 | `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                           | Behind narrow contracts                                                                             |
 | `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                      | Behind narrow contracts                                                                             |
 | `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                  | Not imported by root; replaceable behind `codec.Decoders`                                           |
-| Optional transport helpers  | Browser JSON DTOs, request/response binding, optional HTTP helpers                                           | Must not be imported by the root package                                                            |
+| `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                         | Optional package; not imported by the root package                                                  |
+| `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                      | Optional package; not imported by the root package                                                  |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -171,6 +172,8 @@ Plan 05's `attestation/apple` slice adds no dependency. It uses Go standard libr
 
 Plan 06 adds no dependency. It implements WebAuthn Level 2 extension handlers in `extension`, keeps browser JSON conversion out of the core API, and treats unknown or unrequested extension output as untrusted policy evidence unless a registered handler validates it.
 
+Plan 09 adds no dependency. It implements optional `browser` DTO conversion helpers, optional `transport/http` JSON helpers, and compile-checked examples. Browser and HTTP helpers remain outside the root dependency graph, and HTTP helpers do not manage routing, sessions, cookies, CSRF, persistence, account lookup, or trust policy.
+
 ## Compatibility and passkey behavior
 
 The library should support both username-first and discoverable-credential authentication flows. Passkey-oriented behavior requires correct user handle processing, resident/discoverable credential options, user verification policy, authenticator attachment preferences, and extension results such as credential properties where supported.
@@ -189,7 +192,7 @@ Implementation should follow `docs/plans.md`. The required order is:
 6. modular attestation formats (complete, 2026-05-31);
 7. extensions (complete, 2026-06-01);
 8. trust and metadata policy (complete, 2026-06-01);
-9. conformance tests;
-10. optional adapters, examples, and release hardening.
+9. conformance tests (complete, 2026-06-01);
+10. optional adapters, examples, and release hardening (complete, 2026-06-01).
 
-The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces Go formatting, linting, tests, race checks, fuzz smoke checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so documentation-only planning remains green while implementation work becomes gated as soon as the module is created.
+The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces README checks, Go formatting, linting, tests, race checks, fuzz smoke checks, example builds, import graph checks, dependency license checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so implementation work remains gated by local and CI behavior.

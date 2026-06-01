@@ -1,6 +1,6 @@
 # Local and GitHub Actions quality workflow
 
-Status: conformance checks active, revised 2026-06-01.
+Status: Plan 09 adapter and example checks active, revised 2026-06-01.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
@@ -60,14 +60,16 @@ Run these commands from the repository root.
 | `make test`               | Run `go test ./...`.                                                                    | No                                   |
 | `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
 | `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
+| `make example-build`      | Build public examples with `go test ./examples/...`.                                    | No                                   |
 | `make import-graph-check` | Verify the root package does not import forbidden optional/transport packages.          | No                                   |
 | `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
+| `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
 | `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Yes                                  |
 | `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
 | `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                                   |
 | `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
 
-`make ci` is the required pre-PR command. It runs formatting, linting, unit tests, race tests, fuzz smoke tests, import graph checks, dependency license checks, and module hygiene.
+`make ci` is the required pre-PR command. It runs README checks, formatting, linting, unit tests, race tests, fuzz smoke tests, example builds, import graph checks, dependency license checks, and module hygiene.
 
 ## Formatting policy
 
@@ -92,9 +94,10 @@ The test gate has four layers:
 1. `go test ./...` for ordinary unit and integration tests.
 2. `go test -race ./...` for race detection on stateless and shared-state code.
 3. bounded fuzz smoke tests for parser and transport-conversion fuzz targets.
-4. import graph verification that the root package remains independent of optional attestation and transport helpers.
-5. dependency license manifest verification.
-6. module tidy verification to prevent accidental dependency drift.
+4. public example builds for optional adapters and integration patterns.
+5. import graph verification that the root package remains independent of optional attestation and transport helpers.
+6. dependency license manifest verification.
+7. README reference checks and module tidy verification to prevent accidental drift.
 
 Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. They are a CI tripwire for obvious parser crashes and regressions.
 
@@ -104,11 +107,11 @@ Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. The
 
 The workflow has three jobs:
 
-1. `docs-and-config` always runs. It calls `make ci-docs` and checks LF line endings for Markdown, YAML, and Makefile text files.
+1. `docs-and-config` always runs. It calls `make ci-docs`, `make readme-check`, and checks LF line endings for Markdown, YAML, and Makefile text files.
 2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
-3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
+3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
 
-The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, or module-tidy drift are CI failures.
+The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, example build failures, README reference drift, or module-tidy drift are CI failures.
 
 The lint job continues to run `make mod-check`, `make lint`, and `make format-check` after setting up Go and Node.js.
 

@@ -332,19 +332,9 @@ func (v jwsVerifier) VerifyJWS(_ context.Context, token webcrypto.JWSToken) (web
 
 	return webcrypto.JWSVerification{
 		Payload:         append([]byte{}, v.payload...),
-		ProtectedHeader: cloneMap(v.header),
+		ProtectedHeader: maps.Clone(v.header),
 		Certificates:    cloneChain(v.certChain),
 	}, nil
-}
-
-func cloneMap(value map[string]any) map[string]any {
-	if value == nil {
-		return nil
-	}
-	out := make(map[string]any, len(value))
-	maps.Copy(out, value)
-
-	return out
 }
 
 func cloneChain(value webcrypto.CertificateChain) webcrypto.CertificateChain {

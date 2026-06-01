@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony, Level 2 extension handling, and attestation trust policy implemented, revised 2026-06-01.
+Status: authentication ceremony, Level 2 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-01.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -104,6 +104,12 @@ Malformed data should fail closed. The parser and verifier must test:
 
 Ceremony state must include enough information for the caller to enforce expiry and single use. The core should expose expiration metadata and exact challenge checks, but storage and replay prevention remain caller responsibilities.
 
+## Optional transport helpers
+
+The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
+
+The optional `transport/http` package only reads bounded JSON request bodies and writes JSON responses. It does not infer trusted origins from request headers, does not create sessions or cookies, and does not persist ceremony state or credentials. Its `WriteError` helper emits generic status text rather than raw error strings, so credential IDs, challenges, user handles, signatures, client data JSON, attestation objects, and assertion bytes are not reflected by default.
+
 ## Safe defaults checklist
 
 Before stable release, defaults should be:
@@ -120,4 +126,5 @@ Before stable release, defaults should be:
 - unsupported algorithms rejected;
 - unsolicited extensions ignored or rejected by configured policy;
 - counter rollback surfaced as clone risk;
-- transport-neutral error objects.
+- transport-neutral error objects;
+- optional HTTP helper errors written generically without raw protocol material.

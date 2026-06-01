@@ -9,7 +9,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*')
 
-.PHONY: help format format-check lint test test-race test-fuzz-smoke import-graph-check license-check browser-fixtures mod-check ci-docs ci
+.PHONY: help format format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check readme-check browser-fixtures mod-check ci-docs ci
 
 help:
 	@echo 'Targets:'
@@ -19,8 +19,10 @@ help:
 	@echo '  make test             - run go test ./...'
 	@echo '  make test-race        - run go test -race ./...'
 	@echo '  make test-fuzz-smoke  - run each bounded fuzz target separately'
+	@echo '  make example-build    - build public examples'
 	@echo '  make import-graph-check - verify root import graph boundaries'
 	@echo '  make license-check    - verify dependency license manifest coverage'
+	@echo '  make readme-check     - verify README references compile-checked examples'
 	@echo '  make browser-fixtures - regenerate virtual-authenticator browser fixtures'
 	@echo '  make mod-check        - run go mod tidy and verify go.mod/go.sum are clean'
 	@echo '  make ci               - run the local CI gate'
@@ -58,6 +60,9 @@ test-fuzz-smoke:
 		done; \
 	fi
 
+example-build:
+	$(GO) test $(GOFLAGS) ./examples/...
+
 import-graph-check:
 	@deps="$$(GOWORK=off $(GO) list -deps .)"; \
 	for dep in $$deps; do \
@@ -72,6 +77,19 @@ import-graph-check:
 
 license-check:
 	$(GO) run ./tools/checklicenses -manifest docs/dependencies.json
+
+readme-check:
+	@for path in examples/manual examples/http examples/passkey examples/attestation docs/release.md; do \
+		if ! grep -F "$$path" README.md >/dev/null; then \
+			echo "readme-check: README.md does not reference $$path"; \
+			exit 1; \
+		fi; \
+	done
+	@if grep -n '^```go$$' README.md >/dev/null; then \
+		echo 'readme-check: move Go snippets into compile-checked examples'; \
+		exit 1; \
+	fi
+	@echo 'readme-check: README references compile-checked examples and release notes'
 
 browser-fixtures:
 	@tmp=$$(mktemp -d); \
@@ -92,6 +110,7 @@ ci-docs:
 	@test -f docs/security-model.md
 	@test -f docs/testing.md
 	@test -f docs/ci.md
+	@test -f docs/release.md
 	@test -f docs/dependencies.json
 	@test -f docs/plans.md
 	@test -f docs/plans/00-governance-and-boundaries.md
@@ -109,4 +128,4 @@ ci-docs:
 	@test -f .gitattributes
 	@echo 'ci-docs: required docs and quality configuration are present'
 
-ci: ci-docs format-check lint test test-race test-fuzz-smoke import-graph-check license-check mod-check
+ci: ci-docs readme-check format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check mod-check

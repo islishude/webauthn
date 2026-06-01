@@ -29,11 +29,11 @@ When a plan is completed, update this file and the corresponding plan file in th
 | 06    | [Extension framework and Level 2 extensions](plans/06-extensions.md)               | P1       | Complete, 2026-06-01         | Implement extension input/output handling and Level 2 extension semantics.                                          |
 | 07    | [Trust policy and metadata integration](plans/07-trust-policy-and-metadata.md)     | P1       | Complete, 2026-06-01         | Add explicit attestation trust policy building blocks, metadata hooks, AAGUID policy, and certificate status hooks. |
 | 08    | [Testing and conformance](plans/08-testing-and-conformance.md)                     | P1       | Complete, 2026-06-01         | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                              |
-| 09    | [Adapters, examples, and release hardening](plans/09-adapters-examples-release.md) | P2       | Not started                  | Add optional transport helpers, examples, import graph checks, CI example builds, and release documentation.        |
+| 09    | [Adapters, examples, and release hardening](plans/09-adapters-examples-release.md) | P2       | Complete, 2026-06-01         | Added optional browser/HTTP helpers, examples, README checks, CI example builds, and release documentation.         |
 
 ## Release gates
 
-A stable release requires plans 02 through 08 to be complete. Plan 09 is required for a public release candidate but may continue after core protocol completeness if examples are still expanding.
+A stable release requires plans 02 through 09 to be complete, local `make ci` to pass, and GitHub Actions to pass on the release branch.
 
 Root package release gates:
 
