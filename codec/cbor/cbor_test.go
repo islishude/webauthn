@@ -214,6 +214,15 @@ func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) 
 	}
 }
 
+func TestDecoderCredentialPublicKeyRejectsMalformedDependencyShape(t *testing.T) {
+	t.Parallel()
+
+	_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey([]byte("\xa500102070 \xf7"))
+	if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+		t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
+	}
+}
+
 type codecMaterial struct {
 	ec2Curve    string
 	ec2X        []byte

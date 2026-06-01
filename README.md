@@ -2,7 +2,7 @@
 
 `github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
 
-Current status: Plan 07 is complete: registration and authentication ceremony behavior is implemented; registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification; caller-supplied attestation trust policies, trust-root checks, metadata hooks, certificate-status hooks, AAGUID allow-lists, and WebAuthn Level 2 extension handlers are available.
+Current status: Plan 08 is complete: registration and authentication ceremony behavior is implemented; registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification; caller-supplied attestation trust policies, trust-root checks, metadata hooks, certificate-status hooks, AAGUID allow-lists, WebAuthn Level 2 extension handlers, conformance-oriented tests, fuzz smoke targets, browser virtual-authenticator fixtures, import graph checks, and dependency license checks are available.
 
 ## Goals
 
@@ -39,7 +39,10 @@ Use these commands from the repository root:
 - `make lint` runs golangci-lint.
 - `make test` runs unit tests.
 - `make test-race` runs race-enabled tests.
-- `make test-fuzz-smoke` runs bounded fuzz targets after fuzz tests exist.
+- `make test-fuzz-smoke` runs each bounded fuzz target separately.
+- `make import-graph-check` verifies root package dependency boundaries.
+- `make license-check` verifies Go module dependency license manifest coverage.
+- `make browser-fixtures` regenerates Playwright/Chrome virtual-authenticator interoperability fixtures.
 - `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
 - `make ci` runs the local equivalent of the default CI gate.
 
@@ -49,7 +52,7 @@ Plan 02 created `go.mod`; the current module records minimum Go version `1.25.0`
 
 GitHub Actions configuration lives in `.github/workflows/ci.yml`.
 
-The default workflow runs documentation/config checks, Go lint, and Go tests without module-detection conditionals. The lint job uses `golangci/golangci-lint-action` with the pinned version recorded in the workflow; formatter and linter behavior is configured in `.golangci.yml`.
+The default workflow runs documentation/config checks, Go lint, Go tests, race tests, fuzz smoke tests, root import graph checks, and dependency license checks without module-detection conditionals. The lint job uses `golangci/golangci-lint-action` with the pinned version recorded in the workflow; formatter and linter behavior is configured in `.golangci.yml`.
 
 The CI and local workflow are documented in `docs/ci.md`.
 
@@ -82,5 +85,6 @@ The package layout keeps the root package small and stable. Format-specific and 
 - `attestation/androidsafetynet`: optional `android-safetynet` attestation verifier;
 - `attestation/apple`: optional `apple` anonymous attestation verifier;
 - `extension`: operation-aware extension handler contract, duplicate-rejecting registry, and built-in WebAuthn Level 2 handlers for `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob`.
+- `tools/checklicenses`: local CI helper that verifies `docs/dependencies.json` covers the current Go module build list.
 
 Optional browser JSON helpers, HTTP helpers, and storage examples are still future work. Feature claims must be added only after matching code and tests exist.

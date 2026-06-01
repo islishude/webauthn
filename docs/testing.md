@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: authentication, attestation, and Level 2 extension coverage started, revised 2026-06-01.
+Status: Plan 08 testing and conformance coverage complete, revised 2026-06-01.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -20,7 +20,7 @@ The required pre-PR command is:
 make ci
 ```
 
-`make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests when fuzz targets exist, and module tidy verification without module-detection skips.
+`make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests, import graph checks, dependency license checks, and module tidy verification without module-detection skips.
 
 ## Test layers
 
@@ -225,13 +225,22 @@ Plan 06 added tests for:
 - authentication `uvm` authenticator output parsing, `largeBlob` client output parsing, and AppID policy mismatch rejection;
 - continued default behavior that unknown or unrequested extension outputs are observable but not accepted as trusted handler results.
 
+Plan 08 added tests and checks for:
+
+- fuzz targets for authenticator data parsing, collected client data parsing, CBOR attestation object decoding, COSE key decoding, authenticator extension map decoding, and browser transport credential descriptor conversion;
+- browser interoperability fixture verification using Playwright 1.60.0 and Chrome DevTools virtual authenticators for platform/discoverable UV-required and roaming allow-credentials username-first flows;
+- real ES256 assertion signature verification for browser fixtures through a test-only standard-library verifier, including tampered signature rejection;
+- regression coverage for malformed COSE key shapes that can panic inside the selected COSE dependency, now reported as `codec/cbor.ErrMalformedCBOR`;
+- explicit import graph and dependency license manifest checks in local and GitHub Actions CI.
+
 ## Fuzzing targets
 
-Fuzzing should be added for:
+Current fuzzing targets are:
 
 - authenticator data parser;
 - client data parser;
 - attestation object decoding boundary;
+- COSE key decoding boundary;
 - extension map decoding boundary;
 - transport DTO base64url conversion;
 - credential descriptor decoding.
@@ -242,20 +251,41 @@ CI fuzzing is a bounded smoke check. Longer fuzz campaigns should be run locally
 
 ## Browser interoperability tests
 
-Collect browser-produced registration and authentication outputs for representative environments when implementation exists:
+Browser-produced registration and authentication outputs are generated specifically for this project by `scripts/generate-browser-fixtures.mjs` through Playwright 1.60.0 and Chrome DevTools virtual authenticators. The committed fixture suite lives under `testdata/browser/virtual-authenticator`.
 
-- platform authenticator with discoverable credential;
-- roaming security key;
-- username-first authentication;
-- discoverable passkey authentication;
-- user verification required and preferred;
-- attestation `none` and direct/enterprise-like flows where available.
+Current fixture coverage:
 
-Fixtures should be generated specifically for this project and documented with browser, OS, authenticator type, and date. Sensitive values must be test-only.
+- platform-style authenticator with discoverable credential and user verification required;
+- roaming-style authenticator with allow-credentials username-first authentication;
+- discoverable passkey-style authentication with a returned user handle;
+- user verification required and preferred flows;
+- `none` attestation returned by browser-created registration ceremonies;
+- assertion signature verification and tampered signature rejection.
+
+Fixtures record source, generation date, Playwright/browser context, authenticator type, and test-only sensitivity metadata. Sensitive values are synthetic and are not production account, credential, authenticator, or private-key material.
+
+Real hardware authenticator fixtures, direct/enterprise attestation browser captures, and broader OS/browser matrix expansion remain release-hardening work after the virtual-authenticator baseline.
 
 ## Conformance tracking
 
-`docs/testing.md` should gain a matrix when implementation starts. Each row should map a W3C relying-party verification step to tests. A stable release requires all P0 and P1 rows to be covered.
+The matrix below maps W3C WebAuthn Level 2 relying-party operation groups to repository tests. The rows are grouped by observable server-side behavior rather than quoting the specification step text.
+
+| W3C relying-party operation area                                                                     | Coverage                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Registration response type and shape validation                                                      | `TestRegistrationFinishRejectsInvalidInputs`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                         |
+| Registration collected client data type, challenge, origin, cross-origin, and token binding checks   | `TestRegistrationFinishRejectsInvalidInputs`, `TestParseCollectedClientData`, `FuzzParseCollectedClientData`                                                                          |
+| Registration attestation object decoding and authenticator data parsing                              | `TestDecoderDecodesAttestationObject`, `TestParseAuthenticatorDataWithAttestedCredentialData`, `FuzzDecodeAttestationObject`, `FuzzParseAuthenticatorData`                            |
+| Registration RP ID hash, UP, UV, credential ID, and algorithm checks                                 | `TestRegistrationFinishRejectsInvalidInputs`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                         |
+| Registration extension output handling                                                               | `TestRegistrationLevel2CredPropsExtension`, `TestRegistrationUnknownExtensionPolicy`, `TestRegistrationUnrequestedKnownExtensionOutputIsUntrusted`, `extension` Level 2 handler tests |
+| Registration attestation format and trust policy dispatch                                            | Attestation format package tests, `TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation`, `TestRegistrationBuiltInAttestationTrustPolicies`                                |
+| Registration credential uniqueness and persistence-ready result construction                         | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationWithNoneAttestation`                                                                                                   |
+| Authentication allow-credentials and credential/user-handle ownership checks                         | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationUsernameFirst`, `TestAuthenticationDiscoverable`, `TestBrowserVirtualAuthenticatorFixturesVerify`                        |
+| Authentication collected client data type, challenge, origin, cross-origin, and token binding checks | `TestAuthenticationRejectsInvalidInputs`, `FuzzParseCollectedClientData`                                                                                                              |
+| Authentication RP ID hash and AppID extension behavior                                               | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`                                    |
+| Authentication UP, UV, extension output, and signature verification                                  | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationLevel2UVMExtension`, `TestAuthenticationLevel2LargeBlobExtension`, `TestBrowserVirtualAuthenticatorFixturesVerify`       |
+| Authentication sign counter and clone-risk behavior                                                  | `TestAuthenticationCounterPolicy`, `TestAuthenticationRejectsInvalidInputs`                                                                                                           |
+| Parser and transport boundary robustness                                                             | `FuzzParseAuthenticatorData`, `FuzzDecodeCredentialPublicKey`, `FuzzDecodeBrowserCredentialDescriptor`, `TestDecoderCredentialPublicKeyRejectsMalformedDependencyShape`               |
+| Root modularity and dependency hygiene                                                               | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`                                                                                 |
 
 ## Continuous integration expectations
 
@@ -271,7 +301,7 @@ Before release, CI should run:
 - race-enabled tests for state-free components where practical;
 - fuzz smoke tests with bounded time;
 - dependency license checks;
-- examples build checks;
 - import graph checks proving root package does not import optional attestation packages.
+- examples build checks once examples exist.
 
-The initial workflow includes the first seven categories that can be expressed before implementation. Dependency license checks, examples build checks, and import graph checks must be added when the corresponding files and packages exist.
+The workflow now includes documentation/config checks, line-ending checks, formatting checks, static analysis, unit tests, race tests, bounded fuzz smoke tests, dependency license checks, and import graph checks. Example build checks remain Plan 09 scope because examples and optional adapters do not exist yet.

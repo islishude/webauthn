@@ -4,10 +4,12 @@ GOLANGCI_LINT ?= golangci-lint
 PRETTIER ?= npx -y prettier
 GOFLAGS ?=
 FUZZTIME ?= 10s
+PLAYWRIGHT_VERSION ?= 1.60.0
+PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*')
 
-.PHONY: help format format-check lint test test-race test-fuzz-smoke mod-check ci-docs ci
+.PHONY: help format format-check lint test test-race test-fuzz-smoke import-graph-check license-check browser-fixtures mod-check ci-docs ci
 
 help:
 	@echo 'Targets:'
@@ -16,7 +18,10 @@ help:
 	@echo '  make lint             - run golangci-lint'
 	@echo '  make test             - run go test ./...'
 	@echo '  make test-race        - run go test -race ./...'
-	@echo '  make test-fuzz-smoke  - run bounded fuzz targets when fuzz tests exist'
+	@echo '  make test-fuzz-smoke  - run each bounded fuzz target separately'
+	@echo '  make import-graph-check - verify root import graph boundaries'
+	@echo '  make license-check    - verify dependency license manifest coverage'
+	@echo '  make browser-fixtures - regenerate virtual-authenticator browser fixtures'
 	@echo '  make mod-check        - run go mod tidy and verify go.mod/go.sum are clean'
 	@echo '  make ci               - run the local CI gate'
 
@@ -40,7 +45,39 @@ test-race:
 	$(GO) test $(GOFLAGS) -race ./...
 
 test-fuzz-smoke:
-	@if ! grep -R "^func Fuzz" --include='*_test.go' . >/dev/null 2>&1; then echo 'test-fuzz-smoke: no fuzz targets found'; else $(GO) test $(GOFLAGS) ./... -run '^$$' -fuzz=. -fuzztime=$(FUZZTIME); fi
+	@if ! grep -R "^func Fuzz" --include='*_test.go' . >/dev/null 2>&1; then \
+		echo 'test-fuzz-smoke: no fuzz targets found'; \
+	else \
+		grep -R -n "^func Fuzz" --include='*_test.go' . | while IFS=: read -r file _ rest; do \
+			dir=$$(dirname "$$file"); \
+			pkg="./$${dir#./}"; \
+			if [ "$$pkg" = "./." ]; then pkg="."; fi; \
+			name=$$(printf '%s\n' "$$rest" | sed -E 's/^func (Fuzz[[:alnum:]_]*)\(.*$$/\1/'); \
+			echo "test-fuzz-smoke: $$pkg $$name"; \
+			$(GO) test $(GOFLAGS) "$$pkg" -run '^$$' -fuzz "^$$name$$" -fuzztime=$(FUZZTIME) || exit $$?; \
+		done; \
+	fi
+
+import-graph-check:
+	@deps="$$(GOWORK=off $(GO) list -deps .)"; \
+	for dep in $$deps; do \
+		case "$$dep" in \
+			net/http|github.com/islishude/webauthn/attestation/*|github.com/islishude/webauthn/transport*|github.com/islishude/webauthn/browser*|github.com/islishude/webauthn/http*) \
+				echo "import-graph-check: forbidden root dependency $$dep"; \
+				exit 1; \
+				;; \
+		esac; \
+	done; \
+	echo 'import-graph-check: root package import graph is within documented boundaries'
+
+license-check:
+	$(GO) run ./tools/checklicenses -manifest docs/dependencies.json
+
+browser-fixtures:
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	npm --prefix "$$tmp" install --silent --no-audit --no-fund playwright@$(PLAYWRIGHT_VERSION); \
+	PLAYWRIGHT_MODULE_DIR="$$tmp/node_modules" PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(PLAYWRIGHT_CHROMIUM_EXECUTABLE)" node scripts/generate-browser-fixtures.mjs
 
 mod-check:
 	$(GO) mod tidy
@@ -55,6 +92,7 @@ ci-docs:
 	@test -f docs/security-model.md
 	@test -f docs/testing.md
 	@test -f docs/ci.md
+	@test -f docs/dependencies.json
 	@test -f docs/plans.md
 	@test -f docs/plans/00-governance-and-boundaries.md
 	@test -f docs/plans/01-quality-gates-and-ci.md
@@ -71,4 +109,4 @@ ci-docs:
 	@test -f .gitattributes
 	@echo 'ci-docs: required docs and quality configuration are present'
 
-ci: ci-docs format-check lint test test-race test-fuzz-smoke mod-check
+ci: ci-docs format-check lint test test-race test-fuzz-smoke import-graph-check license-check mod-check

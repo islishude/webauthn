@@ -98,3 +98,9 @@ jobs:
 
       - name: Fuzz smoke tests
         run: make test-fuzz-smoke
+
+      - name: Import graph check
+        run: make import-graph-check
+
+      - name: Dependency license check
+        run: make license-check

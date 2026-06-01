@@ -1,6 +1,6 @@
 # Local and GitHub Actions quality workflow
 
-Status: mandatory Go module configuration, revised 2026-05-31.
+Status: conformance checks active, revised 2026-06-01.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
@@ -52,19 +52,22 @@ golangci-lint version
 
 Run these commands from the repository root.
 
-| Command                | Purpose                                                                                 | Mutates files                        |
-| ---------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| `make format`          | Run `gofmt -w` on Go files, `golangci-lint fmt ./...`, and `npx -y prettier --write .`. | Yes                                  |
-| `make format-check`    | Fail if Go files are not `gofmt` formatted or `npx -y prettier --check .` fails.        | No                                   |
-| `make lint`            | Run `golangci-lint run ./...`.                                                          | No                                   |
-| `make test`            | Run `go test ./...`.                                                                    | No                                   |
-| `make test-race`       | Run `go test -race ./...`.                                                              | No                                   |
-| `make test-fuzz-smoke` | Run bounded fuzz targets when fuzz tests exist.                                         | No                                   |
-| `make mod-check`       | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
-| `make ci-docs`         | Verify required documentation and quality config files exist.                           | No                                   |
-| `make ci`              | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
+| Command                   | Purpose                                                                                 | Mutates files                        |
+| ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
+| `make format`             | Run `gofmt -w` on Go files, `golangci-lint fmt ./...`, and `npx -y prettier --write .`. | Yes                                  |
+| `make format-check`       | Fail if Go files are not `gofmt` formatted or `npx -y prettier --check .` fails.        | No                                   |
+| `make lint`               | Run `golangci-lint run ./...`.                                                          | No                                   |
+| `make test`               | Run `go test ./...`.                                                                    | No                                   |
+| `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
+| `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
+| `make import-graph-check` | Verify the root package does not import forbidden optional/transport packages.          | No                                   |
+| `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
+| `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Yes                                  |
+| `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
+| `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                                   |
+| `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
 
-`make ci` is the required pre-PR command. It runs formatting, linting, unit tests, race tests, fuzz smoke tests, and module hygiene.
+`make ci` is the required pre-PR command. It runs formatting, linting, unit tests, race tests, fuzz smoke tests, import graph checks, dependency license checks, and module hygiene.
 
 ## Formatting policy
 
@@ -88,8 +91,10 @@ The test gate has four layers:
 
 1. `go test ./...` for ordinary unit and integration tests.
 2. `go test -race ./...` for race detection on stateless and shared-state code.
-3. bounded fuzz smoke tests for parser and transport-conversion fuzz targets once they exist.
-4. module tidy verification to prevent accidental dependency drift.
+3. bounded fuzz smoke tests for parser and transport-conversion fuzz targets.
+4. import graph verification that the root package remains independent of optional attestation and transport helpers.
+5. dependency license manifest verification.
+6. module tidy verification to prevent accidental dependency drift.
 
 Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. They are a CI tripwire for obvious parser crashes and regressions.
 
@@ -101,9 +106,11 @@ The workflow has three jobs:
 
 1. `docs-and-config` always runs. It calls `make ci-docs` and checks LF line endings for Markdown, YAML, and Makefile text files.
 2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
-3. `test` runs after `docs-and-config`. It sets up Go and Node.js, then runs `make format-check`, `make test`, `make test-race`, `make test-fuzz-smoke`, and `make mod-check`.
+3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
 
 The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, or module-tidy drift are CI failures.
+
+The lint job continues to run `make mod-check`, `make lint`, and `make format-check` after setting up Go and Node.js.
 
 ## Adding or changing checks
 
@@ -117,3 +124,5 @@ Any change to quality gates must update all of these files in the same change:
 - `docs/plans.md` and the relevant `docs/plans/*.md` file when a plan status or scope changes.
 
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
+
+Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it requires Playwright and a Chromium/Chrome executable and is an explicit developer action through `make browser-fixtures`.

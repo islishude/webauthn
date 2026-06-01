@@ -80,7 +80,14 @@ func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec
 
 // DecodeCredentialPublicKey decodes the first CBOR item as a COSE_Key and
 // stores only the consumed COSE_Key bytes in the returned Raw value.
-func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicKey, error) {
+func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.CredentialPublicKey, err error) {
+	defer func() {
+		if recover() != nil {
+			decoded = codec.CredentialPublicKey{}
+			err = fmt.Errorf("%w: malformed cose key", ErrMalformedCBOR)
+		}
+	}()
+
 	var key cosekey.Key
 	rest, err := d.mode.UnmarshalFirst(raw, &key)
 	if err != nil {

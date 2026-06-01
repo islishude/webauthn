@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: Not started.
+Status: Complete, 2026-06-01.
 
 ## Purpose
 
@@ -52,3 +52,29 @@ Build confidence that the implementation follows WebAuthn Level 2 relying-party 
 ## Completion update requirements
 
 When complete, update `docs/plans.md`, this file, `docs/testing.md`, `docs/ci.md`, and README feature status.
+
+## Completion update
+
+Completed on 2026-06-01.
+
+Delivered files/packages:
+
+- Added fuzz targets for authenticator data parsing, collected client data parsing, CBOR attestation object decoding, COSE key decoding, authenticator extension map decoding, and test-only browser transport credential descriptor conversion.
+- Added a Playwright 1.60.0 virtual-authenticator fixture generator and committed generated browser interoperability fixtures under `testdata/browser/virtual-authenticator`.
+- Added browser fixture verification tests covering platform/discoverable UV-required registration and authentication, roaming allow-credentials username-first authentication, and tampered assertion signature rejection through a test-only ES256 verifier.
+- Added explicit `make import-graph-check` and `make license-check` targets, a dependency license manifest, and GitHub Actions steps for both checks.
+- Hardened the optional CBOR/COSE adapter so malformed COSE key shapes that panic inside the dependency are reported as `codec/cbor.ErrMalformedCBOR`.
+- Documented W3C relying-party conformance coverage in `docs/testing.md`.
+
+Tests:
+
+- `go test ./...`
+- `make test-fuzz-smoke FUZZTIME=1s`
+- `make import-graph-check`
+- `make license-check`
+
+Scope changes:
+
+- Browser interoperability fixtures use Chrome DevTools virtual authenticators, not hardware authenticators.
+- No external public conformance dataset was imported; dependency license review covers Go module dependencies only.
+- Example build checks remain in Plan 09 because public examples and optional adapters do not exist yet.

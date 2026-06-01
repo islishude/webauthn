@@ -1,0 +1,88 @@
+{
+  "modules": [
+    {
+      "path": "github.com/davecgh/go-spew",
+      "version": "v1.1.1",
+      "license": "ISC",
+      "scope": "indirect test/dependency graph",
+      "notes": "Pulled through dependency test utilities; not part of the root public API."
+    },
+    {
+      "path": "github.com/fxamacker/cbor/v2",
+      "version": "v2.9.2",
+      "license": "MIT",
+      "scope": "optional codec/cbor package",
+      "notes": "Decodes WebAuthn attestation objects, authenticator extension maps, and COSE_Key structures behind codec interfaces."
+    },
+    {
+      "path": "github.com/ldclabs/cose",
+      "version": "v1.3.4",
+      "license": "MIT",
+      "scope": "optional codec/cbor package",
+      "notes": "Provides COSE_Key decoding support behind codec.COSEKeyDecoder."
+    },
+    {
+      "path": "github.com/pmezard/go-difflib",
+      "version": "v1.0.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect test/dependency graph",
+      "notes": "Pulled through dependency test utilities; not part of the root public API."
+    },
+    {
+      "path": "github.com/stretchr/testify",
+      "version": "v1.11.1",
+      "license": "MIT",
+      "scope": "indirect test/dependency graph",
+      "notes": "Pulled through dependency test utilities; not part of the root public API."
+    },
+    {
+      "path": "github.com/x448/float16",
+      "version": "v0.8.4",
+      "license": "MIT",
+      "scope": "indirect codec/cbor dependency",
+      "notes": "Supports CBOR float16 handling in the selected CBOR dependency."
+    },
+    {
+      "path": "golang.org/x/crypto",
+      "version": "v0.49.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect cose dependency",
+      "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
+    },
+    {
+      "path": "golang.org/x/net",
+      "version": "v0.51.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect dependency graph",
+      "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
+    },
+    {
+      "path": "golang.org/x/sys",
+      "version": "v0.42.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect cose dependency",
+      "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
+    },
+    {
+      "path": "golang.org/x/term",
+      "version": "v0.41.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect dependency graph",
+      "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
+    },
+    {
+      "path": "golang.org/x/text",
+      "version": "v0.35.0",
+      "license": "BSD-3-Clause",
+      "scope": "indirect dependency graph",
+      "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
+    },
+    {
+      "path": "gopkg.in/yaml.v3",
+      "version": "v3.0.1",
+      "license": "MIT OR Apache-2.0",
+      "scope": "indirect test/dependency graph",
+      "notes": "Pulled through dependency test utilities; not part of the root public API."
+    }
+  ]
+}

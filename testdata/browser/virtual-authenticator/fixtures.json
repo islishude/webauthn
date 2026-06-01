@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "source": "Generated specifically for github.com/islishude/webauthn by scripts/generate-browser-fixtures.mjs.",
+    "generatedAt": "2026-06-01",
+    "generator": "Playwright 1.60.0 with Chrome DevTools WebAuthn virtual authenticators",
+    "browserVersion": "148.0.7778.216",
+    "normativeContext": "W3C Web Authentication Level 2 relying-party registration and authentication operations.",
+    "sensitivity": "test-only synthetic credentials; no production account, credential, authenticator, or private-key material is included intentionally.",
+    "externalConformanceData": "none"
+  },
+  "fixtures": [
+    {
+      "name": "platform-discoverable-uv-required",
+      "description": "Platform-style CTAP2 authenticator with resident key and UV-required discoverable authentication.",
+      "rpID": "webauthn.test",
+      "origin": "https://webauthn.test",
+      "flow": "discoverable",
+      "authenticator": {
+        "protocol": "ctap2",
+        "transport": "internal",
+        "hasResidentKey": true,
+        "hasUserVerification": true,
+        "isUserVerified": true
+      },
+      "user": {
+        "id": "cGxhdGZvcm0tdXNlci0x",
+        "name": "platform-user-1@example.test",
+        "displayName": "Platform User"
+      },
+      "registration": {
+        "challenge": "cGxhdGZvcm0tZGlzY292ZXJhYmxlLXV2LXJlcXVpcmVkOnJlZ2lzdHJhdGlvbjpjaGFsbGVuZ2U",
+        "userVerification": "required",
+        "authenticatorSelection": {
+          "authenticatorAttachment": "platform",
+          "residentKey": "required",
+          "requireResidentKey": true,
+          "userVerification": "required"
+        },
+        "type": "public-key",
+        "id": "Hc_AM9SF3D-3JupYA0SmMQqEFWWtTRMfYjUC4irzF0o",
+        "rawID": "Hc_AM9SF3D-3JupYA0SmMQqEFWWtTRMfYjUC4irzF0o",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiY0d4aGRHWnZjbTB0WkdselkyOTJaWEpoWW14bExYVjJMWEpsY1hWcGNtVmtPbkpsWjJsemRISmhkR2x2YmpwamFHRnNiR1Z1WjJVIiwib3JpZ2luIjoiaHR0cHM6Ly93ZWJhdXRobi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViksGUwV9kJFHXx7A8hO9-OjXlhoKsvdD_6fF7CP1kGgVhFAAAAAQECAwQFBgcIAQIDBAUGBwgAIB3PwDPUhdw_tybqWANEpjEKhBVlrU0TH2I1AuIq8xdKpQECAyYgASFYIFXQZSn6C6bGYmu8r20DQFQcEw2KTmXjBrqLTAXJptEYIlggA65pxM3-ioaOEP2qFAvRoz_lRcsEyMr4-grYEOk7E-0",
+        "transports": ["internal"],
+        "clientExtensionResults": {}
+      },
+      "authentication": {
+        "challenge": "cGxhdGZvcm0tZGlzY292ZXJhYmxlLXV2LXJlcXVpcmVkOmF1dGhlbnRpY2F0aW9uOmNoYWxsZW5nZQ",
+        "userVerification": "required",
+        "allowCredentials": false,
+        "type": "public-key",
+        "id": "Hc_AM9SF3D-3JupYA0SmMQqEFWWtTRMfYjUC4irzF0o",
+        "rawID": "Hc_AM9SF3D-3JupYA0SmMQqEFWWtTRMfYjUC4irzF0o",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiY0d4aGRHWnZjbTB0WkdselkyOTJaWEpoWW14bExYVjJMWEpsY1hWcGNtVmtPbUYxZEdobGJuUnBZMkYwYVc5dU9tTm9ZV3hzWlc1blpRIiwib3JpZ2luIjoiaHR0cHM6Ly93ZWJhdXRobi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvdGhlcl9rZXlzX2Nhbl9iZV9hZGRlZF9oZXJlIjoiZG8gbm90IGNvbXBhcmUgY2xpZW50RGF0YUpTT04gYWdhaW5zdCBhIHRlbXBsYXRlLiBTZWUgaHR0cHM6Ly9nb28uZ2wveWFiUGV4In0",
+        "authenticatorData": "sGUwV9kJFHXx7A8hO9-OjXlhoKsvdD_6fF7CP1kGgVgFAAAAAg",
+        "signature": "MEQCIE8s252Al5avthT8WpdlFTuGEX3Ex-lh2s_W3vuyOd17AiBAWIoLNmQtrfMAYLVsIXuFN_RVhd1AWAxHY6egWvud3Q",
+        "userHandle": "cGxhdGZvcm0tdXNlci0x",
+        "clientExtensionResults": {}
+      }
+    },
+    {
+      "name": "roaming-allow-credentials-username-first",
+      "description": "Roaming-style CTAP2 authenticator verified through an allowCredentials username-first flow.",
+      "rpID": "webauthn.test",
+      "origin": "https://webauthn.test",
+      "flow": "username-first",
+      "authenticator": {
+        "protocol": "ctap2",
+        "transport": "usb",
+        "hasResidentKey": false,
+        "hasUserVerification": false,
+        "isUserVerified": false
+      },
+      "user": {
+        "id": "cm9hbWluZy11c2VyLTE",
+        "name": "roaming-user-1@example.test",
+        "displayName": "Roaming User"
+      },
+      "registration": {
+        "challenge": "cm9hbWluZy1hbGxvdy1jcmVkZW50aWFscy11c2VybmFtZS1maXJzdDpyZWdpc3RyYXRpb246Y2hhbGxlbmdl",
+        "userVerification": "preferred",
+        "authenticatorSelection": {
+          "authenticatorAttachment": "cross-platform",
+          "residentKey": "discouraged",
+          "requireResidentKey": false,
+          "userVerification": "preferred"
+        },
+        "type": "public-key",
+        "id": "NossA1j1BG6Kkd3sRYN34QTOGpTENyNwTkqoXXjask4",
+        "rawID": "NossA1j1BG6Kkd3sRYN34QTOGpTENyNwTkqoXXjask4",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiY205aGJXbHVaeTFoYkd4dmR5MWpjbVZrWlc1MGFXRnNjeTExYzJWeWJtRnRaUzFtYVhKemREcHlaV2RwYzNSeVlYUnBiMjQ2WTJoaGJHeGxibWRsIiwib3JpZ2luIjoiaHR0cHM6Ly93ZWJhdXRobi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViksGUwV9kJFHXx7A8hO9-OjXlhoKsvdD_6fF7CP1kGgVhBAAAAAQAAAAAAAAAAAAAAAAAAAAAAIDaLLANY9QRuipHd7EWDd-EEzhqUxDcjcE5KqF142rJOpQECAyYgASFYIH7vzs-v_v3cEWRKZ6TUajiOk7ZqAE28YihOS8vOolATIlggxtn2IpkDUk0DCl7KLgfRBypH8Edhg39Q1kyJzevQEbQ",
+        "transports": ["usb"],
+        "clientExtensionResults": {}
+      },
+      "authentication": {
+        "challenge": "cm9hbWluZy1hbGxvdy1jcmVkZW50aWFscy11c2VybmFtZS1maXJzdDphdXRoZW50aWNhdGlvbjpjaGFsbGVuZ2U",
+        "userVerification": "preferred",
+        "allowCredentials": true,
+        "type": "public-key",
+        "id": "NossA1j1BG6Kkd3sRYN34QTOGpTENyNwTkqoXXjask4",
+        "rawID": "NossA1j1BG6Kkd3sRYN34QTOGpTENyNwTkqoXXjask4",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiY205aGJXbHVaeTFoYkd4dmR5MWpjbVZrWlc1MGFXRnNjeTExYzJWeWJtRnRaUzFtYVhKemREcGhkWFJvWlc1MGFXTmhkR2x2YmpwamFHRnNiR1Z1WjJVIiwib3JpZ2luIjoiaHR0cHM6Ly93ZWJhdXRobi50ZXN0IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+        "authenticatorData": "sGUwV9kJFHXx7A8hO9-OjXlhoKsvdD_6fF7CP1kGgVgBAAAAAg",
+        "signature": "MEYCIQCSLo8A31J_9o43b7UU0YcQiUuok1Xmwx46tRi6P67jzgIhAMaXy7gXXUc6-vJoEd8P8HOJBVkDPItY162R2sNaLGKQ",
+        "userHandle": "",
+        "clientExtensionResults": {}
+      }
+    }
+  ]
+}

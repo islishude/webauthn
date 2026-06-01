@@ -28,7 +28,7 @@ When a plan is completed, update this file and the corresponding plan file in th
 | 05    | [Modular attestation formats](plans/05-attestation-formats.md)                     | P1       | Complete, 2026-05-31         | Implement optional attestation formats; all WebAuthn Level 2 format verifiers are delivered as optional packages.   |
 | 06    | [Extension framework and Level 2 extensions](plans/06-extensions.md)               | P1       | Complete, 2026-06-01         | Implement extension input/output handling and Level 2 extension semantics.                                          |
 | 07    | [Trust policy and metadata integration](plans/07-trust-policy-and-metadata.md)     | P1       | Complete, 2026-06-01         | Add explicit attestation trust policy building blocks, metadata hooks, AAGUID policy, and certificate status hooks. |
-| 08    | [Testing and conformance](plans/08-testing-and-conformance.md)                     | P1       | Not started                  | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                              |
+| 08    | [Testing and conformance](plans/08-testing-and-conformance.md)                     | P1       | Complete, 2026-06-01         | Build protocol, ceremony, attestation, extension, fuzz, and interoperability coverage.                              |
 | 09    | [Adapters, examples, and release hardening](plans/09-adapters-examples-release.md) | P2       | Not started                  | Add optional transport helpers, examples, import graph checks, CI example builds, and release documentation.        |
 
 ## Release gates
