@@ -1,128 +1,208 @@
 # webauthn
 
-`github.com/islishude/webauthn` is planned as a Go server-side library for WebAuthn/passkey relying-party behavior.
+`github.com/islishude/webauthn` is a Go server-side WebAuthn/passkey
+relying-party library.
 
-Current status: Plan 09 is complete. Registration and authentication ceremony behavior is implemented; registration supports the `none` attestation path, optional `packed` self/x5c, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` attestation verification; caller-supplied attestation trust policies, trust-root checks, metadata hooks, certificate-status hooks, AAGUID allow-lists, WebAuthn Level 2 extension handlers, browser JSON DTO helpers, optional standard-library HTTP JSON helpers, compile-checked examples, conformance-oriented tests, fuzz smoke targets, browser virtual-authenticator fixtures, import graph checks, dependency license checks, README checks, and release documentation are available.
+The core package is intentionally framework-neutral. It creates and verifies
+registration and authentication ceremonies, then returns credential records,
+counter updates, attestation results, extension results, and policy outcomes for
+the application to persist in its own storage.
 
-## Goals
+Current status: implementation is complete through Plan 09. The repository has
+transport-neutral registration and authentication APIs, optional attestation
+format packages, WebAuthn Level 2 extension handlers, optional browser JSON and
+standard-library HTTP helpers, compile-checked examples, conformance-oriented
+tests, fuzz smoke targets, import graph checks, dependency license checks, and
+release documentation.
 
-The library is designed to make WebAuthn easy to add to existing Go services without coupling the core to `net/http`, a specific web framework, a database layer, or a session mechanism.
+The release checklist is tracked in `docs/release.md`.
 
-The root module will focus on WebAuthn relying-party ceremonies:
+## What It Provides
 
-- create registration options;
-- verify registration responses;
-- create authentication options;
-- verify authentication assertions;
-- return credential records, counter updates, attestation results, and policy decisions that an application can persist in its own storage.
+The root package supports the relying-party ceremony flow:
 
-The implementation must support complete WebAuthn Level 2 relying-party protocol behavior before a stable release. Passkey use cases are covered through WebAuthn discoverable credentials, user handles, user verification policy, authenticator selection, and browser-facing option structures.
+1. Create registration options.
+2. Verify registration responses.
+3. Create authentication options.
+4. Verify authentication assertions.
+5. Return persistence-ready credential and counter state.
 
-## Design constraints
+Implemented areas:
 
-The project deliberately avoids implementing foundational cryptography and encoding libraries. It may implement WebAuthn-specific structure parsing and validation, but general-purpose CBOR, COSE, ASN.1, JWS, X.509, JSON, base64url, and cryptographic primitives must come from Go standard library packages, explicit dependencies, or injected interfaces.
+| Area                | Status                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Registration        | Transport-neutral start and finish APIs.                                                                               |
+| Authentication      | Username-first and discoverable credential/passkey flows.                                                              |
+| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, `android-safetynet`, and `apple` packages.                |
+| Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules. |
+| Extensions          | WebAuthn Level 2 `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob` handling.                                |
+| Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields.                 |
+| HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                          |
+| Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                       |
+| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.      |
 
-The core package must stay transport-neutral. Optional browser and HTTP helpers live outside the root package, so the core API remains usable from any HTTP router, RPC service, command flow, test harness, or custom integration.
+## Design Principles
 
-Attestation support must be modular. Importing the root module should not import every attestation verifier. Applications should select the formats they accept, such as `none`, `packed`, `tpm`, `android-key`, `android-safetynet`, `fido-u2f`, and `apple`, according to their policy and dependency appetite.
+The library is built around a few constraints that are enforced by tests and CI:
 
-No public WebAuthn/passkey library implementation may be used, copied, translated, adapted, or referenced as source material.
+- the root package does not depend on `net/http`, routers, sessions, cookies,
+  CSRF mechanisms, account lookup, databases, or persistence adapters;
+- applications supply trusted origins, RP IDs, stored ceremony state, user
+  bindings, credential storage, rate limits, sessions, and audit behavior;
+- WebAuthn byte values stay byte-oriented in the core API, while browser JSON
+  conversion lives in optional packages;
+- attestation formats are selected explicitly by the caller and are not imported
+  automatically by the root package;
+- attestation statement validity and relying-party trust acceptance are separate
+  results;
+- foundational cryptography and codecs are delegated to the Go standard library,
+  explicit dependencies, or injected interfaces instead of being reimplemented
+  here.
 
-## Local development workflow
+No implementation logic or tests may be copied, translated, adapted, or derived
+from public WebAuthn/passkey libraries. Protocol behavior is based on W3C Web
+Authentication Level 2, with MDN used only for browser-facing context and
+terminology.
 
-The repository quality gate is active for the Go module.
+## Package Layout
 
-Use these commands from the repository root:
+The package graph is designed so applications only import what they need:
 
-- `make format` rewrites Go and Markdown formatting.
-- `make format-check` verifies Go and Markdown formatting.
-- `make lint` runs golangci-lint.
-- `make test` runs unit tests.
-- `make test-race` runs race-enabled tests.
-- `make test-fuzz-smoke` runs each bounded fuzz target separately.
-- `make example-build` builds public examples.
-- `make import-graph-check` verifies root package dependency boundaries.
-- `make license-check` verifies Go module dependency license manifest coverage.
-- `make readme-check` verifies README references compile-checked examples.
-- `make browser-fixtures` regenerates Playwright/Chrome virtual-authenticator interoperability fixtures.
-- `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
-- `make ci` runs the local equivalent of the default CI gate.
+- root `webauthn`: registration and authentication ceremony APIs;
+- `protocol`: WebAuthn values, option dictionaries, collected client data, and
+  authenticator data parsing;
+- `codec`: CBOR attestation object, COSE key, and extension map decoder
+  contracts;
+- `codec/cbor`: optional concrete CBOR and COSE_Key decoder;
+- `crypto`: hashing, signature, certificate-chain, and JWS/JWT verifier
+  contracts;
+- `attestation`: format verifier registry and trust policy contracts;
+- `attestation/none`: optional `none` verifier;
+- `attestation/packed`: optional `packed` self and x5c verifier;
+- `attestation/fidou2f`: optional `fido-u2f` verifier;
+- `attestation/tpm`: optional `tpm` verifier;
+- `attestation/androidkey`: optional `android-key` verifier;
+- `attestation/androidsafetynet`: optional `android-safetynet` verifier;
+- `attestation/apple`: optional Apple anonymous attestation verifier;
+- `extension`: operation-aware extension handler registry and Level 2 handlers;
+- `browser`: optional browser JSON DTO conversion helpers;
+- `transport/http`: optional standard-library HTTP JSON helpers;
+- `tools/checklicenses`: local dependency manifest checker.
 
-Plan 02 created `go.mod`; the current module records minimum Go version `1.25.0`. Go-oriented targets are now mandatory in the local quality gate.
-
-## CI workflow
-
-GitHub Actions configuration lives in `.github/workflows/ci.yml`.
-
-The default workflow runs documentation/config checks, Go lint, Go tests, race tests, fuzz smoke tests, root import graph checks, and dependency license checks without module-detection conditionals. The lint job uses `golangci/golangci-lint-action` with the pinned version recorded in the workflow; formatter and linter behavior is configured in `.golangci.yml`.
-
-The workflow also builds public examples and verifies README references point to compile-checked examples rather than untested inline Go snippets.
-
-The CI and local workflow are documented in `docs/ci.md`.
-
-## Planned documentation map
-
-- `docs/technical.md` describes the target architecture and internal boundaries.
-- `docs/protocol-map.md` maps WebAuthn Level 2 protocol areas to planned library components.
-- `docs/api-boundaries.md` defines the transport-neutral public API shape and module boundaries.
-- `docs/security-model.md` records security and privacy policy decisions.
-- `docs/testing.md` defines the test and conformance strategy.
-- `docs/ci.md` defines local format/lint/test commands and GitHub Actions CI behavior.
-- `docs/release.md` defines the release checklist and Plan 09 release-hardening notes.
-- `docs/plans.md` is the top-level implementation plan index.
-- `docs/plans/*.md` contains prioritized execution plans. When a plan is completed, both the plan file and `docs/plans.md` must be updated.
-
-## Feature matrix
-
-| Area                        | Status                                                                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Registration ceremonies     | Implemented in the root package with transport-neutral start/finish APIs.                                               |
-| Authentication ceremonies   | Implemented in the root package, including username-first and discoverable credential flows.                            |
-| Attestation formats         | Implemented as optional packages; the root package imports none of them automatically.                                  |
-| Attestation trust policy    | Implemented through explicit caller-selected policy building blocks.                                                    |
-| WebAuthn Level 2 extensions | Implemented in `extension`, including AppID, AppID exclusion, UVM, credential properties, and largeBlob.                |
-| Browser JSON DTOs           | Implemented in `browser` with unpadded base64url transport conversion.                                                  |
-| HTTP JSON helpers           | Implemented in `transport/http`; helpers read/write JSON only and do not manage sessions, cookies, or DB.               |
-| Examples                    | Compile-checked examples live under `examples/manual`, `examples/http`, `examples/passkey`, and `examples/attestation`. |
-| Release checklist           | Tracked in `docs/release.md`.                                                                                           |
-
-## Package philosophy
-
-The package layout keeps the root package small and stable. Format-specific and adapter-specific code lives outside the root package. Current packages are:
-
-- root package: registration and authentication start/finish APIs plus module documentation;
-- `protocol`: WebAuthn option dictionaries, DOMString-like values, collected client data parsing, authenticator data parsing, and byte-safe protocol values;
-- `codec`: narrow contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding;
-- `codec/cbor`: optional concrete CBOR and COSE_Key decoder using explicit dependencies;
-- `crypto`: narrow contracts for hashing, algorithm policy, signature verification, X.509 chain verification, and JWS/JWT handoff;
-- `attestation`: format verifier contract, duplicate-rejecting registry, trust policy contract, and explicit built-in trust policy building blocks;
-- `attestation/none`: optional `none` attestation verifier;
-- `attestation/packed`: optional `packed` attestation verifier for self and x5c paths;
-- `attestation/fidou2f`: optional `fido-u2f` attestation verifier;
-- `attestation/tpm`: optional `tpm` attestation verifier;
-- `attestation/androidkey`: optional `android-key` attestation verifier;
-- `attestation/androidsafetynet`: optional `android-safetynet` attestation verifier;
-- `attestation/apple`: optional `apple` anonymous attestation verifier;
-- `extension`: operation-aware extension handler contract, duplicate-rejecting registry, and built-in WebAuthn Level 2 handlers for `appid`, `appidExclude`, `uvm`, `credProps`, and `largeBlob`.
-- `tools/checklicenses`: local CI helper that verifies `docs/dependencies.json` covers the current Go module build list.
-- `browser`: optional browser JSON DTO conversion helpers using unpadded base64url for WebAuthn binary fields.
-- `transport/http`: optional standard-library HTTP JSON read/write helpers for applications that already manage routing, sessions, and persistence.
+The root package import graph must not include `net/http`, `browser`,
+`transport/http`, or optional attestation format packages.
 
 ## Examples
 
 Public examples are compiled by `make example-build` and by CI:
 
-- `examples/manual` shows framework-neutral registration and authentication wiring with caller-owned state and credential storage.
-- `examples/http` shows use of the optional `transport/http` JSON helpers with `net/http`.
-- `examples/passkey` shows discoverable credential authentication, where the application looks up a credential by returned user handle and credential ID before verification.
-- `examples/attestation` shows explicit selected attestation format imports and restricted enrollment trust policy composition.
+- `examples/manual` shows framework-neutral registration and authentication
+  wiring with caller-owned ceremony state and credential storage.
+- `examples/http` shows how to use the optional `transport/http` JSON helpers
+  with `net/http`.
+- `examples/passkey` shows discoverable credential authentication, including
+  lookup by returned user handle and credential ID before verification.
+- `examples/attestation` shows explicit attestation format selection and a
+  restricted enrollment trust policy.
 
-## Security considerations
+The README intentionally points to compile-checked examples instead of carrying
+untested Go snippets.
 
-The root package never infers trusted origins from HTTP request headers and does not create sessions, cookies, or database records. Applications must store ceremony state server-side, enforce single use and expiry, map user handles to accounts, persist credential counter updates, rate-limit endpoints, and provide their own session and CSRF protections.
+## Security Model
 
-The optional `transport/http` package intentionally writes generic error JSON and does not expose raw credential IDs, challenges, user handles, signatures, client data JSON, attestation objects, or assertion bytes. Attestation trust remains explicit caller policy; no built-in trust roots, metadata downloads, OCSP/CRL clients, or enterprise enrollment defaults are included.
+The core package never infers trusted origins from request headers and never
+creates sessions, cookies, database records, or account bindings. Applications
+must store ceremony state server-side, enforce single use and expiry, map user
+handles to accounts, persist credential counter updates, rate-limit endpoints,
+and provide their own session and CSRF protections.
 
-## Dependencies and licenses
+Safe behavior is the default shape:
 
-Plan 09 added no third-party dependencies. Browser and HTTP helpers use the Go standard library plus existing local packages. The module dependency inventory and license notes are maintained in `docs/dependencies.json`, and release readiness is tracked in `docs/release.md`.
+- challenges are server-generated and compared exactly;
+- origins and RP IDs are explicit policy inputs;
+- user presence is required;
+- user verification is enforced according to ceremony policy;
+- signature counter rollback is surfaced as clone risk;
+- unsupported algorithms and formats are rejected;
+- non-`none` attestation requires caller-supplied trust acceptance;
+- unknown, unsolicited, or unrequested extensions are ignored or rejected
+  according to explicit extension policy;
+- optional HTTP helpers write generic errors and do not expose raw protocol
+  material.
+
+More detail is recorded in `docs/security-model.md`.
+
+## Dependencies
+
+The root API is kept behind narrow interfaces where possible. Concrete
+dependencies used for CBOR and COSE decoding live in the optional `codec/cbor`
+package, and dependency inventory is maintained in `docs/dependencies.json`.
+
+Before adding a dependency, document why it is needed, which protocol surface it
+supports, whether it is root or optional, whether replacing it affects public API
+compatibility, and its license.
+
+## Development
+
+The module path is `github.com/islishude/webauthn`; `go.mod` records Go
+`1.25.0`.
+
+Run commands from the repository root.
+
+```sh
+make ci
+```
+
+`make ci` is the required local readiness gate. It runs documentation checks,
+README checks, formatting checks, linting, unit tests, race tests, bounded fuzz
+smoke tests, example builds, root import graph checks, dependency license checks,
+and module tidy verification.
+
+Useful narrower targets:
+
+- `make format` rewrites Go and repository text formatting.
+- `make format-check` verifies formatting.
+- `make lint` runs golangci-lint.
+- `make test` runs unit tests.
+- `make test-race` runs race-enabled tests.
+- `make test-fuzz-smoke` runs bounded fuzz targets.
+- `make example-build` builds public examples.
+- `make import-graph-check` verifies root package dependency boundaries.
+- `make license-check` verifies dependency manifest coverage.
+- `make readme-check` verifies README example references.
+- `make browser-fixtures` regenerates virtual-authenticator browser fixtures.
+- `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
+
+CI behavior is documented in `docs/ci.md`.
+
+## Documentation
+
+- `AGENTS.md` defines repository rules for automated contributors.
+- `docs/technical.md` describes architecture and package boundaries.
+- `docs/protocol-map.md` maps WebAuthn Level 2 protocol areas to packages.
+- `docs/api-boundaries.md` defines public API and transport boundaries.
+- `docs/security-model.md` records security and privacy decisions.
+- `docs/testing.md` defines the test and conformance strategy.
+- `docs/ci.md` documents local and GitHub Actions quality gates.
+- `docs/release.md` tracks release-readiness requirements and notes.
+- `docs/dependencies.json` records module dependency licenses and scope.
+- `docs/plans.md` indexes the implementation plans.
+- `docs/plans/*.md` contains the detailed plan history.
+
+When plan status, scope, deliverables, tests, dependencies, package boundaries,
+or quality gates change, update the relevant docs in the same change.
+
+## Release Readiness
+
+A release candidate requires:
+
+- all P0 and P1 plans in `docs/plans.md` complete;
+- Plan 09 release hardening complete;
+- local `make ci` passing from a clean worktree;
+- GitHub Actions passing on the release branch;
+- root import graph independence from optional attestation, browser, HTTP, and
+  `net/http` packages;
+- compile-checked examples for framework-neutral and optional HTTP integration;
+- conformance coverage documented in `docs/testing.md`;
+- dependency inventory in `docs/dependencies.json` matching `go list -m all`;
+- README claims matching implemented and tested behavior.
