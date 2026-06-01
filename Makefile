@@ -41,7 +41,7 @@ lint:
 	$(GOLANGCI_LINT) run ./...
 
 test:
-	$(GO) test $(GOFLAGS) ./...
+	$(GO) test $(GOFLAGS) -cover ./...
 
 test-race:
 	$(GO) test $(GOFLAGS) -race ./...
@@ -56,7 +56,7 @@ test-fuzz-smoke:
 			if [ "$$pkg" = "./." ]; then pkg="."; fi; \
 			name=$$(printf '%s\n' "$$rest" | sed -E 's/^func (Fuzz[[:alnum:]_]*)\(.*$$/\1/'); \
 			echo "test-fuzz-smoke: $$pkg $$name"; \
-			$(GO) test $(GOFLAGS) "$$pkg" -run '^$$' -fuzz "^$$name$$" -fuzztime=$(FUZZTIME) || exit $$?; \
+			$(GO) test $(GOFLAGS) "$$pkg" -run '^$$' -fuzz "^$$name$$" -timeout 15m -fuzztime=$(FUZZTIME) || exit $$?; \
 		done; \
 	fi
 
