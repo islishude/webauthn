@@ -218,7 +218,7 @@ func newFixture(t *testing.T) fixture {
 	}
 	clientDataHash := bytes.Repeat([]byte{0x02}, 32)
 	response := []byte("compact-jws")
-	expectedNonce := expectedNonce(authenticatorData.Bytes(), clientDataHash)
+	expectedNonce := expectedNonce(authenticatorData, clientDataHash)
 	certificate := newCertificate(t, safetyNetAttestDNSName)
 
 	return fixture{

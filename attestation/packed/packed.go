@@ -2,12 +2,12 @@
 package packed
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/attestation/internal/x509util"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
@@ -57,13 +57,10 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		return attestation.VerificationResult{}, err
 	}
 
-	authenticatorData := request.AuthenticatorData.Bytes()
-	if len(authenticatorData) == 0 || len(request.ClientDataHash) == 0 {
+	if request.AuthenticatorData.Len() == 0 || len(request.ClientDataHash) == 0 {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
-	signed := make([]byte, 0, len(authenticatorData)+len(request.ClientDataHash))
-	signed = append(signed, authenticatorData...)
-	signed = append(signed, request.ClientDataHash...)
+	signed := attcrypto.SignedData(request.AuthenticatorData, request.ClientDataHash)
 
 	if statement.hasX5C {
 		return v.verifyX5C(ctx, request, statement, signed)
@@ -116,21 +113,7 @@ func (v Verifier) verifyX5C(ctx context.Context, request attestation.Verificatio
 }
 
 func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey any, signed []byte, signature []byte) error {
-	protocolSignature, err := protocol.NewSignature(signature)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidStatement, err)
-	}
-
-	if err := v.signatureVerifier.VerifySignature(ctx, webcrypto.SignatureInput{
-		Algorithm: algorithm,
-		PublicKey: publicKey,
-		Signed:    bytes.Clone(signed),
-		Signature: protocolSignature,
-	}); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
-	}
-
-	return nil
+	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithm, publicKey, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
 }
 
 var _ attestation.Verifier = Verifier{}

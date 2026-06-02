@@ -2,7 +2,6 @@
 package fidou2f
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -11,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -90,7 +90,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	verificationData := u2fVerificationData(
 		parsedAuthData.RPIDHash,
 		request.ClientDataHash,
-		parsedAuthData.AttestedCredentialData.CredentialID.Bytes(),
+		parsedAuthData.AttestedCredentialData.CredentialID,
 		publicKeyU2F,
 	)
 	if err := v.verifySignature(ctx, certificatePublicKey, verificationData, statement.signature); err != nil {
@@ -113,33 +113,19 @@ func parseCertificate(raw []byte) (webcrypto.CertificateChain, *x509.Certificate
 	return webcrypto.CertificateChain{webcrypto.NewCertificate(raw)}, certificate, nil
 }
 
-func u2fVerificationData(rpIDHash []byte, clientDataHash []byte, credentialID []byte, publicKeyU2F []byte) []byte {
-	out := make([]byte, 0, 1+len(rpIDHash)+len(clientDataHash)+len(credentialID)+len(publicKeyU2F))
+func u2fVerificationData(rpIDHash []byte, clientDataHash []byte, credentialID protocol.CredentialID, publicKeyU2F []byte) []byte {
+	out := make([]byte, 0, 1+len(rpIDHash)+len(clientDataHash)+credentialID.Len()+len(publicKeyU2F))
 	out = append(out, 0x00)
 	out = append(out, rpIDHash...)
 	out = append(out, clientDataHash...)
-	out = append(out, credentialID...)
+	out = credentialID.AppendTo(out)
 	out = append(out, publicKeyU2F...)
 
 	return out
 }
 
 func (v Verifier) verifySignature(ctx context.Context, publicKey *ecdsa.PublicKey, signed []byte, signature []byte) error {
-	protocolSignature, err := protocol.NewSignature(signature)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidStatement, err)
-	}
-
-	if err := v.signatureVerifier.VerifySignature(ctx, webcrypto.SignatureInput{
-		Algorithm: algorithmES256,
-		PublicKey: publicKey,
-		Signed:    bytes.Clone(signed),
-		Signature: protocolSignature,
-	}); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
-	}
-
-	return nil
+	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithmES256, publicKey, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
 }
 
 func isP256(publicKey *ecdsa.PublicKey) bool {

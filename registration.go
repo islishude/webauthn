@@ -23,6 +23,11 @@ var (
 	// ErrMalformedResponse reports an invalid or internally inconsistent
 	// registration response.
 	ErrMalformedResponse = errors.New("webauthn: malformed registration response")
+	// ErrInvalidConfiguration reports missing or invalid caller configuration.
+	ErrInvalidConfiguration = errors.New("webauthn: invalid configuration")
+	// ErrInvalidCeremonyState reports missing or invalid caller-stored ceremony
+	// state.
+	ErrInvalidCeremonyState = errors.New("webauthn: invalid ceremony state")
 	// ErrChallengeMismatch reports a client challenge that does not match state.
 	ErrChallengeMismatch = errors.New("webauthn: challenge mismatch")
 	// ErrOriginMismatch reports a client origin or cross-origin policy failure.
@@ -112,6 +117,7 @@ type RegistrationStartOptions struct {
 	AttestationFormats     []string
 	UserVerification       protocol.UserVerificationRequirement
 	Extensions             protocol.ExtensionInputs
+	Now                    func() time.Time
 }
 
 // RegistrationStartResult contains browser creation options and caller-stored
@@ -140,20 +146,20 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		ctx = context.Background()
 	}
 	if err := options.RP.Validate(); err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 	if err := options.User.Validate(); err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 	if len(options.PubKeyCredParams) == 0 {
-		return RegistrationStartResult{}, errors.New("public key credential parameters are required")
+		return RegistrationStartResult{}, fmt.Errorf("%w: public key credential parameters are required", ErrInvalidConfiguration)
 	}
 	for _, param := range options.PubKeyCredParams {
 		if err := param.Validate(); err != nil {
-			return RegistrationStartResult{}, err
+			return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 		}
 	}
 
@@ -172,7 +178,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 
 	userVerification := registrationUserVerification(options)
 	if err := validateUserVerification(userVerification); err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	attestationConveyance := options.Attestation
@@ -180,7 +186,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		attestationConveyance = protocol.AttestationNone
 	}
 	if !attestationConveyance.Known() {
-		return RegistrationStartResult{}, protocol.ValueError{Field: "attestation", Value: string(attestationConveyance)}
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, protocol.ValueError{Field: "attestation", Value: string(attestationConveyance)})
 	}
 
 	authenticatorSelection := options.AuthenticatorSelection.Clone()
@@ -188,9 +194,9 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		authenticatorSelection.UserVerification = userVerification
 	}
 
-	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout)
+	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
 	if err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	creationOptions := protocol.PublicKeyCredentialCreationOptions{
@@ -207,7 +213,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		Extensions:             maps.Clone(options.Extensions),
 	}
 	if err := creationOptions.Validate(); err != nil {
-		return RegistrationStartResult{}, err
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	state := RegistrationState{
@@ -225,6 +231,14 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	return RegistrationStartResult{Options: creationOptions, State: state}, nil
 }
 
+func (o RegistrationStartOptions) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+
+	return time.Now()
+}
+
 // RegistrationResponse is the structured, transport-neutral browser
 // registration response input.
 type RegistrationResponse struct {
@@ -240,12 +254,6 @@ type RegistrationResponse struct {
 	ClientExtensionResults  map[string]any
 }
 
-// RegistrationAttestationPolicy controls attestation acceptance after format
-// verification.
-type RegistrationAttestationPolicy struct {
-	AllowNone bool
-}
-
 // AttestationTrustResult records the RP policy outcome.
 type AttestationTrustResult = attestation.TrustResult
 
@@ -259,9 +267,10 @@ type RegistrationExtensionPolicy struct {
 type RegistrationFinishOptions struct {
 	State                       RegistrationState
 	Response                    RegistrationResponse
-	Decoders                    codec.Decoders
+	AttestationObjectDecoder    codec.AttestationObjectDecoder
+	CredentialPublicKeyDecoder  codec.COSEKeyDecoder
+	ExtensionMapDecoder         codec.ExtensionMapDecoder
 	AttestationRegistry         *attestation.Registry
-	AttestationPolicy           RegistrationAttestationPolicy
 	AttestationTrustPolicy      attestation.TrustPolicy
 	ExtensionRegistry           *extension.Registry
 	ExtensionPolicy             RegistrationExtensionPolicy
@@ -313,17 +322,17 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		return RegistrationResult{}, err
 	}
 
-	clientData, clientDataHash, err := verifyRegistrationClientData(options.State, options.Response.ClientDataJSON)
+	_, clientDataHash, err := verifyRegistrationClientData(options.State, options.Response.ClientDataJSON)
 	if err != nil {
 		return RegistrationResult{}, err
 	}
 
-	decodedAttestation, err := options.Decoders.DecodeAttestationObject(options.Response.AttestationObject)
+	decodedAttestation, err := options.AttestationObjectDecoder.DecodeAttestationObject(options.Response.AttestationObject)
 	if err != nil {
 		return RegistrationResult{}, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
 
-	if !options.Response.AuthenticatorData.IsNil() && !bytes.Equal(options.Response.AuthenticatorData.Bytes(), decodedAttestation.AuthenticatorData.Bytes()) {
+	if !options.Response.AuthenticatorData.IsNil() && !options.Response.AuthenticatorData.Equal(decodedAttestation.AuthenticatorData) {
 		return RegistrationResult{}, ErrMalformedResponse
 	}
 
@@ -335,11 +344,11 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	if attested == nil {
 		return RegistrationResult{}, fmt.Errorf("%w: %w", ErrMalformedResponse, protocol.ErrAttestedCredentialDataMissing)
 	}
-	if !bytes.Equal(options.Response.RawID.Bytes(), attested.CredentialID.Bytes()) {
+	if !attested.CredentialID.EqualRawID(options.Response.RawID) {
 		return RegistrationResult{}, ErrMalformedResponse
 	}
 
-	credentialPublicKey, authenticatorExtensions, err := decodeCredentialPublicKeyAndExtensions(options.Decoders, parsedAuthData, *attested)
+	credentialPublicKey, authenticatorExtensions, err := decodeCredentialPublicKeyAndExtensions(options.CredentialPublicKeyDecoder, options.ExtensionMapDecoder, parsedAuthData, *attested)
 	if err != nil {
 		return RegistrationResult{}, err
 	}
@@ -362,7 +371,6 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	}
 
 	attestationResult, trustResult, err := verifyRegistrationAttestation(ctx, registrationAttestationInputs{
-		policy:              options.AttestationPolicy,
 		trustPolicy:         options.AttestationTrustPolicy,
 		registry:            options.AttestationRegistry,
 		decodedAttestation:  decodedAttestation,
@@ -391,7 +399,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		Attestation:      attestationResult,
 		AttestationTrust: trustResult,
 		Extensions:       extensionResults,
-		Warnings:         slices.Concat(attestationResult.Warnings, trustResult.Warnings, clientDataWarnings(clientData)),
+		Warnings:         slices.Concat(attestationResult.Warnings, trustResult.Warnings),
 	}
 
 	return result, nil
@@ -406,11 +414,14 @@ func (o RegistrationFinishOptions) now() time.Time {
 }
 
 func validateFinishDependencies(options RegistrationFinishOptions) error {
-	if options.Decoders == nil {
-		return errors.New("registration decoders are required")
+	if options.AttestationObjectDecoder == nil {
+		return fmt.Errorf("%w: registration attestation object decoder is required", ErrInvalidConfiguration)
+	}
+	if options.CredentialPublicKeyDecoder == nil {
+		return fmt.Errorf("%w: registration credential public key decoder is required", ErrInvalidConfiguration)
 	}
 	if options.AttestationRegistry == nil {
-		return errors.New("attestation registry is required")
+		return fmt.Errorf("%w: attestation registry is required", ErrInvalidConfiguration)
 	}
 
 	return nil
@@ -418,19 +429,19 @@ func validateFinishDependencies(options RegistrationFinishOptions) error {
 
 func validateRegistrationState(state RegistrationState, now time.Time) error {
 	if state.Challenge.Len() == 0 || state.RPID == "" {
-		return ErrMalformedResponse
+		return ErrInvalidCeremonyState
 	}
 	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
 	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
 		return ErrCeremonyExpired
 	}
 	if len(state.AllowedAlgorithms) == 0 {
-		return ErrUnsupportedAlgorithm
+		return fmt.Errorf("%w: allowed algorithms are required", ErrInvalidCeremonyState)
 	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
 
 	return nil
@@ -440,7 +451,7 @@ func validateRegistrationResponseShape(response RegistrationResponse) error {
 	if err := response.Type.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
-	if response.RawID.Bytes() == nil || response.ClientDataJSON.Bytes() == nil || response.AttestationObject.Bytes() == nil {
+	if response.RawID.IsNil() || response.ClientDataJSON.IsNil() || response.AttestationObject.IsNil() {
 		return ErrMalformedResponse
 	}
 
@@ -466,7 +477,7 @@ func verifyRegistrationClientData(state RegistrationState, raw protocol.ClientDa
 		return protocol.CollectedClientData{}, nil, err
 	}
 
-	hash := sha256.Sum256(raw.Bytes())
+	hash := sha256.Sum256(raw.AppendTo(nil))
 	return clientData, hash[:], nil
 }
 
@@ -493,8 +504,8 @@ func verifyRegistrationAuthenticatorData(state RegistrationState, raw protocol.A
 	return parsed, nil
 }
 
-func decodeCredentialPublicKeyAndExtensions(decoders codec.Decoders, parsed protocol.ParsedAuthenticatorData, attested protocol.AttestedCredentialData) (codec.CredentialPublicKey, codec.ExtensionMap, error) {
-	publicKey, err := decoders.DecodeCredentialPublicKey(attested.CredentialPublicKeyAndExtensions)
+func decodeCredentialPublicKeyAndExtensions(keyDecoder codec.COSEKeyDecoder, extensionDecoder codec.ExtensionMapDecoder, parsed protocol.ParsedAuthenticatorData, attested protocol.AttestedCredentialData) (codec.CredentialPublicKey, codec.ExtensionMap, error) {
+	publicKey, err := keyDecoder.DecodeCredentialPublicKey(attested.CredentialPublicKeyAndExtensions)
 	if err != nil {
 		return codec.CredentialPublicKey{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
@@ -516,7 +527,10 @@ func decodeCredentialPublicKeyAndExtensions(decoders codec.Decoders, parsed prot
 		return codec.CredentialPublicKey{}, nil, ErrMalformedResponse
 	}
 
-	extensions, err := decoders.DecodeExtensionMap(extensionBytes)
+	if extensionDecoder == nil {
+		return codec.CredentialPublicKey{}, nil, fmt.Errorf("%w: registration extension map decoder is required for authenticator extensions", ErrInvalidConfiguration)
+	}
+	extensions, err := extensionDecoder.DecodeExtensionMap(extensionBytes)
 	if err != nil {
 		return codec.CredentialPublicKey{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
@@ -525,7 +539,6 @@ func decodeCredentialPublicKeyAndExtensions(decoders codec.Decoders, parsed prot
 }
 
 type registrationAttestationInputs struct {
-	policy              RegistrationAttestationPolicy
 	trustPolicy         attestation.TrustPolicy
 	registry            *attestation.Registry
 	decodedAttestation  codec.DecodedAttestationObject
@@ -554,33 +567,25 @@ func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttes
 	if !result.CryptographicallyValid {
 		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrInvalidAttestation
 	}
-	if inputs.trustPolicy != nil {
-		trustResult, err := inputs.trustPolicy.EvaluateAttestationTrust(ctx, attestation.TrustRequest{
-			Format:               inputs.decodedAttestation.Format,
-			Result:               result,
-			AAGUID:               inputs.aaguid,
-			AuthenticatorData:    inputs.decodedAttestation.AuthenticatorData,
-			CredentialPublicKey:  inputs.credentialPublicKey,
-			RawAttestationObject: inputs.decodedAttestation.Raw,
-		})
-		if err != nil {
-			return attestation.VerificationResult{}, AttestationTrustResult{}, fmt.Errorf("%w: %w", ErrRejectedAttestationPolicy, err)
-		}
-		if !trustResult.Accepted {
-			return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
-		}
-
-		return result, trustResult, nil
+	if inputs.trustPolicy == nil {
+		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
 	}
-	if result.Type == attestation.TypeNone {
-		if !inputs.policy.AllowNone {
-			return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
-		}
-
-		return result, AttestationTrustResult{Accepted: true, Reason: "none attestation accepted by policy"}, nil
+	trustResult, err := inputs.trustPolicy.EvaluateAttestationTrust(ctx, attestation.TrustRequest{
+		Format:               inputs.decodedAttestation.Format,
+		Result:               result,
+		AAGUID:               inputs.aaguid,
+		AuthenticatorData:    inputs.decodedAttestation.AuthenticatorData,
+		CredentialPublicKey:  inputs.credentialPublicKey,
+		RawAttestationObject: inputs.decodedAttestation.Raw,
+	})
+	if err != nil {
+		return attestation.VerificationResult{}, AttestationTrustResult{}, fmt.Errorf("%w: %w", ErrRejectedAttestationPolicy, err)
+	}
+	if !trustResult.Accepted {
+		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
 	}
 
-	return attestation.VerificationResult{}, AttestationTrustResult{}, ErrRejectedAttestationPolicy
+	return result, trustResult, nil
 }
 
 type registrationExtensionInputs struct {
@@ -592,8 +597,42 @@ type registrationExtensionInputs struct {
 }
 
 func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtensionInputs) ([]extension.Result, error) {
+	return verifyExtensions(ctx, extensionVerificationInputs{
+		operation:               extension.OperationRegistration,
+		requestedExtensions:     inputs.state.RequestedExtensions,
+		policy:                  extensionOutputPolicy{rejectUnrequested: inputs.policy.RejectUnrequested, rejectUnknown: inputs.policy.RejectUnknown},
+		registry:                inputs.registry,
+		clientExtensionResults:  inputs.clientExtensionResults,
+		authenticatorExtensions: inputs.authenticatorExtensions,
+	})
+}
+
+func lookupExtensionHandler(registry *extension.Registry, id string) (extension.Handler, bool) {
+	if registry == nil {
+		return nil, false
+	}
+
+	return registry.Lookup(id)
+}
+
+type extensionOutputPolicy struct {
+	rejectUnrequested bool
+	rejectUnknown     bool
+}
+
+type extensionVerificationInputs struct {
+	operation               extension.Operation
+	requestedExtensions     protocol.ExtensionInputs
+	policy                  extensionOutputPolicy
+	registry                *extension.Registry
+	clientExtensionResults  map[string]any
+	authenticatorExtensions codec.ExtensionMap
+	clientInputTransform    func(string, any) any
+}
+
+func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) ([]extension.Result, error) {
 	ids := map[string]struct{}{}
-	for id := range inputs.state.RequestedExtensions {
+	for id := range inputs.requestedExtensions {
 		ids[id] = struct{}{}
 	}
 	for id := range inputs.clientExtensionResults {
@@ -605,18 +644,21 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 
 	results := make([]extension.Result, 0, len(ids))
 	for id := range ids {
-		clientInput, requested := inputs.state.RequestedExtensions[id]
+		clientInput, requested := inputs.requestedExtensions[id]
+		if inputs.clientInputTransform != nil {
+			clientInput = inputs.clientInputTransform(id, clientInput)
+		}
 		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
 		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
 
 		handler, known := lookupExtensionHandler(inputs.registry, id)
-		if !known && inputs.policy.RejectUnknown {
+		if !known && inputs.policy.rejectUnknown {
 			return nil, ErrExtensionPolicy
 		}
 
 		hasOutput := hasClientOutput || hasAuthenticatorOutput
 		if !requested && hasOutput {
-			if inputs.policy.RejectUnrequested {
+			if inputs.policy.rejectUnrequested {
 				return nil, ErrExtensionPolicy
 			}
 			results = append(results, rawExtensionResult(id, rawExtensionInputs{
@@ -645,7 +687,7 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 		}
 
 		result, err := handler.HandleExtension(ctx, extension.Request{
-			Operation:           extension.OperationRegistration,
+			Operation:           inputs.operation,
 			ID:                  id,
 			Requested:           requested,
 			ClientInput:         clientInput,
@@ -659,14 +701,6 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 	}
 
 	return results, nil
-}
-
-func lookupExtensionHandler(registry *extension.Registry, id string) (extension.Handler, bool) {
-	if registry == nil {
-		return nil, false
-	}
-
-	return registry.Lookup(id)
 }
 
 type rawExtensionInputs struct {
@@ -730,7 +764,7 @@ func algorithmsFromParameters(parameters []protocol.CredentialParameter) []proto
 	return algorithms
 }
 
-func timeoutState(timeout time.Duration) (uint32, time.Time, error) {
+func timeoutState(timeout time.Duration, now time.Time) (uint32, time.Time, error) {
 	if timeout <= 0 {
 		return 0, time.Time{}, nil
 	}
@@ -743,11 +777,7 @@ func timeoutState(timeout time.Duration) (uint32, time.Time, error) {
 		return 0, time.Time{}, errors.New("timeout exceeds uint32 milliseconds")
 	}
 
-	return uint32(milliseconds), time.Now().Add(timeout), nil
-}
-
-func clientDataWarnings(protocol.CollectedClientData) []string {
-	return nil
+	return uint32(milliseconds), now.Add(timeout), nil
 }
 
 func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {

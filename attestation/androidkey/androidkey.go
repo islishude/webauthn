@@ -2,15 +2,13 @@
 package androidkey
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/attestation/internal/x509util"
 	webcrypto "github.com/islishude/webauthn/crypto"
-	"github.com/islishude/webauthn/protocol"
 )
 
 const format = "android-key"
@@ -62,8 +60,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	authenticatorData := request.AuthenticatorData.Bytes()
-	if len(authenticatorData) == 0 || len(request.ClientDataHash) == 0 {
+	if request.AuthenticatorData.Len() == 0 || len(request.ClientDataHash) == 0 {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 
@@ -82,7 +79,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err := validateAndroidKeyExtension(extension.Value, request.ClientDataHash); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := v.verifySignature(ctx, statement.algorithm, leaf.PublicKey, signedData(authenticatorData, request.ClientDataHash), statement.signature); err != nil {
+	if err := attcrypto.VerifySignature(ctx, v.signatureVerifier, statement.algorithm, leaf.PublicKey, attcrypto.SignedData(request.AuthenticatorData, request.ClientDataHash), statement.signature, ErrInvalidSignature, ErrInvalidSignature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -91,32 +88,6 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathX509, Certificates: chain},
 		CryptographicallyValid: true,
 	}, nil
-}
-
-func signedData(authenticatorData []byte, clientDataHash []byte) []byte {
-	out := make([]byte, 0, len(authenticatorData)+len(clientDataHash))
-	out = append(out, authenticatorData...)
-	out = append(out, clientDataHash...)
-
-	return out
-}
-
-func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey any, signed []byte, signature []byte) error {
-	protocolSignature, err := protocol.NewSignature(signature)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
-	}
-
-	if err := v.signatureVerifier.VerifySignature(ctx, webcrypto.SignatureInput{
-		Algorithm: algorithm,
-		PublicKey: publicKey,
-		Signed:    bytes.Clone(signed),
-		Signature: protocolSignature,
-	}); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
-	}
-
-	return nil
 }
 
 var _ attestation.Verifier = Verifier{}

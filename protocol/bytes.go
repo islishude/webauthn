@@ -58,6 +58,10 @@ func (v byteValue) bytes() []byte {
 	return slices.Clone(v.value)
 }
 
+func (v byteValue) appendTo(out []byte) []byte {
+	return append(out, v.value...)
+}
+
 func (v byteValue) len() int {
 	return len(v.value)
 }
@@ -130,9 +134,25 @@ func (id CredentialID) Bytes() []byte {
 	return id.bytes()
 }
 
+// AppendTo appends the credential ID bytes to out.
+func (id CredentialID) AppendTo(out []byte) []byte {
+	return id.appendTo(out)
+}
+
 // Len returns the byte length.
 func (id CredentialID) Len() int {
 	return id.len()
+}
+
+// Equal compares credential IDs without allocating defensive copies.
+func (id CredentialID) Equal(other CredentialID) bool {
+	return id.equalBytes(other.value)
+}
+
+// EqualRawID compares this credential ID to a browser raw ID without allocating
+// defensive copies.
+func (id CredentialID) EqualRawID(other RawID) bool {
+	return id.equalBytes(other.value)
 }
 
 // UserHandle is an opaque relying-party user handle.
@@ -160,6 +180,11 @@ func (h UserHandle) Len() int {
 	return h.len()
 }
 
+// Equal compares user handles without allocating defensive copies.
+func (h UserHandle) Equal(other UserHandle) bool {
+	return h.equalBytes(other.value)
+}
+
 // RawID is the browser credential raw ID as bytes.
 type RawID struct {
 	byteValue
@@ -178,6 +203,16 @@ func NewRawID(value []byte) (RawID, error) {
 // Bytes returns a defensive copy.
 func (id RawID) Bytes() []byte {
 	return id.bytes()
+}
+
+// AppendTo appends the raw ID bytes to out.
+func (id RawID) AppendTo(out []byte) []byte {
+	return id.appendTo(out)
+}
+
+// IsNil reports whether the raw ID was left unset.
+func (id RawID) IsNil() bool {
+	return id.byteValue.IsNil()
 }
 
 // AuthenticatorData is the raw authenticator data byte sequence.
@@ -200,9 +235,24 @@ func (d AuthenticatorData) Bytes() []byte {
 	return d.bytes()
 }
 
+// AppendTo appends the authenticator data bytes to out.
+func (d AuthenticatorData) AppendTo(out []byte) []byte {
+	return d.appendTo(out)
+}
+
 // Len returns the byte length.
 func (d AuthenticatorData) Len() int {
 	return d.len()
+}
+
+// IsNil reports whether the authenticator data was left unset.
+func (d AuthenticatorData) IsNil() bool {
+	return d.byteValue.IsNil()
+}
+
+// Equal compares authenticator data values without allocating defensive copies.
+func (d AuthenticatorData) Equal(other AuthenticatorData) bool {
+	return d.equalBytes(other.value)
 }
 
 // ClientDataJSON is the raw serialized client data JSON.
@@ -225,6 +275,16 @@ func (d ClientDataJSON) Bytes() []byte {
 	return d.bytes()
 }
 
+// AppendTo appends the serialized client data JSON bytes to out.
+func (d ClientDataJSON) AppendTo(out []byte) []byte {
+	return d.appendTo(out)
+}
+
+// IsNil reports whether the client data JSON was left unset.
+func (d ClientDataJSON) IsNil() bool {
+	return d.byteValue.IsNil()
+}
+
 // AttestationObject is the raw CBOR attestation object.
 type AttestationObject struct {
 	byteValue
@@ -245,6 +305,11 @@ func (o AttestationObject) Bytes() []byte {
 	return o.bytes()
 }
 
+// IsNil reports whether the attestation object was left unset.
+func (o AttestationObject) IsNil() bool {
+	return o.byteValue.IsNil()
+}
+
 // Signature is a raw authenticator or attestation signature.
 type Signature struct {
 	byteValue
@@ -263,4 +328,9 @@ func NewSignature(value []byte) (Signature, error) {
 // Bytes returns a defensive copy.
 func (s Signature) Bytes() []byte {
 	return s.bytes()
+}
+
+// IsNil reports whether the signature was left unset.
+func (s Signature) IsNil() bool {
+	return s.byteValue.IsNil()
 }

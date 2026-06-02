@@ -51,6 +51,7 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
+	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 
 	result, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
 		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
@@ -61,6 +62,8 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 		},
 		Hints:              []protocol.PublicKeyCredentialHint{protocol.HintClientDevice},
 		AttestationFormats: []string{"packed", "none"},
+		Timeout:            1500 * time.Millisecond,
+		Now:                func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("StartRegistration() error = %v", err)
@@ -76,6 +79,12 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 	if len(result.Options.AttestationFormats) != 2 || result.Options.AttestationFormats[0] != "packed" {
 		t.Fatalf("AttestationFormats = %#v", result.Options.AttestationFormats)
+	}
+	if result.Options.TimeoutMilliseconds != 1500 {
+		t.Fatalf("TimeoutMilliseconds = %v, want 1500", result.Options.TimeoutMilliseconds)
+	}
+	if !result.State.ExpiresAt.Equal(now.Add(1500 * time.Millisecond)) {
+		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(1500*time.Millisecond))
 	}
 }
 
@@ -165,7 +174,7 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 			name: "none attestation rejected",
 			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
 				t.Helper()
-				options.AttestationPolicy.AllowNone = false
+				options.AttestationTrustPolicy = nil
 			},
 			wantErr: webauthn.ErrRejectedAttestationPolicy,
 		},
@@ -487,6 +496,7 @@ func TestRegistrationAttestationTrustPolicyRejectsNonNoneAttestation(t *testing.
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
 	options.Response.AttestationObject = fixture.attestationObject(t, "packed", "example.com", registrationFlagUP|registrationFlagAT, nil, map[string]any{})
+	options.AttestationTrustPolicy = nil
 
 	registry, err := attestation.NewRegistry(fakeRegistrationAttestationVerifier{
 		format: "packed",
@@ -537,12 +547,11 @@ func TestRegistrationRejectsNonNoneAttestationWithoutTrustPolicy(t *testing.T) {
 func TestRegistrationBuiltInAttestationTrustPolicies(t *testing.T) {
 	t.Parallel()
 
-	t.Run("accept none trust policy overrides legacy allow none flag", func(t *testing.T) {
+	t.Run("accept none trust policy accepts valid none attestation", func(t *testing.T) {
 		t.Parallel()
 
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
-		options.AttestationPolicy.AllowNone = false
 		options.AttestationTrustPolicy = attestation.AcceptNone()
 
 		result, err := webauthn.FinishRegistration(context.Background(), options)
@@ -735,11 +744,13 @@ func newRegistrationFixture(t *testing.T) *registrationFixture {
 
 func (f *registrationFixture) finishOptions() webauthn.RegistrationFinishOptions {
 	return webauthn.RegistrationFinishOptions{
-		State:               f.start.State,
-		Response:            f.response,
-		Decoders:            f.decoder,
-		AttestationRegistry: f.registry,
-		AttestationPolicy:   webauthn.RegistrationAttestationPolicy{AllowNone: true},
+		State:                      f.start.State,
+		Response:                   f.response,
+		AttestationObjectDecoder:   f.decoder,
+		CredentialPublicKeyDecoder: f.decoder,
+		ExtensionMapDecoder:        f.decoder,
+		AttestationRegistry:        f.registry,
+		AttestationTrustPolicy:     attestation.AcceptNone(),
 	}
 }
 

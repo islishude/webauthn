@@ -1,7 +1,6 @@
 package packed
 
 import (
-	"bytes"
 	"crypto/x509"
 	"encoding/asn1"
 	"slices"
@@ -46,7 +45,7 @@ func validateAAGUIDExtension(certificate *x509.Certificate, aaguid protocol.AAGU
 	if err != nil || len(rest) != 0 || len(extensionAAGUID) != protocol.AAGUIDLength {
 		return ErrCertificateRequirements
 	}
-	if !bytes.Equal(extensionAAGUID, aaguid.Bytes()) {
+	if !aaguid.EqualBytes(extensionAAGUID) {
 		return ErrCertificateRequirements
 	}
 

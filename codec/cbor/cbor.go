@@ -310,4 +310,8 @@ func okpCurve(curve int) (string, int, bool) {
 	}
 }
 
-var _ codec.Decoders = (*Decoder)(nil)
+var (
+	_ codec.AttestationObjectDecoder = (*Decoder)(nil)
+	_ codec.COSEKeyDecoder           = (*Decoder)(nil)
+	_ codec.ExtensionMapDecoder      = (*Decoder)(nil)
+)

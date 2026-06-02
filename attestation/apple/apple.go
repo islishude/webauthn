@@ -10,7 +10,9 @@ import (
 	"errors"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/attestation/internal/x509util"
+	"github.com/islishude/webauthn/protocol"
 )
 
 const format = "apple"
@@ -57,8 +59,7 @@ func (Verifier) VerifyAttestation(_ context.Context, request attestation.Verific
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	authenticatorData := request.AuthenticatorData.Bytes()
-	if len(authenticatorData) == 0 || len(request.ClientDataHash) == 0 {
+	if request.AuthenticatorData.Len() == 0 || len(request.ClientDataHash) == 0 {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 
@@ -67,7 +68,7 @@ func (Verifier) VerifyAttestation(_ context.Context, request attestation.Verific
 		return attestation.VerificationResult{}, err
 	}
 	leaf := certificates[0]
-	if err := validateNonceExtension(leaf, expectedNonce(authenticatorData, request.ClientDataHash)); err != nil {
+	if err := validateNonceExtension(leaf, expectedNonce(request.AuthenticatorData, request.ClientDataHash)); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 	if err := x509util.ValidatePublicKey(leaf.PublicKey, request.CredentialPublicKey.PublicKeyMaterial(), ErrUnsupportedKey, ErrPublicKeyMismatch); err != nil {
@@ -81,11 +82,8 @@ func (Verifier) VerifyAttestation(_ context.Context, request attestation.Verific
 	}, nil
 }
 
-func expectedNonce(authenticatorData []byte, clientDataHash []byte) []byte {
-	nonceToHash := make([]byte, 0, len(authenticatorData)+len(clientDataHash))
-	nonceToHash = append(nonceToHash, authenticatorData...)
-	nonceToHash = append(nonceToHash, clientDataHash...)
-	digest := sha256.Sum256(nonceToHash)
+func expectedNonce(authenticatorData protocol.AuthenticatorData, clientDataHash []byte) []byte {
+	digest := sha256.Sum256(attcrypto.SignedData(authenticatorData, clientDataHash))
 
 	return digest[:]
 }

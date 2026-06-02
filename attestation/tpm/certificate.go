@@ -1,7 +1,6 @@
 package tpm
 
 import (
-	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -124,7 +123,7 @@ func validateAAGUIDExtension(certificate *x509.Certificate, aaguid protocol.AAGU
 	if err != nil || len(rest) != 0 || len(extensionAAGUID) != protocol.AAGUIDLength {
 		return ErrCertificateRequirements
 	}
-	if !bytes.Equal(extensionAAGUID, aaguid.Bytes()) {
+	if !aaguid.EqualBytes(extensionAAGUID) {
 		return ErrCertificateRequirements
 	}
 

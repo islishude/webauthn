@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony, Level 3 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-01.
+Status: authentication ceremony, Level 3 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-02.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -68,7 +68,7 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
-The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration accepts only `none` attestation when `AllowNone` is true and rejects all non-`none` attestations after format verification. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
+The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration rejects every attestation after format verification. Callers that accept consumer passkey `none` attestation must pass an explicit policy such as `attestation.AcceptNone()`. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
 The `attestation` package provides explicit trust policy building blocks for `none`, self attestation, format and type allow-lists, x5c trust-root verification through caller-provided certificate verifiers, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies do not include built-in trust anchors, network fetching, metadata caches, or automatic restricted-enrollment defaults.
 
@@ -118,6 +118,11 @@ Malformed data should fail closed. The parser and verifier must test:
 
 Ceremony state must include enough information for the caller to enforce expiry and single use. The core should expose expiration metadata and exact challenge checks, but storage and replay prevention remain caller responsibilities.
 
+Registration and authentication start/finish options accept an injectable clock
+where timeout or expiry state is evaluated. Production callers can rely on the
+default wall clock, while tests and deterministic lifecycle policy can provide a
+fixed clock.
+
 ## Optional transport helpers
 
 The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
@@ -135,7 +140,7 @@ Before stable release, defaults should be:
 - explicit RP ID;
 - user presence required;
 - user verification enforced when policy says required;
-- `none` attestation accepted only when policy allows it;
+- `none` attestation accepted only when explicit trust policy allows it;
 - non-`none` attestation accepted only when caller trust policy accepts it;
 - unsupported attestation formats rejected;
 - unsupported algorithms rejected;

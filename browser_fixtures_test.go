@@ -90,6 +90,7 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
+	decoder := codeccbor.MustNewDecoder()
 	result, err := webauthn.FinishRegistration(context.Background(), webauthn.RegistrationFinishOptions{
 		State: start.State,
 		Response: webauthn.RegistrationResponse{
@@ -100,10 +101,12 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 			Transports:             fixture.Registration.Transports,
 			ClientExtensionResults: fixture.Registration.ClientExtensionResults,
 		},
-		Decoders:            codeccbor.MustNewDecoder(),
-		AttestationRegistry: registry,
-		AttestationPolicy:   webauthn.RegistrationAttestationPolicy{AllowNone: true},
-		ExtensionRegistry:   mustLevel3Registry(t),
+		AttestationObjectDecoder:   decoder,
+		CredentialPublicKeyDecoder: decoder,
+		ExtensionMapDecoder:        decoder,
+		AttestationRegistry:        registry,
+		AttestationTrustPolicy:     attestation.AcceptNone(),
+		ExtensionRegistry:          mustLevel3Registry(t),
 	})
 	if err != nil {
 		t.Fatalf("FinishRegistration() error = %v", err)
@@ -164,10 +167,11 @@ func browserFixtureAuthenticationOptions(t *testing.T, fixture browserFixture, c
 			UserHandle:             mustOptionalUserHandleFromBase64URL(t, fixture.Authentication.UserHandle),
 			ClientExtensionResults: fixture.Authentication.ClientExtensionResults,
 		},
-		Credential:        credential,
-		SignatureVerifier: browserFixtureSignatureVerifier{publicKey: credential.PublicKey},
-		AlgorithmPolicy:   browserFixtureAlgorithmPolicy{},
-		ExtensionRegistry: mustLevel3Registry(t),
+		Credential:          credential,
+		SignatureVerifier:   browserFixtureSignatureVerifier{publicKey: credential.PublicKey},
+		AlgorithmPolicy:     browserFixtureAlgorithmPolicy{},
+		ExtensionRegistry:   mustLevel3Registry(t),
+		ExtensionMapDecoder: codeccbor.MustNewDecoder(),
 	}
 }
 

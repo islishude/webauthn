@@ -2,7 +2,7 @@
 
 Priority: P1.
 
-Status: Complete, 2026-06-01.
+Status: Complete, revised 2026-06-02.
 
 ## Purpose
 
@@ -12,7 +12,7 @@ boundaries and narrow codec/crypto contracts.
 ## Prerequisites
 
 - Existing Level 2 attestation format packages remain optional.
-- `codec.Decoders` remains the root CBOR/COSE boundary.
+- Root CBOR/COSE boundaries remain narrow decoder contracts.
 - Cryptographic operations remain delegated.
 
 ## Deliverables
@@ -43,3 +43,8 @@ normalization in `codec/cbor`, OKP material in `codec`, and Level 3 algorithm
 constants in `protocol`. Scope changes: no new dependency was added; Android
 SafetyNet remains optional and documented as deprecated/legacy rather than
 removed.
+
+2026-06-02: Plan 15 removed the grouped `codec.Decoders` interface. The
+compound normalization and OKP material delivered here remain behind the
+separate attestation object, credential public-key, and extension map decoder
+contracts.

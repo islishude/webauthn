@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/codec"
@@ -51,11 +52,14 @@ func TestAuthenticationDiscoverable(t *testing.T) {
 func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 6, 2, 12, 30, 0, 0, time.UTC)
 	result, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
 		RPID:             "example.com",
 		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		UserVerification: protocol.UserVerificationPreferred,
 		Hints:            []protocol.PublicKeyCredentialHint{protocol.HintHybrid},
+		Timeout:          3 * time.Second,
+		Now:              func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("StartAuthentication() error = %v", err)
@@ -65,6 +69,12 @@ func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 	if len(result.Options.Hints) != 1 || result.Options.Hints[0] != protocol.HintHybrid {
 		t.Fatalf("Hints = %#v", result.Options.Hints)
+	}
+	if result.Options.TimeoutMilliseconds != 3000 {
+		t.Fatalf("TimeoutMilliseconds = %v, want 3000", result.Options.TimeoutMilliseconds)
+	}
+	if !result.State.ExpiresAt.Equal(now.Add(3 * time.Second)) {
+		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(3*time.Second))
 	}
 }
 
@@ -183,7 +193,7 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
 				t.Helper()
 				options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagED, 8, map[string]any{"credProps": true}))
-				options.Decoders = codeccbor.MustNewDecoder()
+				options.ExtensionMapDecoder = codeccbor.MustNewDecoder()
 				options.ExtensionPolicy.RejectUnrequested = true
 			},
 			wantErr: webauthn.ErrExtensionPolicy,
@@ -302,7 +312,7 @@ func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagED, 8, map[string]any{
 		extension.IDUVM: []any{[]any{uint64(2), uint64(4), uint64(2)}},
 	}))
-	options.Decoders = codeccbor.MustNewDecoder()
+	options.ExtensionMapDecoder = codeccbor.MustNewDecoder()
 	options.ExtensionRegistry = mustLevel2Registry(t)
 
 	result, err := webauthn.FinishAuthentication(context.Background(), options)

@@ -1,6 +1,6 @@
 # Release checklist
 
-Status: Plan 14 Level 3 release alignment complete, revised 2026-06-01.
+Status: Plan 15 API cleanup complete, revised 2026-06-02.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
@@ -8,6 +8,7 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 - All P0 and P1 plans in `docs/plans.md` are complete.
 - Plan 14 Level 3 release alignment is complete.
+- Plan 15 API cleanup and refactor is complete.
 - Local `make ci` passes from a clean worktree.
 - GitHub Actions CI passes on the release branch.
 - Root package import graph does not include `net/http`, `browser`, `transport/http`, or optional attestation format packages.
@@ -24,6 +25,13 @@ WebAuthn Level 3, added `OriginPolicy`/`topOrigin`, Level 3 hints and
 attestation format fields, PRF extension handling, deprecated `uvm` result
 metadata, compound attestation support, OKP credential public-key material, and
 Level 3 browser/HTTP DTO coverage. No third-party dependency was added.
+
+2026-06-02: Completed Plan 15. Removed unused grouped decoder and crypto hash
+API, split root finish options into narrow decoder fields, made attestation
+acceptance depend only on explicit trust policy, added typed byte
+comparison/append helpers, clarified configuration and ceremony-state errors,
+and shared extension/signature helper logic. No third-party dependency was
+added.
 
 ## Non-goals
 

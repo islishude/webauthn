@@ -250,7 +250,7 @@ func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privat
 
 	authenticatorData := authenticatorData(t)
 	clientDataHash := bytes.Repeat([]byte{0x04}, 32)
-	options.authenticatorData = authenticatorData.Bytes()
+	options.authenticatorData = authenticatorData
 	options.clientDataHash = clientDataHash
 	rawChain := [][]byte{newCertificate(t, privateKey, publicKey, options)}
 	if options.extraChainCertificate {
@@ -279,7 +279,7 @@ func authenticatorData(t *testing.T) protocol.AuthenticatorData {
 }
 
 type certificateOptions struct {
-	authenticatorData       []byte
+	authenticatorData       protocol.AuthenticatorData
 	clientDataHash          []byte
 	nonce                   []byte
 	omitNonceExtension      bool

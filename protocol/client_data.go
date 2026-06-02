@@ -25,7 +25,7 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 		TokenBinding *TokenBinding  `json:"tokenBinding"`
 	}
 
-	if err := json.Unmarshal(raw.Bytes(), &decoded); err != nil {
+	if err := json.Unmarshal(raw.value, &decoded); err != nil {
 		return CollectedClientData{}, err
 	}
 	if decoded.Type == "" || decoded.Challenge == "" || decoded.Origin == "" {

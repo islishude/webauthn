@@ -44,6 +44,7 @@ type AuthenticationStartOptions struct {
 	Hints              []protocol.PublicKeyCredentialHint
 	Extensions         protocol.ExtensionInputs
 	ExpectedUserHandle protocol.UserHandle
+	Now                func() time.Time
 }
 
 // AuthenticationStartResult contains browser request options and caller-stored
@@ -72,14 +73,14 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		ctx = context.Background()
 	}
 	if options.RPID == "" {
-		return AuthenticationStartResult{}, errors.New("rp id is required")
+		return AuthenticationStartResult{}, fmt.Errorf("%w: rp id is required", ErrInvalidConfiguration)
 	}
 	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
-		return AuthenticationStartResult{}, err
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 	for _, descriptor := range options.AllowCredentials {
 		if err := descriptor.Validate(); err != nil {
-			return AuthenticationStartResult{}, err
+			return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 		}
 	}
 
@@ -101,12 +102,12 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		userVerification = protocol.UserVerificationPreferred
 	}
 	if err := validateUserVerification(userVerification); err != nil {
-		return AuthenticationStartResult{}, err
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
-	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout)
+	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
 	if err != nil {
-		return AuthenticationStartResult{}, err
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	requestOptions := protocol.PublicKeyCredentialRequestOptions{
@@ -119,7 +120,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		Extensions:          maps.Clone(options.Extensions),
 	}
 	if err := requestOptions.Validate(); err != nil {
-		return AuthenticationStartResult{}, err
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	state := AuthenticationState{
@@ -134,6 +135,14 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	}
 
 	return AuthenticationStartResult{Options: requestOptions, State: state}, nil
+}
+
+func (o AuthenticationStartOptions) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+
+	return time.Now()
 }
 
 // AuthenticationResponse is the structured, transport-neutral browser
@@ -180,16 +189,16 @@ type CounterResult struct {
 
 // AuthenticationFinishOptions configures assertion verification.
 type AuthenticationFinishOptions struct {
-	State             AuthenticationState
-	Response          AuthenticationResponse
-	Credential        CredentialRecord
-	Decoders          codec.Decoders
-	SignatureVerifier webcrypto.SignatureVerifier
-	AlgorithmPolicy   webcrypto.AlgorithmPolicy
-	ExtensionRegistry *extension.Registry
-	ExtensionPolicy   AuthenticationExtensionPolicy
-	CounterPolicy     CounterPolicy
-	Now               func() time.Time
+	State               AuthenticationState
+	Response            AuthenticationResponse
+	Credential          CredentialRecord
+	ExtensionMapDecoder codec.ExtensionMapDecoder
+	SignatureVerifier   webcrypto.SignatureVerifier
+	AlgorithmPolicy     webcrypto.AlgorithmPolicy
+	ExtensionRegistry   *extension.Registry
+	ExtensionPolicy     AuthenticationExtensionPolicy
+	CounterPolicy       CounterPolicy
+	Now                 func() time.Time
 }
 
 // CredentialUpdate is the persistence-ready credential update after
@@ -241,7 +250,7 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	if err != nil {
 		return AuthenticationResult{}, err
 	}
-	authenticatorExtensions, err := decodeAuthenticationExtensions(options.Decoders, parsedAuthData)
+	authenticatorExtensions, err := decodeAuthenticationExtensions(options.ExtensionMapDecoder, parsedAuthData)
 	if err != nil {
 		return AuthenticationResult{}, err
 	}
@@ -301,7 +310,7 @@ func (o AuthenticationFinishOptions) now() time.Time {
 
 func validateAuthenticationDependencies(options AuthenticationFinishOptions) error {
 	if options.SignatureVerifier == nil {
-		return errors.New("signature verifier is required")
+		return fmt.Errorf("%w: signature verifier is required", ErrInvalidConfiguration)
 	}
 	if options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
 		return ErrCredentialNotAllowed
@@ -312,16 +321,16 @@ func validateAuthenticationDependencies(options AuthenticationFinishOptions) err
 
 func validateAuthenticationState(state AuthenticationState, now time.Time) error {
 	if state.Challenge.Len() == 0 || state.RPID == "" {
-		return ErrMalformedResponse
+		return ErrInvalidCeremonyState
 	}
 	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
 	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
 		return ErrCeremonyExpired
 	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
 
 	return nil
@@ -331,7 +340,7 @@ func validateAuthenticationResponseShape(response AuthenticationResponse) error 
 	if err := response.Type.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
-	if response.RawID.Bytes() == nil || response.ClientDataJSON.Bytes() == nil || response.AuthenticatorData.Bytes() == nil || response.Signature.Bytes() == nil {
+	if response.RawID.IsNil() || response.ClientDataJSON.IsNil() || response.AuthenticatorData.IsNil() || response.Signature.IsNil() {
 		return ErrMalformedResponse
 	}
 
@@ -339,14 +348,14 @@ func validateAuthenticationResponseShape(response AuthenticationResponse) error 
 }
 
 func verifyAuthenticationCredentialBinding(state AuthenticationState, response AuthenticationResponse, credential CredentialRecord) error {
-	if !bytes.Equal(response.RawID.Bytes(), credential.ID.Bytes()) {
+	if !credential.ID.EqualRawID(response.RawID) {
 		return ErrCredentialNotAllowed
 	}
 	if len(state.AllowCredentials) == 0 {
 		return nil
 	}
 	for _, descriptor := range state.AllowCredentials {
-		if bytes.Equal(response.RawID.Bytes(), descriptor.ID.Bytes()) {
+		if descriptor.ID.EqualRawID(response.RawID) {
 			return nil
 		}
 	}
@@ -357,10 +366,10 @@ func verifyAuthenticationCredentialBinding(state AuthenticationState, response A
 func verifyAuthenticationUserBinding(state AuthenticationState, response AuthenticationResponse, credential CredentialRecord) error {
 	expected := state.ExpectedUserHandle
 	if expected.Len() != 0 {
-		if !bytes.Equal(credential.UserHandle.Bytes(), expected.Bytes()) {
+		if !credential.UserHandle.Equal(expected) {
 			return ErrCredentialOwnershipMismatch
 		}
-		if response.UserHandle.Len() != 0 && !bytes.Equal(response.UserHandle.Bytes(), expected.Bytes()) {
+		if response.UserHandle.Len() != 0 && !response.UserHandle.Equal(expected) {
 			return ErrCredentialOwnershipMismatch
 		}
 
@@ -369,7 +378,7 @@ func verifyAuthenticationUserBinding(state AuthenticationState, response Authent
 	if response.UserHandle.Len() == 0 {
 		return ErrUserHandleRequired
 	}
-	if !bytes.Equal(response.UserHandle.Bytes(), credential.UserHandle.Bytes()) {
+	if !response.UserHandle.Equal(credential.UserHandle) {
 		return ErrCredentialOwnershipMismatch
 	}
 
@@ -395,7 +404,7 @@ func verifyAuthenticationClientData(state AuthenticationState, raw protocol.Clie
 		return protocol.CollectedClientData{}, nil, err
 	}
 
-	hash := sha256.Sum256(raw.Bytes())
+	hash := sha256.Sum256(raw.AppendTo(nil))
 	return clientData, hash[:], nil
 }
 
@@ -448,15 +457,15 @@ func authenticationAppIDAllowed(state AuthenticationState, response Authenticati
 	return bytes.Equal(rpIDHash, appIDHash[:])
 }
 
-func decodeAuthenticationExtensions(decoders codec.Decoders, parsed protocol.ParsedAuthenticatorData) (codec.ExtensionMap, error) {
+func decodeAuthenticationExtensions(decoder codec.ExtensionMapDecoder, parsed protocol.ParsedAuthenticatorData) (codec.ExtensionMap, error) {
 	if !parsed.Flags.HasExtensionData() {
 		return nil, nil
 	}
-	if decoders == nil {
-		return nil, fmt.Errorf("%w: authentication decoders are required for authenticator extensions", ErrMalformedResponse)
+	if decoder == nil {
+		return nil, fmt.Errorf("%w: authentication extension map decoder is required for authenticator extensions", ErrInvalidConfiguration)
 	}
 
-	extensions, err := decoders.DecodeExtensionMap(parsed.ExtensionData)
+	extensions, err := decoder.DecodeExtensionMap(parsed.ExtensionData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
 	}
@@ -473,82 +482,26 @@ type authenticationExtensionInputs struct {
 }
 
 func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationExtensionInputs) ([]extension.Result, error) {
-	ids := map[string]struct{}{}
-	for id := range inputs.state.RequestedExtensions {
-		ids[id] = struct{}{}
-	}
-	for id := range inputs.clientExtensionResults {
-		ids[id] = struct{}{}
-	}
-	for id := range inputs.authenticatorExtensions {
-		ids[id] = struct{}{}
-	}
-
-	results := make([]extension.Result, 0, len(ids))
-	for id := range ids {
-		clientInput, requested := inputs.state.RequestedExtensions[id]
-		if id == extension.IDPRF {
-			clientInput = attachAllowedCredentialIDsToPRFInput(clientInput, inputs.state.AllowCredentials)
-		}
-		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
-		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
-
-		handler, known := lookupExtensionHandler(inputs.registry, id)
-		if !known && inputs.policy.RejectUnknown {
-			return nil, ErrExtensionPolicy
-		}
-
-		hasOutput := hasClientOutput || hasAuthenticatorOutput
-		if !requested && hasOutput {
-			if inputs.policy.RejectUnrequested {
-				return nil, ErrExtensionPolicy
+	return verifyExtensions(ctx, extensionVerificationInputs{
+		operation:               extension.OperationAuthentication,
+		requestedExtensions:     inputs.state.RequestedExtensions,
+		policy:                  extensionOutputPolicy{rejectUnrequested: inputs.policy.RejectUnrequested, rejectUnknown: inputs.policy.RejectUnknown},
+		registry:                inputs.registry,
+		clientExtensionResults:  inputs.clientExtensionResults,
+		authenticatorExtensions: inputs.authenticatorExtensions,
+		clientInputTransform: func(id string, clientInput any) any {
+			if id == extension.IDPRF {
+				return attachAllowedCredentialIDsToPRFInput(clientInput, inputs.state.AllowCredentials)
 			}
-			results = append(results, rawExtensionResult(id, rawExtensionInputs{
-				requested:              requested,
-				clientInput:            clientInput,
-				clientOutput:           clientOutput,
-				hasClientOutput:        hasClientOutput,
-				authenticatorOutput:    authenticatorOutput,
-				hasAuthenticatorOutput: hasAuthenticatorOutput,
-				warning:                "unrequested extension output ignored",
-			}))
-			continue
-		}
-
-		if !known {
-			results = append(results, rawExtensionResult(id, rawExtensionInputs{
-				requested:              requested,
-				clientInput:            clientInput,
-				clientOutput:           clientOutput,
-				hasClientOutput:        hasClientOutput,
-				authenticatorOutput:    authenticatorOutput,
-				hasAuthenticatorOutput: hasAuthenticatorOutput,
-				warning:                "unknown extension preserved",
-			}))
-			continue
-		}
-
-		result, err := handler.HandleExtension(ctx, extension.Request{
-			Operation:           extension.OperationAuthentication,
-			ID:                  id,
-			Requested:           requested,
-			ClientInput:         clientInput,
-			ClientOutput:        clientOutput,
-			AuthenticatorOutput: authenticatorOutput,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
+			return clientInput
+		},
+	})
 }
 
 func attachAllowedCredentialIDsToPRFInput(input any, credentials []protocol.CredentialDescriptor) any {
 	allowed := make([]string, len(credentials))
 	for i, credential := range credentials {
-		allowed[i] = base64.RawURLEncoding.EncodeToString(credential.ID.Bytes())
+		allowed[i] = base64.RawURLEncoding.EncodeToString(credential.ID.AppendTo(nil))
 	}
 
 	switch typed := input.(type) {
@@ -565,7 +518,8 @@ func attachAllowedCredentialIDsToPRFInput(input any, credentials []protocol.Cred
 }
 
 func verifyAuthenticationSignature(ctx context.Context, verifier webcrypto.SignatureVerifier, credential CredentialRecord, response AuthenticationResponse, clientDataHash []byte) error {
-	signed := append(response.AuthenticatorData.Bytes(), clientDataHash...)
+	signed := response.AuthenticatorData.AppendTo(make([]byte, 0, response.AuthenticatorData.Len()+len(clientDataHash)))
+	signed = append(signed, clientDataHash...)
 	if err := verifier.VerifySignature(ctx, webcrypto.SignatureInput{
 		Algorithm: credential.PublicKey.Algorithm,
 		PublicKey: credential.PublicKey.Key,

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
@@ -404,7 +405,7 @@ func newFixtureBase(t *testing.T, publicArea []byte, hashAlg uint16) fixtureBase
 	if err != nil {
 		t.Fatalf("publicArea.name() error = %v", err)
 	}
-	extraData, err := tpmHash(hashAlg, signedData(authenticatorData.Bytes(), clientDataHash))
+	extraData, err := tpmHash(hashAlg, attcrypto.SignedData(authenticatorData, clientDataHash))
 	if err != nil {
 		t.Fatalf("tpmHash() error = %v", err)
 	}

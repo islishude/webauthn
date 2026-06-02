@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
@@ -285,7 +286,7 @@ func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privat
 	clientDataHash := bytes.Repeat([]byte{0x04}, 32)
 	options.clientDataHash = clientDataHash
 	certificate := newCertificate(t, privateKey, publicKey, options)
-	signed := signedData(authenticatorData.Bytes(), clientDataHash)
+	signed := attcrypto.SignedData(authenticatorData, clientDataHash)
 	statement := codec.AttestationStatement{
 		"alg": algorithm,
 		"sig": []byte("signature"),

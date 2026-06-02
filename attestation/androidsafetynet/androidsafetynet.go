@@ -11,7 +11,9 @@ import (
 	"fmt"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/protocol"
 )
 
 const (
@@ -64,8 +66,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	authenticatorData := request.AuthenticatorData.Bytes()
-	if len(authenticatorData) == 0 || len(request.ClientDataHash) == 0 {
+	if request.AuthenticatorData.Len() == 0 || len(request.ClientDataHash) == 0 {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 
@@ -76,7 +77,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err := validateSafetyNetCertificate(verification.Certificates); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := validatePayload(verification.Payload, expectedNonce(authenticatorData, request.ClientDataHash)); err != nil {
+	if err := validatePayload(verification.Payload, expectedNonce(request.AuthenticatorData, request.ClientDataHash)); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -87,11 +88,8 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	}, nil
 }
 
-func expectedNonce(authenticatorData []byte, clientDataHash []byte) string {
-	signed := make([]byte, 0, len(authenticatorData)+len(clientDataHash))
-	signed = append(signed, authenticatorData...)
-	signed = append(signed, clientDataHash...)
-	digest := sha256.Sum256(signed)
+func expectedNonce(authenticatorData protocol.AuthenticatorData, clientDataHash []byte) string {
+	digest := sha256.Sum256(attcrypto.SignedData(authenticatorData, clientDataHash))
 
 	return base64.StdEncoding.EncodeToString(digest[:])
 }

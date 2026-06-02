@@ -167,10 +167,3 @@ type COSEKeyDecoder interface {
 type ExtensionMapDecoder interface {
 	DecodeExtensionMap([]byte) (ExtensionMap, error)
 }
-
-// Decoders groups the codec contracts needed by ceremony verifiers.
-type Decoders interface {
-	AttestationObjectDecoder
-	COSEKeyDecoder
-	ExtensionMapDecoder
-}

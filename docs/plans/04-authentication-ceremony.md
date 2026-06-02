@@ -2,7 +2,7 @@
 
 Priority: P0.
 
-Status: Complete, 2026-05-31.
+Status: Complete, revised 2026-06-02.
 
 ## Purpose
 
@@ -90,4 +90,7 @@ Tests delivered:
 
 Scope changes: none. HTTP/session/database behavior, browser JSON helpers, broader risk engines, and storage adapters remain out of scope.
 
-Dependency decision: no runtime dependency was added in this plan. Signature verification remains behind `crypto.SignatureVerifier`, and authenticator extension decoding reuses `codec.Decoders`.
+Dependency decision: no runtime dependency was added in this plan. Signature verification remains behind `crypto.SignatureVerifier`, and authenticator extension decoding uses `codec.ExtensionMapDecoder`.
+
+Revision note, 2026-06-02: Plan 15 split the root decoder API so
+authentication finish only accepts the extension-map decoder it can use.

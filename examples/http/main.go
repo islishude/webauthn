@@ -71,13 +71,16 @@ func (h *handler) finishRegistration(response http.ResponseWriter, request *http
 		return
 	}
 
+	decoder := codeccbor.MustNewDecoder()
 	result, err := webauthn.FinishRegistration(request.Context(), webauthn.RegistrationFinishOptions{
-		State:               h.state,
-		Response:            credentialResponse,
-		Decoders:            codeccbor.MustNewDecoder(),
-		AttestationRegistry: h.verifiers,
-		AttestationPolicy:   webauthn.RegistrationAttestationPolicy{AllowNone: true},
-		ExtensionRegistry:   h.extensions,
+		State:                      h.state,
+		Response:                   credentialResponse,
+		AttestationObjectDecoder:   decoder,
+		CredentialPublicKeyDecoder: decoder,
+		ExtensionMapDecoder:        decoder,
+		AttestationRegistry:        h.verifiers,
+		AttestationTrustPolicy:     attestation.AcceptNone(),
+		ExtensionRegistry:          h.extensions,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)

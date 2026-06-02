@@ -389,14 +389,6 @@ func parseECDSASignature(reader *tpmReader) ([]byte, error) {
 	return der, nil
 }
 
-func signedData(authenticatorData []byte, clientDataHash []byte) []byte {
-	out := make([]byte, 0, len(authenticatorData)+len(clientDataHash))
-	out = append(out, authenticatorData...)
-	out = append(out, clientDataHash...)
-
-	return out
-}
-
 func tpmHash(algorithm uint16, data []byte) ([]byte, error) {
 	switch algorithm {
 	case tpmAlgSHA256:

@@ -9,18 +9,6 @@ import (
 	"github.com/islishude/webauthn/protocol"
 )
 
-// HashAlgorithm identifies a hash operation needed by WebAuthn verification.
-type HashAlgorithm string
-
-const (
-	HashSHA256 HashAlgorithm = "SHA-256"
-)
-
-// Hasher computes protocol-required hashes through an injected dependency.
-type Hasher interface {
-	Hash(algorithm HashAlgorithm, data []byte) ([]byte, error)
-}
-
 // AlgorithmPolicy decides whether a COSE algorithm is accepted by RP policy.
 type AlgorithmPolicy interface {
 	AcceptsAlgorithm(protocol.COSEAlgorithmIdentifier) bool

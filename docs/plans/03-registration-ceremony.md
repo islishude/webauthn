@@ -2,7 +2,7 @@
 
 Priority: P0.
 
-Status: Complete, 2026-05-31.
+Status: Complete, revised 2026-06-02.
 
 ## Purpose
 
@@ -74,7 +74,7 @@ Delivered files and packages:
 
 Tests delivered:
 
-- successful registration with `none` attestation and explicit `AllowNone` policy;
+- successful registration with `none` attestation and explicit `attestation.AcceptNone()` trust policy;
 - malformed client data, challenge mismatch, origin, cross-origin, top-origin,
   reserved token binding, RP ID hash mismatch, missing UP, missing UV when
   required, unsupported algorithm, unsupported attestation format, rejected
@@ -84,10 +84,15 @@ Tests delivered:
 - concrete CBOR/COSE decoder tests for attestation object shape, duplicate map key rejection, COSE_Key raw-consumption boundary, extension map decoding, and malformed CBOR;
 - `none` verifier tests for empty and non-empty attestation statements.
 
-Scope changes: concrete CBOR and COSE_Key dependencies were added in an optional `codec/cbor` package as requested for Plan 03. The root package depends only on the existing `codec.Decoders` abstraction and does not expose concrete dependency types.
+Scope changes: concrete CBOR and COSE_Key dependencies were added in an optional `codec/cbor` package as requested for Plan 03. The root package depends only on narrow decoder contracts and does not expose concrete dependency types.
 
 Dependency decision:
 
 - `github.com/fxamacker/cbor/v2 v2.9.2` is used only by `codec/cbor` to decode WebAuthn CBOR structures with duplicate map key rejection.
 - `github.com/ldclabs/cose v1.3.4` is used only by `codec/cbor` to decode COSE_Key material and expose the COSE algorithm identifier through `codec.CredentialPublicKey`.
-- These dependencies are not imported by the root package and can be replaced behind `codec.Decoders` without changing the root registration API.
+- These dependencies are not imported by the root package and can be replaced behind the attestation object, credential public-key, and extension map decoder contracts without exposing concrete dependency types.
+
+Revision note, 2026-06-02: Plan 15 removed `RegistrationAttestationPolicy`
+and the grouped `codec.Decoders` interface. Registration finish now accepts
+explicit trust policy and separate decoder contracts; nil trust policy rejects
+all attestations after format verification.

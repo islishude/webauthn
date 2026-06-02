@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"slices"
@@ -35,6 +36,11 @@ type AAGUID [AAGUIDLength]byte
 // Bytes returns a defensive copy.
 func (a AAGUID) Bytes() []byte {
 	return slices.Clone(a[:])
+}
+
+// EqualBytes compares a with caller-provided AAGUID bytes without allocating.
+func (a AAGUID) EqualBytes(other []byte) bool {
+	return subtle.ConstantTimeCompare(a[:], other) == 1
 }
 
 // AuthenticatorFlags exposes authenticator data flags.
@@ -91,7 +97,7 @@ type ParsedAuthenticatorData struct {
 
 // ParseAuthenticatorData parses the WebAuthn authenticator data layout.
 func ParseAuthenticatorData(raw AuthenticatorData) (ParsedAuthenticatorData, error) {
-	bytes := raw.Bytes()
+	bytes := raw.value
 	if len(bytes) < MinAuthenticatorDataLength {
 		return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
 	}

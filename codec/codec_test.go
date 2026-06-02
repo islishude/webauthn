@@ -113,4 +113,8 @@ func (fakeDecoders) DecodeExtensionMap([]byte) (codec.ExtensionMap, error) {
 	return codec.ExtensionMap{"credProps": true}, nil
 }
 
-var _ codec.Decoders = fakeDecoders{}
+var (
+	_ codec.AttestationObjectDecoder = fakeDecoders{}
+	_ codec.COSEKeyDecoder           = fakeDecoders{}
+	_ codec.ExtensionMapDecoder      = fakeDecoders{}
+)

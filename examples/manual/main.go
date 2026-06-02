@@ -71,13 +71,16 @@ func (s *server) finishRegistration(ctx context.Context, sessionID string, body 
 		return webauthn.CredentialRecord{}, err
 	}
 
+	decoder := codeccbor.MustNewDecoder()
 	result, err := webauthn.FinishRegistration(ctx, webauthn.RegistrationFinishOptions{
-		State:               state,
-		Response:            response,
-		Decoders:            codeccbor.MustNewDecoder(),
-		AttestationRegistry: s.attestations,
-		AttestationPolicy:   webauthn.RegistrationAttestationPolicy{AllowNone: true},
-		ExtensionRegistry:   s.extensions,
+		State:                      state,
+		Response:                   response,
+		AttestationObjectDecoder:   decoder,
+		CredentialPublicKeyDecoder: decoder,
+		ExtensionMapDecoder:        decoder,
+		AttestationRegistry:        s.attestations,
+		AttestationTrustPolicy:     attestation.AcceptNone(),
+		ExtensionRegistry:          s.extensions,
 	})
 	if err != nil {
 		return webauthn.CredentialRecord{}, err

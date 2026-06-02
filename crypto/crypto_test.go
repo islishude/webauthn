@@ -18,14 +18,6 @@ func TestCryptoContractsAcceptTestDouble(t *testing.T) {
 		t.Fatalf("NewSignature() error = %v", err)
 	}
 
-	digest, err := adapter.Hash(webcrypto.HashSHA256, []byte("client-data"))
-	if err != nil {
-		t.Fatalf("Hash() error = %v", err)
-	}
-	if !bytes.Equal(digest, []byte("hash:client-data")) {
-		t.Fatalf("digest = %q, want hash:client-data", digest)
-	}
-
 	if !adapter.AcceptsAlgorithm(protocol.COSEAlgorithmIdentifier(-7)) {
 		t.Fatal("AcceptsAlgorithm(-7) = false, want true")
 	}
@@ -64,10 +56,6 @@ func TestCryptoContractsAcceptTestDouble(t *testing.T) {
 
 type fakeCrypto struct{}
 
-func (fakeCrypto) Hash(_ webcrypto.HashAlgorithm, data []byte) ([]byte, error) {
-	return append([]byte("hash:"), data...), nil
-}
-
 func (fakeCrypto) AcceptsAlgorithm(algorithm protocol.COSEAlgorithmIdentifier) bool {
 	return algorithm == protocol.COSEAlgorithmIdentifier(-7)
 }
@@ -85,7 +73,6 @@ func (fakeCrypto) VerifyJWS(context.Context, webcrypto.JWSToken) (webcrypto.JWSV
 }
 
 var (
-	_ webcrypto.Hasher              = fakeCrypto{}
 	_ webcrypto.AlgorithmPolicy     = fakeCrypto{}
 	_ webcrypto.SignatureVerifier   = fakeCrypto{}
 	_ webcrypto.CertificateVerifier = fakeCrypto{}

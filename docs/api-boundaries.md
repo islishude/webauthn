@@ -2,7 +2,7 @@
 
 Status: registration and authentication ceremony APIs, Level 3 extension
 handlers, attestation trust policy, optional browser/HTTP adapters, and examples
-implemented, revised 2026-06-01.
+implemented, revised 2026-06-02.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -30,9 +30,9 @@ The root package must not import optional attestation format packages, `browser`
   parsing;
 - `codec`: attestation object, COSE key, extension map, public-key material, and
   compound statement decoder contracts;
-- `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind
-  `codec.Decoders`;
-- `crypto`: hashing, algorithm policy, signature, certificate, and JWS/JWT
+- `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind narrow
+  codec contracts;
+- `crypto`: algorithm policy, signature, certificate, and JWS/JWT
   verifier contracts;
 - `attestation`: format verifier contract, duplicate-rejecting registry, result
   types, and trust policy contracts;
@@ -53,7 +53,7 @@ The root package must not import optional attestation format packages, `browser`
 `OriginPolicy`, challenge configuration, credential parameters, exclude
 descriptors, authenticator selection, hints, attestation conveyance,
 attestation format preferences, requested extensions, user verification, and
-timeout.
+timeout. `Now` may be injected for deterministic timeout state.
 
 It returns creation options and caller-stored ceremony state. The core does not
 persist ceremony state.
@@ -61,21 +61,23 @@ persist ceremony state.
 ### Registration finish
 
 `FinishRegistration(ctx, RegistrationFinishOptions)` accepts stored state,
-structured registration response input, selected codec, attestation registry,
+structured registration response input, selected attestation object decoder,
+credential public-key decoder, extension map decoder, attestation registry,
 trust policy, extension registry, extension policy, and caller-provided
 credential uniqueness result.
 
 It returns a persistence-ready credential record, attestation validity, trust
 result, extension results, backup state, authenticator attachment, and warnings.
-If `AttestationTrustPolicy` is nil, only `none` attestation can be accepted and
-only when `RegistrationAttestationPolicy.AllowNone` is true.
+If `AttestationTrustPolicy` is nil, no attestation is accepted after format
+verification. Callers that accept consumer passkey `none` attestation should use
+an explicit policy such as `attestation.AcceptNone()`.
 
 ### Authentication start
 
 `StartAuthentication(ctx, AuthenticationStartOptions)` accepts RP ID,
 `OriginPolicy`, challenge configuration, optional allow credentials,
 username-first user binding, user verification, hints, requested extensions, and
-timeout.
+timeout. `Now` may be injected for deterministic timeout state.
 
 It returns request options and caller-stored ceremony state. Empty
 `allowCredentials` is supported for discoverable/passkey flows.
@@ -84,7 +86,8 @@ It returns request options and caller-stored ceremony state. Empty
 
 `FinishAuthentication(ctx, AuthenticationFinishOptions)` accepts stored state,
 structured assertion response, stored credential record, signature verifier,
-algorithm policy, extension registry/policy, AppID policy, and counter policy.
+algorithm policy, extension map decoder, extension registry/policy, AppID
+policy, and counter policy.
 
 It returns the authenticated user handle, counter comparison, persistence-ready
 credential update, backup state, authenticator attachment, extension results,
@@ -109,6 +112,11 @@ Core protocol values are byte-oriented. The optional `browser` package converts
 between core values and JSON DTOs for projects that use unpadded base64url for
 browser `ArrayBuffer`-like fields.
 
+Protocol `Bytes()` accessors return defensive copies. Ceremony code uses typed
+comparison and `AppendTo` helpers for values such as credential IDs, raw IDs,
+user handles, authenticator data, and client data JSON when allocation-free
+internal comparison or signature-base construction is useful.
+
 The browser DTOs cover:
 
 - creation/request options, including hints and attestation formats;
@@ -130,14 +138,16 @@ The project may define WebAuthn-specific decoded shapes but must not implement
 general CBOR, COSE, ASN.1, JWS/JWT, X.509 path building, or cryptographic
 primitives.
 
-`codec.Decoders` supports attestation object decoding, COSE key decoding, and
-authenticator extension map decoding. `codec/cbor` is optional and replaceable.
+`codec.AttestationObjectDecoder`, `codec.COSEKeyDecoder`, and
+`codec.ExtensionMapDecoder` are separate contracts so root finish options only
+require the exact decoding surface they use. `codec/cbor` is optional and
+replaceable.
 `codec.CredentialPublicKey` may carry U2F raw public key bytes and codec-derived
 EC2, RSA, or OKP public key material for optional attestation packages.
 
-`crypto` contracts delegate hashing, signature verification, certificate
-verification, and JWS/JWT verification. Root APIs should avoid concrete CBOR,
-COSE, certificate, or metadata dependency types.
+`crypto` contracts delegate algorithm policy, signature verification,
+certificate verification, and JWS/JWT verification. Root APIs should avoid
+concrete CBOR, COSE, certificate, or metadata dependency types.
 
 ## Attestation boundary
 

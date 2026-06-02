@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, Level 3 attestation and extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-01.
+Status: registration, authentication, Level 3 attestation and extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-02.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -45,9 +45,9 @@ Plan 02 fixed the initial package names. The dependency direction must remain st
 | `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract                                      | Root accepts explicit format verifiers and trust policy                                 |
 | Attestation format packages | `none`, `packed`, `tpm`, `android-key`, legacy `android-safetynet`, `fido-u2f`, `apple`, `compound`                                          | WebAuthn attestation formats implemented as optional imports; root does not import them |
 | `extension`                 | Operation-aware extension handler contract, Level 2 compatibility handlers, Level 3 handlers, result types, and duplicate-rejecting registry | Root accepts explicit extension handlers or built-in Level 3 handlers                   |
-| `crypto`                    | Hash, algorithm policy, signature verification, certificate, and JWS/JWT contracts                                                           | Behind narrow contracts                                                                 |
+| `crypto`                    | Algorithm policy, signature verification, certificate, and JWS/JWT contracts                                                                 | Behind narrow contracts                                                                 |
 | `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                                                      | Behind narrow contracts                                                                 |
-| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                                                  | Not imported by root; replaceable behind `codec.Decoders`                               |
+| `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                                                  | Not imported by root; replaceable behind narrow codec contracts                         |
 | `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                                                         | Optional package; not imported by the root package                                      |
 | `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                                                      | Optional package; not imported by the root package                                      |
 
@@ -64,13 +64,22 @@ The project may implement parsing of WebAuthn protocol-specific binary structure
 
 The project must not implement general CBOR or COSE decoders. Attestation objects and COSE keys should be decoded through a codec dependency or adapter. The project may define the expected shapes and validate decoded values.
 
-The project must not implement cryptographic algorithms. Hashing, signature verification, X.509 certificate parsing, certificate chain validation, and JWS/JWT verification must be delegated. The project may map WebAuthn policy requirements to those lower-level operations and validate protocol bindings.
+The project must not implement cryptographic algorithms. SHA-256 hashing uses
+Go standard library primitives at WebAuthn call sites. Signature verification,
+X.509 certificate parsing, certificate chain validation, and JWS/JWT
+verification must be delegated. The project may map WebAuthn policy
+requirements to those lower-level operations and validate protocol bindings.
 
 ## Data model decisions
 
 Protocol byte values are represented internally as bytes, not as transport-specific strings. This applies to challenges, credential IDs, user handles, raw IDs, authenticator data, signatures, attestation objects, and client data JSON.
 
 Browser-facing JSON often uses base64url string encodings for binary fields. That is transport behavior and belongs in optional JSON/browser helper packages or explicit marshal/unmarshal wrappers, not in the core ceremony logic.
+
+Public `Bytes()` methods remain defensive-copy accessors. Internal ceremony and
+attestation verification code should use typed equality and `AppendTo` helpers
+for byte values when comparison or signature-base construction does not require
+allocating an intermediate copy.
 
 Stored credential records should include at minimum:
 
@@ -156,7 +165,7 @@ Dependencies must be minimal and compartmentalized. The root package should not 
 
 The implementation should prefer standard library support for SHA-256, X.509 parsing, ASN.1 parsing, ECDSA/RSA verification, and base64url handling where it is sufficient. CBOR, COSE, and JWS/JWT require explicit dependency decisions before implementation.
 
-Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs still accept narrow codec/crypto interfaces, so replacing these dependencies does not change root API compatibility.
+Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
 
 Plan 05's initial `attestation/packed` slice adds no dependency. It uses Go standard library X.509 parsing for packed attestation certificate shape checks and delegates attestation signature verification through `crypto.SignatureVerifier`. X.509 trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 
@@ -180,6 +189,11 @@ policy-check `topOrigin`, treat `tokenBinding` as reserved client data, add
 Level 3 hints and attestation format fields, add PRF extension handling in
 `extension/level3.go`, retain `uvm` as deprecated opt-in support, add optional
 `attestation/compound`, and extend codec key material to OKP.
+
+Plan 15 adds no dependency. It removes dead grouped decoder and hasher API
+surface, keeps concrete codec dependencies optional behind narrower decoder
+contracts, adds typed byte comparison/append helpers, and makes attestation
+acceptance depend only on explicit trust policy.
 
 ## Compatibility and passkey behavior
 
@@ -206,5 +220,6 @@ Implementation should follow `docs/plans.md`. The required order is:
 13. Level 3 extensions (complete, 2026-06-01);
 14. Level 3 attestation and algorithms (complete, 2026-06-01);
 15. Level 3 conformance and release alignment (complete, 2026-06-01).
+16. API cleanup and refactor (complete, 2026-06-02).
 
 The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces README checks, Go formatting, linting, tests, race checks, fuzz smoke checks, example builds, import graph checks, dependency license checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so implementation work remains gated by local and CI behavior.

@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: Plan 14 Level 3 adapter, example, and conformance coverage complete, revised 2026-06-01.
+Status: Plan 15 API cleanup and refactor coverage complete, revised 2026-06-02.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -31,6 +31,7 @@ Required coverage:
 - dictionary field validation;
 - enum and DOMString value handling;
 - byte/string transport conversion boundaries;
+- typed byte equality and append helpers that avoid defensive-copy hot paths;
 - RP ID and origin policy validation;
 - challenge generation and challenge comparison;
 - credential descriptor and transport hint behavior;
@@ -266,6 +267,21 @@ Plans 10 through 14 added tests and checks for:
 - examples using Level 3 recommended credential parameters and Level 3 extension
   registries with deprecated support where needed.
 
+Plan 15 added tests and checks for:
+
+- protocol typed equality helpers for credential IDs, raw IDs, and user handles
+  without relying on `Bytes()` defensive copies;
+- byte-value `AppendTo` behavior for signature-base construction without
+  exposing mutable stored bytes;
+- registration and authentication tests updated for explicit
+  `AttestationTrustPolicy`, narrow decoder fields, injected clocks, and shared
+  root extension verification behavior;
+- attestation format tests preserved across the shared signature helper refactor,
+  including malformed statement and invalid signature rejection paths;
+- example builds updated to pass explicit decoder contracts and
+  `attestation.AcceptNone()` where consumer passkey `none` attestation is
+  accepted.
+
 ## Fuzzing targets
 
 Current fuzzing targets are:
@@ -319,6 +335,7 @@ The matrix below maps W3C WebAuthn Level 3 relying-party operation groups to rep
 | Authentication sign counter and clone-risk behavior                                                                     | `TestAuthenticationCounterPolicy`, `TestAuthenticationRejectsInvalidInputs`                                                                                                                                             |
 | Parser and transport boundary robustness                                                                                | `FuzzParseAuthenticatorData`, `FuzzDecodeCredentialPublicKey`, `FuzzDecodeBrowserCredentialDescriptor`, browser package response tests, `TestDecoderCredentialPublicKeyRejectsMalformedDependencyShape`                 |
 | Root modularity and dependency hygiene                                                                                  | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`, `make example-build`, `make readme-check`                                                                        |
+| Protocol byte safety and allocation-sensitive comparisons                                                               | `TestCredentialIDTypedEqualityDoesNotUseDefensiveCopies`, `TestUserHandleTypedEqualityDoesNotUseDefensiveCopies`, `TestAppendToAppendsWithoutExposingStoredBytes`                                                       |
 
 ## Continuous integration expectations
 

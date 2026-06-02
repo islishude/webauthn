@@ -8,13 +8,15 @@ registration and authentication ceremonies, then returns credential records,
 counter updates, attestation results, extension results, and policy outcomes for
 the application to persist in its own storage.
 
-Current status: implementation is complete through Plan 14. The repository has
+Current status: implementation is complete through Plan 15. The repository has
 transport-neutral registration and authentication APIs, optional attestation
 format packages, WebAuthn Level 3 protocol fields, Level 3 extension handlers
 with deprecated `uvm` retained, optional browser JSON and standard-library HTTP
 helpers, compile-checked examples, conformance-oriented tests, fuzz smoke
 targets, import graph checks, dependency license checks, and release
-documentation.
+documentation. The current public API cleanup keeps byte `Bytes()` accessors
+defensive, adds typed comparison/append helpers for verifier hot paths, and uses
+explicit attestation trust policy and narrow decoder contracts.
 
 The release checklist is tracked in `docs/release.md`.
 
@@ -75,7 +77,7 @@ The package graph is designed so applications only import what they need:
 - `codec`: CBOR attestation object, COSE key, and extension map decoder
   contracts;
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder;
-- `crypto`: hashing, signature, certificate-chain, and JWS/JWT verifier
+- `crypto`: algorithm policy, signature, certificate-chain, and JWS/JWT verifier
   contracts;
 - `attestation`: format verifier registry and trust policy contracts;
 - `attestation/none`: optional `none` verifier;
@@ -129,7 +131,8 @@ Safe behavior is the default shape:
 - user verification is enforced according to ceremony policy;
 - signature counter rollback is surfaced as clone risk;
 - unsupported algorithms and formats are rejected;
-- non-`none` attestation requires caller-supplied trust acceptance;
+- attestation acceptance requires caller-supplied trust policy such as
+  `attestation.AcceptNone()` for consumer passkey `none` attestation;
 - unknown, unsolicited, or unrequested extensions are ignored or rejected
   according to explicit extension policy;
 - optional HTTP helpers write generic errors and do not expose raw protocol
@@ -201,7 +204,8 @@ or quality gates change, update the relevant docs in the same change.
 
 A release candidate requires:
 
-- all P0 and P1 plans in `docs/plans.md` complete;
+- all P0 and P1 plans in `docs/plans.md` complete, including Plan 15 API
+  cleanup;
 - Plan 14 Level 3 release alignment complete;
 - local `make ci` passing from a clean worktree;
 - GitHub Actions passing on the release branch;

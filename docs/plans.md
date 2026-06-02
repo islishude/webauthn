@@ -1,6 +1,6 @@
 # Implementation plans
 
-Status: updated plan index, revised 2026-06-01.
+Status: updated plan index, revised 2026-06-02.
 
 This file is the top-level plan index. Detailed plans live in `docs/plans/*.md` and are ordered by implementation importance using numeric prefixes. Do not collapse all planning into this file.
 
@@ -35,10 +35,11 @@ When a plan is completed, update this file and the corresponding plan file in th
 | 12    | [Level 3 extensions](plans/12-level3-extensions.md)                                 | P1       | Complete, 2026-06-01         | Add the `prf` extension in Level 3 helpers and keep `uvm` as deprecated opt-in support.                             |
 | 13    | [Level 3 attestation and algorithms](plans/13-level3-attestation-and-algorithms.md) | P1       | Complete, 2026-06-01         | Add compound attestation normalization/verifier support and Level 3 algorithm/key material coverage.                |
 | 14    | [Level 3 conformance and release alignment](plans/14-level3-conformance-release.md) | P1       | Complete, 2026-06-01         | Align docs, tests, examples, and release readiness with the Level 3 upgrade.                                        |
+| 15    | [API cleanup and refactor](plans/15-api-cleanup-refactor.md)                        | P1       | Complete, 2026-06-02         | Remove dead API, split decoder contracts, clarify errors, and reduce byte-copy hot paths.                           |
 
 ## Release gates
 
-A stable release requires plans 02 through 14 to be complete, local `make ci` to pass, and GitHub Actions to pass on the release branch.
+A stable release requires plans 02 through 15 to be complete, local `make ci` to pass, and GitHub Actions to pass on the release branch.
 
 Root package release gates:
 
@@ -50,6 +51,7 @@ Root package release gates:
 - GitHub Actions CI passes on the release branch;
 - registration and authentication relying-party operations covered by tests;
 - all WebAuthn Level 3 attestation and extension work in plans 10 through 14 is implemented and documented;
+- Plan 15 API cleanup is implemented and documented;
 - README feature claims match implemented and tested behavior.
 
 ## Plan synchronization rule
@@ -59,6 +61,11 @@ Plan 01 added repository quality gates after the initial documentation pass. Bec
 Plans 10 through 14 are a WebAuthn Level 3 upgrade addendum after Plan 09
 release hardening. Their P0/P1 priority reflects upgrade importance, while
 their numeric order preserves the completed Plan 00-09 history.
+
+Plan 15 is an API-breaking cleanup after the Level 3 release alignment. Its P1
+priority reflects release-readiness risk reduction: testability, explicit
+attestation trust policy, narrower decoder contracts, clearer root errors, and
+lower allocation pressure in verifier hot paths.
 
 Future plan insertions must either preserve numeric priority ordering or
 explicitly document why a later-numbered plan has higher execution priority.

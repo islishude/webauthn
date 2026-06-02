@@ -2,7 +2,7 @@
 
 Priority: P0.
 
-Status: Complete, 2026-05-31.
+Status: Complete, revised 2026-06-02.
 
 ## Purpose
 
@@ -22,7 +22,7 @@ Define the concrete Go module foundation without implementing ceremony behavior 
 4. Define protocol types for WebAuthn creation and request options, credential descriptors, RP entity, user entity, authenticator selection, transports, attestation conveyance, user verification, and collected client data.
 5. Define byte-safe internal representations for challenge, credential ID, user handle, raw ID, authenticator data, client data JSON, attestation object, and signature.
 6. Define codec adapter contracts for CBOR attestation object decoding, COSE key decoding, and extension map decoding.
-7. Define crypto adapter contracts for hashing, algorithm policy, signature verification, X.509 handling, and JWS/JWT handoff.
+7. Define crypto adapter contracts for algorithm policy, signature verification, X.509 handling, and JWS/JWT handoff.
 8. Define attestation format verifier contract and registry behavior.
 9. Define extension handler contract and registry behavior.
 10. Add import graph tests or scripts proving the root package does not import optional attestation or transport packages.
@@ -56,7 +56,7 @@ Delivered files and packages:
 - root package `webauthn` with package documentation and module path constant.
 - `protocol` for byte-safe WebAuthn values, option dictionaries, credential descriptors, RP/user entities, DOMString-like values, and collected client data.
 - `codec` for attestation object, COSE key, and extension map decoder contracts.
-- `crypto` for hash, algorithm policy, signature, certificate-chain, and JWS/JWT verifier contracts.
+- `crypto` for algorithm policy, signature, certificate-chain, and JWS/JWT verifier contracts.
 - `attestation` for format verifier result types and duplicate-rejecting, case-sensitive registry behavior.
 - `extension` for extension handler result types and duplicate-rejecting, case-sensitive registry behavior.
 
@@ -71,3 +71,8 @@ Tests delivered:
 Scope changes: none. Plan 03 registration behavior, `none` attestation implementation, browser JSON transport helpers, and concrete CBOR/COSE/JWS/X.509 dependencies remain future work.
 
 Dependency decision: no runtime dependency was added in this plan. CBOR, COSE, JWS/JWT, and X.509 behavior is represented by narrow interfaces so concrete dependency selection can be reviewed when the first parser or verifier requires it.
+
+Revision note, 2026-06-02: Plan 15 removed the unused exported crypto hash API
+and kept SHA-256 use inside WebAuthn ceremony code on Go standard library
+primitives. The remaining `crypto` package contracts cover algorithm policy,
+signature verification, certificate verification, and JWS/JWT verification.

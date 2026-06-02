@@ -9,7 +9,9 @@ optional attestation format packages including compound attestation, Level 3
 extension handling with deprecated `uvm` retained, optional browser and HTTP
 transport helpers, compile-checked examples, conformance-oriented tests, fuzz
 smoke targets, import graph checks, dependency license checks, and release
-documentation.
+documentation. The current API cleanup keeps byte accessors defensive while
+using typed helpers internally, requires explicit attestation trust policy, and
+keeps root decoder contracts narrow.
 
 Agents working in this repository must preserve the documented architecture and
 quality gates. If code, tests, README, plans, or design documents disagree, fix
@@ -102,8 +104,8 @@ Current package boundaries are documented in `docs/technical.md` and
   authenticator data parsing;
 - `codec` contains narrow decoder contracts;
 - `codec/cbor` is an optional concrete CBOR/COSE decoder package;
-- `crypto` contains narrow hashing, signature, certificate, and JWS/JWT
-  contracts;
+- `crypto` contains narrow algorithm policy, signature, certificate, and
+  JWS/JWT contracts;
 - `attestation` contains format verifier and trust policy contracts;
 - `attestation/*` packages are optional selected format verifiers;
 - `extension` contains operation-aware Level 2 and Level 3 extension handling;
@@ -233,6 +235,7 @@ A release candidate must not be tagged until:
 
 - all P0 and P1 plans in `docs/plans.md` are complete;
 - Plan 14 Level 3 release alignment is complete;
+- Plan 15 API cleanup and refactor is complete;
 - local `make ci` passes from a clean worktree;
 - GitHub Actions CI passes on the release branch;
 - the root package import graph does not include optional attestation formats,
