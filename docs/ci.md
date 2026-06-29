@@ -83,7 +83,8 @@ license checks, and module hygiene.
 HTTPS relying-party app under `internal/e2eapp` through Playwright's
 `webServer`, drives Chromium virtual authenticators, and verifies real browser
 registration, authentication, replay rejection, session behavior, UV failure,
-and bad-signature rejection.
+state/email binding rejection, generic error responses, and bad-signature
+rejection.
 
 ## Formatting policy
 

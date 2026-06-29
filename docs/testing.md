@@ -119,9 +119,11 @@ Required coverage:
 - roaming security key registration and username-first login;
 - session creation, `/me` state, and logout clearing;
 - registration and authentication state replay rejection;
+- registration and username-first authentication state/email binding rejection;
 - unregistered-user login rejection;
 - UV-required flow failure when the virtual authenticator is not user verified;
 - bogus assertion signature rejection.
+- generic HTTP error responses for malformed finish requests.
 
 ### Attestation format tests
 
