@@ -101,7 +101,7 @@ test("registration state replay is rejected", async ({ page, context }) => {
         publicKey: helper.decodeCreationOptions(options),
       });
       if (credential == null) {
-        throw new Error("null credential")
+        throw new Error("null credential");
       }
       const body = {
         email: emailAddress,
@@ -152,7 +152,7 @@ test("registration finish rejects mismatched ceremony email", async ({
           publicKey: helper.decodeCreationOptions(options),
         });
         if (credential == null) {
-          throw new Error("null credential")
+          throw new Error("null credential");
         }
         const response = await fetch("/register/finish", {
           method: "POST",
@@ -210,7 +210,7 @@ test("authentication finish rejects mismatched username-first email", async ({
           publicKey: helper.decodeRequestOptions(options),
         });
         if (credential == null) {
-          throw new Error("null credential")
+          throw new Error("null credential");
         }
         const response = await fetch("/login/finish", {
           method: "POST",
