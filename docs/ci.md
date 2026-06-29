@@ -16,6 +16,7 @@ CI uses:
 - `actions/setup-go@v6` with `go-version: stable`;
 - `actions/setup-node@v6` for `npx`-based Prettier formatting checks;
 - `actions/setup-node@v6` with Node.js 24 for the independent Playwright e2e job;
+- `actions/cache@v4` for Playwright browser binaries in the independent e2e job;
 - `golangci/golangci-lint-action@v9`;
 - `golangci-lint` pinned to `v2.12.2`;
 - `.golangci.yml` with configuration version `2`.
@@ -123,9 +124,10 @@ The workflow has four jobs:
 1. `docs-and-config` always runs. It calls `make ci-docs`, `make readme-check`, and checks LF line endings for Markdown, YAML, and Makefile text files.
 2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
-4. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, runs
-   `make e2e` against `https://localhost:8443`, and uploads the Playwright HTML
-   report on failure.
+4. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
+   Playwright browser cache from `~/.cache/ms-playwright`, runs `make e2e`
+   against `https://localhost:8443`, and uploads the Playwright HTML report on
+   failure.
 
 The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, example build failures, README reference drift, or module-tidy drift are CI failures.
 
