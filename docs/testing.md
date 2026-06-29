@@ -259,7 +259,7 @@ Plan 06 added tests for:
 Plan 08 added tests and checks for:
 
 - fuzz targets for authenticator data parsing, collected client data parsing, CBOR attestation object decoding, COSE key decoding, authenticator extension map decoding, and browser transport credential descriptor conversion;
-- browser interoperability fixture verification using Playwright 1.60.0 and Chrome DevTools virtual authenticators for platform/discoverable UV-required and roaming allow-credentials username-first flows;
+- browser interoperability fixture verification using the e2e Playwright dependency and Chrome DevTools virtual authenticators for platform/discoverable UV-required and roaming allow-credentials username-first flows;
 - real ES256 assertion signature verification for browser fixtures through a test-only standard-library verifier, including tampered signature rejection;
 - regression coverage for malformed COSE key shapes that can panic inside the selected COSE dependency, now reported as `codec/cbor.ErrMalformedCBOR`;
 - explicit import graph and dependency license manifest checks in local and GitHub Actions CI.
@@ -324,7 +324,7 @@ CI fuzzing is a bounded smoke check. Longer fuzz campaigns should be run locally
 
 ## Browser interoperability tests
 
-Browser-produced registration and authentication outputs are generated specifically for this project by `scripts/generate-browser-fixtures.mjs` through Playwright 1.60.0 and Chrome DevTools virtual authenticators. The committed fixture suite lives under `testdata/browser/virtual-authenticator`.
+Browser-produced registration and authentication outputs are generated specifically for this project by `scripts/generate-browser-fixtures.mjs` through the Playwright dependency pinned by `e2e/package-lock.json` and Chrome DevTools virtual authenticators. The committed fixture suite lives under `testdata/browser/virtual-authenticator`.
 
 Current fixture coverage:
 

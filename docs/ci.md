@@ -67,7 +67,7 @@ Run these commands from the repository root.
 | `make import-graph-check` | Verify the root package does not import forbidden optional/transport packages.          | No                                   |
 | `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
 | `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
-| `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Yes                                  |
+| `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Installs e2e npm dependencies        |
 | `make e2e`                | Run Playwright Chromium tests against the test-only RP app.                             | Installs e2e npm dependencies        |
 | `make e2e-headed`         | Run Playwright Chromium tests against the test-only RP app in headed mode.              | Installs e2e npm dependencies        |
 | `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
@@ -145,7 +145,7 @@ Any change to quality gates must update all of these files in the same change:
 
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
 
-Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it requires Playwright and a Chromium/Chrome executable and is an explicit developer action through `make browser-fixtures`.
+Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it uses the Playwright dependency pinned by `e2e/package-lock.json`, requires a Chromium/Chrome executable, and is an explicit developer action through `make browser-fixtures`.
 
 The Playwright e2e job is separate from browser fixture regeneration. It does
 not update committed fixtures and does not import optional browser or HTTP

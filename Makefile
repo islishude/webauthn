@@ -4,7 +4,6 @@ GOLANGCI_LINT ?= golangci-lint
 PRETTIER ?= npx -y prettier
 GOFLAGS ?=
 FUZZTIME ?= 10s
-PLAYWRIGHT_VERSION ?= 1.60.0
 PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*')
@@ -94,10 +93,8 @@ readme-check:
 	@echo 'readme-check: README references compile-checked examples and release notes'
 
 browser-fixtures:
-	@tmp=$$(mktemp -d); \
-	trap 'rm -rf "$$tmp"' EXIT; \
-	npm --prefix "$$tmp" install --silent --no-audit --no-fund playwright@$(PLAYWRIGHT_VERSION); \
-	PLAYWRIGHT_MODULE_DIR="$$tmp/node_modules" PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(PLAYWRIGHT_CHROMIUM_EXECUTABLE)" node scripts/generate-browser-fixtures.mjs
+	npm --prefix e2e ci
+	PLAYWRIGHT_MODULE_DIR="$(CURDIR)/e2e/node_modules" PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(PLAYWRIGHT_CHROMIUM_EXECUTABLE)" node scripts/generate-browser-fixtures.mjs
 
 e2e:
 	npm --prefix e2e ci
