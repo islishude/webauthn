@@ -1,14 +1,11 @@
 # Release checklist
 
-Status: Plan 15 API cleanup complete, revised 2026-06-02.
+Status: Historical implementation plans complete and removed, revised 2026-06-29.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 ## Release candidate requirements
 
-- All P0 and P1 plans in `docs/plans.md` are complete.
-- Plan 14 Level 3 release alignment is complete.
-- Plan 15 API cleanup and refactor is complete.
 - Local `make ci` passes from a clean worktree.
 - GitHub Actions CI passes on the release branch.
 - Root package import graph does not include `net/http`, `browser`, `transport/http`, or optional attestation format packages.

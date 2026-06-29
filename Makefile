@@ -123,22 +123,6 @@ ci-docs:
 	@test -f docs/ci.md
 	@test -f docs/release.md
 	@test -f docs/dependencies.json
-	@test -f docs/plans.md
-	@test -f docs/plans/00-governance-and-boundaries.md
-	@test -f docs/plans/01-quality-gates-and-ci.md
-	@test -f docs/plans/02-core-protocol-model.md
-	@test -f docs/plans/03-registration-ceremony.md
-	@test -f docs/plans/04-authentication-ceremony.md
-	@test -f docs/plans/05-attestation-formats.md
-	@test -f docs/plans/06-extensions.md
-	@test -f docs/plans/07-trust-policy-and-metadata.md
-	@test -f docs/plans/08-testing-and-conformance.md
-	@test -f docs/plans/09-adapters-examples-release.md
-	@test -f docs/plans/10-webauthn-level3-baseline.md
-	@test -f docs/plans/11-level3-ceremonies-and-json.md
-	@test -f docs/plans/12-level3-extensions.md
-	@test -f docs/plans/13-level3-attestation-and-algorithms.md
-	@test -f docs/plans/14-level3-conformance-release.md
 	@test -f .github/workflows/ci.yml
 	@test -f .golangci.yml
 	@test -f .gitattributes

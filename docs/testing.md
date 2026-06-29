@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: Plan 15 API cleanup and refactor coverage complete, revised 2026-06-02.
+Status: API cleanup and refactor coverage complete, revised 2026-06-29.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -291,7 +291,7 @@ Plans 10 through 14 added tests and checks for:
 - examples using Level 3 recommended credential parameters and Level 3 extension
   registries with deprecated support where needed.
 
-Plan 15 added tests and checks for:
+The API cleanup added tests and checks for:
 
 - protocol typed equality helpers for credential IDs, raw IDs, and user handles
   without relying on `Bytes()` defensive copies;

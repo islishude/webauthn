@@ -8,7 +8,7 @@ registration and authentication ceremonies, then returns credential records,
 counter updates, attestation results, extension results, and policy outcomes for
 the application to persist in its own storage.
 
-Current status: implementation is complete through Plan 15. The repository has
+Current status: implementation is complete. The repository has
 transport-neutral registration and authentication APIs, optional attestation
 format packages, WebAuthn Level 3 protocol fields, Level 3 extension handlers
 with deprecated `uvm` retained, optional browser JSON and standard-library HTTP
@@ -194,19 +194,14 @@ CI behavior is documented in `docs/ci.md`.
 - `docs/ci.md` documents local and GitHub Actions quality gates.
 - `docs/release.md` tracks release-readiness requirements and notes.
 - `docs/dependencies.json` records module dependency licenses and scope.
-- `docs/plans.md` indexes the implementation plans.
-- `docs/plans/*.md` contains the detailed plan history.
 
-When plan status, scope, deliverables, tests, dependencies, package boundaries,
-or quality gates change, update the relevant docs in the same change.
+When scope, deliverables, tests, dependencies, package boundaries, or quality
+gates change, update the relevant docs in the same change.
 
 ## Release Readiness
 
 A release candidate requires:
 
-- all P0 and P1 plans in `docs/plans.md` complete, including Plan 15 API
-  cleanup;
-- Plan 14 Level 3 release alignment complete;
 - local `make ci` passing from a clean worktree;
 - GitHub Actions passing on the release branch;
 - root import graph independence from optional attestation, browser, HTTP, and

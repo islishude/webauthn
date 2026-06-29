@@ -1,10 +1,10 @@
 # Local and GitHub Actions quality workflow
 
-Status: Plan 14 Level 3 checks active, revised 2026-06-01.
+Status: Level 3 checks active, revised 2026-06-29.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
-Plan 02 created `go.mod` and Go source files. Go-oriented targets are mandatory quality gates and no longer check for module or Go-file existence before running.
+The repository has `go.mod` and Go source files. Go-oriented targets are mandatory quality gates and no longer check for module or Go-file existence before running.
 
 ## Toolchain baseline
 
@@ -141,8 +141,7 @@ Any change to quality gates must update all of these files in the same change:
 - `.github/workflows/ci.yml`;
 - `.golangci.yml`, when lint or formatter behavior changes;
 - `docs/ci.md`;
-- `docs/testing.md`, when test policy changes;
-- `docs/plans.md` and the relevant `docs/plans/*.md` file when a plan status or scope changes.
+- `docs/testing.md`, when test policy changes.
 
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
 

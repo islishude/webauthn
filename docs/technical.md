@@ -183,15 +183,15 @@ Plan 06 adds no dependency. It implements WebAuthn Level 2 extension handlers in
 
 Plan 09 adds no dependency. It implements optional `browser` DTO conversion helpers, optional `transport/http` JSON helpers, and compile-checked examples. Browser and HTTP helpers remain outside the root dependency graph, and HTTP helpers do not manage routing, sessions, cookies, CSRF, persistence, account lookup, or trust policy.
 
-Plans 10 through 14 add no dependency. They move the normative baseline to
-WebAuthn Level 3, replace legacy origin fields with `OriginPolicy`, parse and
-policy-check `topOrigin`, treat `tokenBinding` as reserved client data, add
-Level 3 hints and attestation format fields, add PRF extension handling in
-`extension/level3.go`, retain `uvm` as deprecated opt-in support, add optional
-`attestation/compound`, and extend codec key material to OKP.
+The WebAuthn Level 3 work adds no dependency. It moves the normative baseline
+to WebAuthn Level 3, replaces legacy origin fields with `OriginPolicy`, parses
+and policy-checks `topOrigin`, treats `tokenBinding` as reserved client data,
+adds Level 3 hints and attestation format fields, adds PRF extension handling in
+`extension/level3.go`, retains `uvm` as deprecated opt-in support, adds optional
+`attestation/compound`, and extends codec key material to OKP.
 
-Plan 15 adds no dependency. It removes dead grouped decoder and hasher API
-surface, keeps concrete codec dependencies optional behind narrower decoder
+The API cleanup adds no dependency. It removes dead grouped decoder and hasher
+API surface, keeps concrete codec dependencies optional behind narrower decoder
 contracts, adds typed byte comparison/append helpers, and makes attestation
 acceptance depend only on explicit trust policy.
 
@@ -201,25 +201,11 @@ The library should support both username-first and discoverable-credential authe
 
 The library should not assume that every passkey is hardware-bound, non-exportable, or counter-incrementing. Counter and backup-related signals should be surfaced as risk and metadata, not overinterpreted.
 
-## Initial implementation order
+## Implementation status
 
-Implementation should follow `docs/plans.md`. The required order is:
-
-1. governance and boundaries;
-2. local and GitHub Actions quality gates;
-3. core protocol model and adapter contracts (complete, 2026-05-31);
-4. registration ceremony with `none` attestation (complete, 2026-05-31);
-5. authentication ceremony (complete, 2026-05-31);
-6. modular attestation formats (complete, 2026-05-31);
-7. extensions (complete, 2026-06-01);
-8. trust and metadata policy (complete, 2026-06-01);
-9. conformance tests (complete, 2026-06-01);
-10. optional adapters, examples, and release hardening (complete, 2026-06-01);
-11. WebAuthn Level 3 baseline (complete, 2026-06-01);
-12. Level 3 ceremonies and JSON (complete, 2026-06-01);
-13. Level 3 extensions (complete, 2026-06-01);
-14. Level 3 attestation and algorithms (complete, 2026-06-01);
-15. Level 3 conformance and release alignment (complete, 2026-06-01).
-16. API cleanup and refactor (complete, 2026-06-02).
+The historical implementation plans are complete and are no longer retained in
+the repository. Current architecture, boundary, security, testing, CI,
+dependency, and release requirements are maintained in the active documents
+listed in `README.md` and `AGENTS.md`.
 
 The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces README checks, Go formatting, linting, tests, race checks, fuzz smoke checks, example builds, import graph checks, dependency license checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so implementation work remains gated by local and CI behavior.

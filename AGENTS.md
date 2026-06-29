@@ -59,8 +59,6 @@ Required project documents and quality files are:
 - `docs/ci.md`;
 - `docs/release.md`;
 - `docs/dependencies.json`;
-- `docs/plans.md`;
-- every referenced `docs/plans/*.md` file;
 - `Makefile`;
 - `.github/workflows/ci.yml`;
 - `.golangci.yml`;
@@ -69,16 +67,6 @@ Required project documents and quality files are:
 Every change must preserve a documentation trail. Update documentation in the
 same change when behavior, boundaries, packages, dependencies, tests, CI checks,
 release status, or examples change.
-
-When a plan item status, scope, deliverable, or completion state changes, update
-both:
-
-- `docs/plans.md`;
-- the corresponding `docs/plans/*.md` file.
-
-A plan update must record status, date, delivered files or packages, tests, and
-scope changes. Do not leave completed work marked as pending, and do not mark
-work complete before implementation, documentation, and tests are all aligned.
 
 ## Architecture boundaries
 
@@ -115,7 +103,7 @@ Current package boundaries are documented in `docs/technical.md` and
 
 Do not add files or imports that conflict with documented package boundaries.
 If a boundary must change, update `docs/technical.md`,
-`docs/api-boundaries.md`, `docs/plans.md`, and the relevant plan file first.
+`docs/api-boundaries.md`, and any other affected documentation first.
 
 ## Dependency hygiene
 
@@ -233,9 +221,6 @@ Quality workflow files are:
 
 A release candidate must not be tagged until:
 
-- all P0 and P1 plans in `docs/plans.md` are complete;
-- Plan 14 Level 3 release alignment is complete;
-- Plan 15 API cleanup and refactor is complete;
 - local `make ci` passes from a clean worktree;
 - GitHub Actions CI passes on the release branch;
 - the root package import graph does not include optional attestation formats,
