@@ -22,6 +22,18 @@ make ci
 
 `make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests, import graph checks, dependency license checks, and module tidy verification without module-detection skips.
 
+Real browser e2e coverage is available through:
+
+```sh
+make e2e
+```
+
+This target is separate from `make ci`. It runs Playwright Chromium tests
+against a test-only HTTPS relying-party app in `internal/e2eapp` and uses CDP
+virtual authenticators to exercise `navigator.credentials.create()` and
+`navigator.credentials.get()` through the repository's browser and HTTP adapter
+packages.
+
 ## Test layers
 
 ### Protocol model tests
@@ -98,6 +110,18 @@ Required coverage:
 - zero-counter behavior;
 - counter increment behavior;
 - counter rollback clone-risk behavior.
+
+### Browser e2e tests
+
+Required coverage:
+
+- platform passkey registration and discoverable login;
+- roaming security key registration and username-first login;
+- session creation, `/me` state, and logout clearing;
+- registration and authentication state replay rejection;
+- unregistered-user login rejection;
+- UV-required flow failure when the virtual authenticator is not user verified;
+- bogus assertion signature rejection.
 
 ### Attestation format tests
 

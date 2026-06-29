@@ -9,7 +9,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*')
 
-.PHONY: help format format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check readme-check browser-fixtures mod-check ci-docs ci
+.PHONY: help format format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci
 
 help:
 	@echo 'Targets:'
@@ -24,6 +24,8 @@ help:
 	@echo '  make license-check    - verify dependency license manifest coverage'
 	@echo '  make readme-check     - verify README references compile-checked examples'
 	@echo '  make browser-fixtures - regenerate virtual-authenticator browser fixtures'
+	@echo '  make e2e              - run Playwright browser e2e tests'
+	@echo '  make e2e-headed       - run Playwright browser e2e tests headed'
 	@echo '  make mod-check        - run go mod tidy and verify go.mod/go.sum are clean'
 	@echo '  make ci               - run the local CI gate'
 
@@ -96,6 +98,15 @@ browser-fixtures:
 	trap 'rm -rf "$$tmp"' EXIT; \
 	npm --prefix "$$tmp" install --silent --no-audit --no-fund playwright@$(PLAYWRIGHT_VERSION); \
 	PLAYWRIGHT_MODULE_DIR="$$tmp/node_modules" PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(PLAYWRIGHT_CHROMIUM_EXECUTABLE)" node scripts/generate-browser-fixtures.mjs
+
+e2e:
+	npm --prefix e2e ci
+	npx --prefix e2e playwright install --with-deps chromium
+	npm --prefix e2e test
+
+e2e-headed:
+	npm --prefix e2e ci
+	npm --prefix e2e run test:headed
 
 mod-check:
 	$(GO) mod tidy

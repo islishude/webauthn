@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebAuthn E2E</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>WebAuthn E2E</h1>
+      <label>
+        Email
+        <input aria-label="Email" autocomplete="username webauthn" />
+      </label>
+      <div class="actions">
+        <button type="button" id="register-passkey">Register passkey</button>
+        <button type="button" id="register-security-key">
+          Register security key
+        </button>
+        <button type="button" id="login-passkey">Sign in with passkey</button>
+        <button type="button" id="login-security-key">
+          Sign in with security key
+        </button>
+        <button type="button" id="logout">Logout</button>
+      </div>
+      <div data-testid="status">idle</div>
+      <div data-testid="current-user">unauthenticated</div>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

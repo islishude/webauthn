@@ -15,6 +15,7 @@ CI uses:
 - `actions/checkout@v6`;
 - `actions/setup-go@v6` with `go-version: stable`;
 - `actions/setup-node@v6` for `npx`-based Prettier formatting checks;
+- `actions/setup-node@v6` with Node.js 24 for the independent Playwright e2e job;
 - `golangci/golangci-lint-action@v9`;
 - `golangci-lint` pinned to `v2.12.2`;
 - `.golangci.yml` with configuration version `2`.
@@ -28,6 +29,7 @@ Required local tools:
 - `make`;
 - a Go toolchain compatible with the `go.mod` minimum version;
 - Node.js with `npx` available for Prettier formatting;
+- Node.js/npm for `make e2e`;
 - `golangci-lint v2.12.2` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
@@ -65,6 +67,8 @@ Run these commands from the repository root.
 | `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
 | `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
 | `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Yes                                  |
+| `make e2e`                | Run Playwright Chromium tests against the test-only RP app.                             | Installs e2e npm dependencies        |
+| `make e2e-headed`         | Run Playwright Chromium tests against the test-only RP app in headed mode.              | Installs e2e npm dependencies        |
 | `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
 | `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                                   |
 | `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
@@ -73,6 +77,12 @@ Run these commands from the repository root.
 including Level 3 plan files, README checks, formatting, linting, unit tests,
 race tests, fuzz smoke tests, example builds, import graph checks, dependency
 license checks, and module hygiene.
+
+`make e2e` is intentionally separate from `make ci`. It starts the test-only
+HTTPS relying-party app under `internal/e2eapp` through Playwright's
+`webServer`, drives Chromium virtual authenticators, and verifies real browser
+registration, authentication, replay rejection, session behavior, UV failure,
+and bad-signature rejection.
 
 ## Formatting policy
 
@@ -108,11 +118,14 @@ Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. The
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main` or `master`.
 
-The workflow has three jobs:
+The workflow has four jobs:
 
 1. `docs-and-config` always runs. It calls `make ci-docs`, `make readme-check`, and checks LF line endings for Markdown, YAML, and Makefile text files.
 2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
+4. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, runs
+   `make e2e` against `https://localhost:8443`, and uploads the Playwright HTML
+   report on failure.
 
 The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, example build failures, README reference drift, or module-tidy drift are CI failures.
 
@@ -132,3 +145,7 @@ Any change to quality gates must update all of these files in the same change:
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
 
 Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it requires Playwright and a Chromium/Chrome executable and is an explicit developer action through `make browser-fixtures`.
+
+The Playwright e2e job is separate from browser fixture regeneration. It does
+not update committed fixtures and does not import optional browser or HTTP
+helpers into the root package.

@@ -36,6 +36,7 @@ When a plan is completed, update this file and the corresponding plan file in th
 | 13    | [Level 3 attestation and algorithms](plans/13-level3-attestation-and-algorithms.md) | P1       | Complete, 2026-06-01         | Add compound attestation normalization/verifier support and Level 3 algorithm/key material coverage.                |
 | 14    | [Level 3 conformance and release alignment](plans/14-level3-conformance-release.md) | P1       | Complete, 2026-06-01         | Align docs, tests, examples, and release readiness with the Level 3 upgrade.                                        |
 | 15    | [API cleanup and refactor](plans/15-api-cleanup-refactor.md)                        | P1       | Complete, 2026-06-02         | Remove dead API, split decoder contracts, clarify errors, and reduce byte-copy hot paths.                           |
+| 16    | [Playwright WebAuthn browser e2e](plans/16-playwright-webauthn-e2e.md)              | P1       | Complete, 2026-06-29         | Add a test-only RP app and Playwright Chromium virtual-authenticator e2e coverage outside the root import graph.    |
 
 ## Release gates
 
@@ -66,6 +67,9 @@ Plan 15 is an API-breaking cleanup after the Level 3 release alignment. Its P1
 priority reflects release-readiness risk reduction: testability, explicit
 attestation trust policy, narrower decoder contracts, clearer root errors, and
 lower allocation pressure in verifier hot paths.
+
+Plan 16 adds real browser e2e coverage after the release-readiness baseline. It
+is kept out of `make ci` while the independent Playwright workflow proves stable.
 
 Future plan insertions must either preserve numeric priority ordering or
 explicitly document why a later-numbered plan has higher execution priority.
