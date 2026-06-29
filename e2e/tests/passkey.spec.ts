@@ -61,6 +61,9 @@ test("authentication state replay is rejected", async ({ page, context }) => {
       const credential = await navigator.credentials.get({
         publicKey: helper.decodeRequestOptions(options),
       });
+      if (credential == null) {
+        throw new Error("null credential");
+      }
       const body = {
         email: "",
         credential: helper.encodeAuthenticationCredential(credential),
