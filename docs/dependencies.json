@@ -9,7 +9,7 @@
     },
     {
       "path": "github.com/fxamacker/cbor/v2",
-      "version": "v2.9.2",
+      "version": "v2.9.3",
       "license": "MIT",
       "scope": "optional codec/cbor package",
       "notes": "Decodes WebAuthn attestation objects, authenticator extension maps, and COSE_Key structures behind codec interfaces."
