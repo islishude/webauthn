@@ -16,7 +16,7 @@
     },
     {
       "path": "github.com/ldclabs/cose",
-      "version": "v1.3.4",
+      "version": "v1.4.0",
       "license": "MIT",
       "scope": "optional codec/cbor package",
       "notes": "Provides COSE_Key decoding support behind codec.COSEKeyDecoder."
@@ -44,35 +44,35 @@
     },
     {
       "path": "golang.org/x/crypto",
-      "version": "v0.49.0",
+      "version": "v0.53.0",
       "license": "BSD-3-Clause",
       "scope": "indirect cose dependency",
       "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
     },
     {
       "path": "golang.org/x/net",
-      "version": "v0.51.0",
+      "version": "v0.55.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
     },
     {
       "path": "golang.org/x/sys",
-      "version": "v0.42.0",
+      "version": "v0.46.0",
       "license": "BSD-3-Clause",
       "scope": "indirect cose dependency",
       "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
     },
     {
       "path": "golang.org/x/term",
-      "version": "v0.41.0",
+      "version": "v0.44.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
     },
     {
       "path": "golang.org/x/text",
-      "version": "v0.35.0",
+      "version": "v0.38.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
