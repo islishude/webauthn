@@ -17,6 +17,7 @@ linters:
     - noctx
     - dupl
     - gocognit
+    - modernize
   settings:
     dupl:
       threshold: 150
