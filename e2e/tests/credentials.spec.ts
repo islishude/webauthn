@@ -60,7 +60,10 @@ test("credential-inclusive storage state restores a passkey in a new context", a
     return context.storageState({ credentials: true });
   })();
 
-  expect((storageState as typeof storageState & { credentials: unknown[] }).credentials).toHaveLength(1);
+  expect(
+    (storageState as typeof storageState & { credentials: unknown[] })
+      .credentials,
+  ).toHaveLength(1);
   await using restored = await browser.newContext({
     baseURL,
     ignoreHTTPSErrors: true,
