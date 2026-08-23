@@ -3,6 +3,7 @@
 package cbor
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"encoding/binary"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	cosekey "github.com/ldclabs/cose/key"
 
 	"github.com/islishude/webauthn/codec"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -23,7 +25,8 @@ var (
 
 // Decoder decodes WebAuthn CBOR structures using strict duplicate-key checks.
 type Decoder struct {
-	mode fxcbor.DecMode
+	mode          fxcbor.DecMode
+	canonicalMode fxcbor.EncMode
 }
 
 // NewDecoder creates a decoder with duplicate map-key rejection.
@@ -31,13 +34,19 @@ func NewDecoder() (*Decoder, error) {
 	mode, err := fxcbor.DecOptions{
 		DupMapKey:   fxcbor.DupMapKeyEnforcedAPF,
 		IndefLength: fxcbor.IndefLengthForbidden,
+		TagsMd:      fxcbor.TagsForbidden,
 		UTF8:        fxcbor.UTF8RejectInvalid,
 	}.DecMode()
 	if err != nil {
 		return nil, err
 	}
 
-	return &Decoder{mode: mode}, nil
+	canonicalMode, err := fxcbor.CTAP2EncOptions().EncMode()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Decoder{mode: mode, canonicalMode: canonicalMode}, nil
 }
 
 // MustNewDecoder creates a decoder or panics. It is intended for tests and
@@ -53,6 +62,14 @@ func MustNewDecoder() *Decoder {
 
 // DecodeAttestationObject decodes a WebAuthn attestationObject CBOR map.
 func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {
+	var fields map[string]fxcbor.RawMessage
+	if err := d.decode(raw.Bytes(), &fields); err != nil {
+		return codec.DecodedAttestationObject{}, err
+	}
+	if len(fields) != 3 || fields["fmt"] == nil || fields["authData"] == nil || fields["attStmt"] == nil {
+		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
+	}
+
 	var decoded struct {
 		Format            string            `cbor:"fmt"`
 		AuthenticatorData []byte            `cbor:"authData"`
@@ -62,7 +79,7 @@ func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec
 	if err := d.decode(raw.Bytes(), &decoded); err != nil {
 		return codec.DecodedAttestationObject{}, err
 	}
-	if decoded.Format == "" || len(decoded.AuthenticatorData) == 0 || decoded.Statement == nil {
+	if !protocolidentifier.Valid(decoded.Format) || len(decoded.AuthenticatorData) == 0 || decoded.Statement == nil {
 		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
 	}
 	statement, err := d.decodeAttestationStatement(decoded.Format, decoded.Statement)
@@ -109,7 +126,7 @@ func (d *Decoder) decodeAttestationStatement(format string, raw fxcbor.RawMessag
 
 	statements := make([]codec.CompoundSubStatement, 0, len(rawStatements))
 	for _, rawStatement := range rawStatements {
-		if rawStatement.Format == "" || rawStatement.Format == "compound" || rawStatement.Statement == nil {
+		if !protocolidentifier.Valid(rawStatement.Format) || rawStatement.Format == "compound" || rawStatement.Statement == nil {
 			return nil, ErrMalformedCBOR
 		}
 		statements = append(statements, codec.CompoundSubStatement{
@@ -141,14 +158,24 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.Credentia
 	if consumed <= 0 || key == nil {
 		return codec.CredentialPublicKey{}, ErrMalformedCBOR
 	}
+	encodedKey := raw[:consumed]
+	if err := d.validateCanonical(encodedKey); err != nil {
+		return codec.CredentialPublicKey{}, err
+	}
+	if err := d.validateCredentialPublicKeyParameters(encodedKey, key.Kty()); err != nil {
+		return codec.CredentialPublicKey{}, err
+	}
 
 	algorithm := protocol.COSEAlgorithmIdentifier(key.Alg())
+	if err := algorithm.Validate(); err != nil {
+		return codec.CredentialPublicKey{}, ErrMalformedCBOR
+	}
 	material := publicKeyMaterial(key)
 	if err := validateCredentialPublicKey(algorithm, material); err != nil {
 		return codec.CredentialPublicKey{}, err
 	}
 
-	return codec.NewCredentialPublicKey(algorithm, raw[:consumed], material), nil
+	return codec.NewCredentialPublicKey(algorithm, encodedKey, material), nil
 }
 
 // DecodeExtensionMap decodes authenticator extension output CBOR.
@@ -168,11 +195,74 @@ func (d *Decoder) decode(data []byte, out any) error {
 	if d == nil {
 		return errors.New("nil cbor decoder")
 	}
+	if err := d.validateCanonical(data); err != nil {
+		return err
+	}
 	if err := d.mode.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
 	}
 
 	return nil
+}
+
+func (d *Decoder) validateCanonical(data []byte) error {
+	if d == nil || d.mode == nil || d.canonicalMode == nil {
+		return errors.New("nil cbor decoder")
+	}
+	var decoded any
+	if err := d.mode.Unmarshal(data, &decoded); err != nil {
+		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+	}
+	encoded, err := d.canonicalMode.Marshal(decoded)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+	}
+	if !bytes.Equal(encoded, data) {
+		return ErrMalformedCBOR
+	}
+	return nil
+}
+
+func (d *Decoder) validateCredentialPublicKeyParameters(raw []byte, keyType int) error {
+	var parameters map[int64]fxcbor.RawMessage
+	if err := d.mode.Unmarshal(raw, &parameters); err != nil {
+		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+	}
+	if parameters[1] == nil || parameters[3] == nil {
+		return ErrMalformedCBOR
+	}
+
+	var allowed map[int64]struct{}
+	switch keyType {
+	case iana.KeyTypeEC2:
+		allowed = keySet(1, 3, -1, -2, -3)
+	case iana.KeyTypeRSA, iana.KeyTypeOKP:
+		allowed = keySet(1, 3, -1, -2)
+	default:
+		for _, optional := range []int64{2, 4, 5} {
+			if parameters[optional] != nil {
+				return ErrMalformedCBOR
+			}
+		}
+		return nil
+	}
+	if len(parameters) != len(allowed) {
+		return ErrMalformedCBOR
+	}
+	for parameter := range parameters {
+		if _, ok := allowed[parameter]; !ok {
+			return ErrMalformedCBOR
+		}
+	}
+	return nil
+}
+
+func keySet(keys ...int64) map[int64]struct{} {
+	out := make(map[int64]struct{}, len(keys))
+	for _, key := range keys {
+		out[key] = struct{}{}
+	}
+	return out
 }
 
 func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
@@ -203,6 +293,10 @@ func validateCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, mat
 		}
 	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
 		if material.OKP == nil || material.EC2 != nil || material.RSA != nil || material.OKP.Curve != codec.OKPCurveEd25519 || len(material.OKP.X) != 32 {
+			return ErrMalformedCBOR
+		}
+	case protocol.AlgorithmEd448:
+		if material.OKP == nil || material.EC2 != nil || material.RSA != nil || material.OKP.Curve != codec.OKPCurveEd448 || len(material.OKP.X) != 57 {
 			return ErrMalformedCBOR
 		}
 	}
@@ -264,8 +358,15 @@ func okpPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 	if !ok || len(x) != coordinateLength {
 		return codec.CredentialPublicKeyMaterial{}
 	}
-	if protocol.COSEAlgorithmIdentifier(key.Alg()) == protocol.AlgorithmEdDSA && curve != iana.EllipticCurveEd25519 {
-		return codec.CredentialPublicKeyMaterial{}
+	switch protocol.COSEAlgorithmIdentifier(key.Alg()) {
+	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
+		if curve != iana.EllipticCurveEd25519 {
+			return codec.CredentialPublicKeyMaterial{}
+		}
+	case protocol.AlgorithmEd448:
+		if curve != iana.EllipticCurveEd448 {
+			return codec.CredentialPublicKeyMaterial{}
+		}
 	}
 
 	return codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{

@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 )
 
 var (
@@ -38,12 +40,22 @@ type InputRequest struct {
 // OutputRequest contains extension input and output values routed to a handler
 // after core ceremony verification succeeds.
 type OutputRequest struct {
-	Operation           Operation
-	ID                  string
-	Requested           bool
-	ClientInput         any
-	ClientOutput        any
-	AuthenticatorOutput any
+	Operation                  Operation
+	ID                         string
+	Requested                  bool
+	ClientInput                any
+	ClientOutput               any
+	ClientOutputPresent        bool
+	AuthenticatorOutput        any
+	AuthenticatorOutputPresent bool
+}
+
+func hasClientOutput(request OutputRequest) bool {
+	return request.ClientOutputPresent || request.ClientOutput != nil
+}
+
+func hasAuthenticatorOutput(request OutputRequest) bool {
+	return request.AuthenticatorOutputPresent || request.AuthenticatorOutput != nil
 }
 
 // Result is the handler's interpretation of extension output.
@@ -71,7 +83,7 @@ type Registry struct {
 func NewRegistry(handlers ...Handler) (*Registry, error) {
 	registry := &Registry{handlers: make(map[string]Handler, len(handlers))}
 	for _, handler := range handlers {
-		if handler == nil || handler.ID() == "" {
+		if handler == nil || !protocolidentifier.Valid(handler.ID()) {
 			return nil, ErrInvalidID
 		}
 		id := handler.ID()

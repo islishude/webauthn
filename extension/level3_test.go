@@ -31,6 +31,9 @@ func TestLevel3Registries(t *testing.T) {
 	if _, ok := registry.Lookup(extension.IDUVM); ok {
 		t.Fatal("Lookup(uvm) = true, want false for default Level 3 registry")
 	}
+	if _, ok := registry.Lookup(extension.IDRemoteClientDataJSON); ok {
+		t.Fatal("Lookup(remoteClientDataJSON) = true, want opt-in Editor's Draft handler")
+	}
 
 	withDeprecated, err := extension.NewLevel3RegistryWithDeprecated()
 	if err != nil {
@@ -148,6 +151,51 @@ func TestPRFHandler(t *testing.T) {
 			},
 		})
 
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("reject missing registration enabled", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:    extension.OperationRegistration,
+			ID:           extension.IDPRF,
+			Requested:    true,
+			ClientInput:  extension.PRFInput{},
+			ClientOutput: map[string]any{},
+		})
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("reject authentication enabled", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:    extension.OperationAuthentication,
+			ID:           extension.IDPRF,
+			Requested:    true,
+			ClientInput:  extension.PRFInput{},
+			ClientOutput: map[string]any{"enabled": true},
+		})
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("reject result cardinality mismatch", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:   extension.OperationAuthentication,
+			ID:          extension.IDPRF,
+			Requested:   true,
+			ClientInput: extension.PRFInput{Eval: &extension.PRFValues{First: []byte("salt")}},
+			ClientOutput: map[string]any{"results": map[string]any{
+				"first":  first,
+				"second": second,
+			}},
+		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
 		}

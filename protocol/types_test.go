@@ -55,6 +55,24 @@ func TestLevel3EnumerationsAndRecommendedParameters(t *testing.T) {
 	if protocol.RecommendedLevel3CredentialParameters()[0].Algorithm != protocol.AlgorithmEdDSA {
 		t.Fatal("RecommendedLevel3CredentialParameters() returned aliased slice")
 	}
+	if protocol.AlgorithmEd448 != -53 {
+		t.Fatalf("AlgorithmEd448 = %d, want -53", protocol.AlgorithmEd448)
+	}
+}
+
+func TestCOSEAlgorithmIdentifierValidateWebIDLLongRange(t *testing.T) {
+	t.Parallel()
+
+	for _, algorithm := range []protocol.COSEAlgorithmIdentifier{-1 << 31, protocol.AlgorithmEd448, 1<<31 - 1} {
+		if err := algorithm.Validate(); err != nil {
+			t.Fatalf("algorithm %d Validate() error = %v", algorithm, err)
+		}
+	}
+	for _, algorithm := range []protocol.COSEAlgorithmIdentifier{-1<<31 - 1, 1 << 31} {
+		if err := algorithm.Validate(); !errors.Is(err, protocol.ErrUnsupportedValue) {
+			t.Fatalf("algorithm %d Validate() error = %v, want ErrUnsupportedValue", algorithm, err)
+		}
+	}
 }
 
 func TestCreationOptionsValidateRequiredFields(t *testing.T) {
@@ -90,6 +108,10 @@ func TestCreationOptionsValidateRequiredFields(t *testing.T) {
 
 	if err := options.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+	options.User.DisplayName = ""
+	if err := options.Validate(); err != nil {
+		t.Fatalf("Validate() empty display name error = %v", err)
 	}
 
 	options.PubKeyCredParams[0].Type = protocol.PublicKeyCredentialType("future-type")

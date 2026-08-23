@@ -8,6 +8,10 @@ This document defines the test approach for the planned WebAuthn/passkey server-
 
 Tests may be derived from W3C specification requirements, independently generated fixtures, browser outputs collected for this project, and public conformance data when the license and source are documented.
 
+Selected byte-for-byte vectors from the 26 May 2026 Candidate Recommendation
+live under `testdata/w3c/webauthn-level3`. Their source URL, section, test-only
+sensitivity, and W3C permissive document license are recorded with the data.
+
 Do not copy tests from public WebAuthn/passkey libraries. Do not translate another library's test cases into this repository.
 
 ## Local quality gate
@@ -29,10 +33,10 @@ make e2e
 ```
 
 This target is separate from `make ci`. It runs Playwright Chromium tests
-against a test-only HTTPS relying-party app in `internal/e2eapp` and uses CDP
-virtual authenticators to exercise `navigator.credentials.create()` and
-`navigator.credentials.get()` through the repository's browser and HTTP adapter
-packages.
+against a test-only HTTPS relying-party app in `internal/e2eapp`. Chromium CDP
+virtual authenticators provide native and fault-injection coverage; Playwright
+1.62.1 Credentials helpers cover passkey lifecycle and credential-inclusive
+storage state through the repository's browser and HTTP adapter packages.
 
 ## Test layers
 
@@ -122,8 +126,11 @@ Required coverage:
 - registration and username-first authentication state/email binding rejection;
 - unregistered-user login rejection;
 - UV-required flow failure when the virtual authenticator is not user verified;
-- bogus assertion signature rejection.
+- bogus assertion signature rejection;
 - generic HTTP error responses for malformed finish requests.
+- Playwright Credentials capture/filter/delete/reseed lifecycle;
+- credential-inclusive in-memory storage state restored into a new context and
+  used for usernameless login.
 
 ### Attestation format tests
 
@@ -140,13 +147,17 @@ Each attestation format package must have its own tests and fixtures. At minimum
 Format-specific coverage:
 
 - `none`: empty attestation statement and no trust path.
-- `packed`: x5c/basic, self attestation, AAGUID certificate extension behavior, algorithm mismatch.
-- `tpm`: TPM statement shape, certificate requirements, public key and name binding, firmware/version checks where available.
-- `android-key`: Android key certificate extension parsing, challenge binding, authorization list policy.
+- `packed`: x5c/basic, self attestation, exact subject encodings, AAGUID,
+  firmware, enterprise serial policy, and algorithm mismatch.
+- `tpm`: TPM statement shape, public-key/name binding, critical SAN and exact
+  manufacturer/model/version attribute checks.
+- `android-key`: challenge binding, exact authorization-list values, union
+  default, and hardware/TEE-only policy.
 - `android-safetynet`: legacy JWS response verification through dependency,
   nonce binding, certificate/trust policy.
 - `fido-u2f`: U2F registration signature base construction and ES256 requirement.
-- `apple`: anonymous attestation certificate and nonce binding behavior.
+- `apple`: anonymous attestation certificate and DER sequence/explicit nonce
+  binding behavior, including the W3C vector.
 
 ### Extension tests
 
@@ -158,6 +169,9 @@ Required coverage:
 - `credProps` output parsing for discoverable credential/passkey flows;
 - `largeBlob` option and output shape handling;
 - `prf` input/output handling and `evalByCredential` allow-list binding;
+- operation-specific PRF/largeBlob outputs, equal-input PRF results, and the
+  single-credential largeBlob write rule;
+- opt-in Editor's Draft `remoteClientDataJSON` challenge and byte binding;
 - deprecated `uvm` result metadata;
 - unknown extension policy.
 
@@ -328,6 +342,19 @@ The pre-v1 Level 3 security cleanup added tests and checks for:
 - the public HTTP example's per-session state isolation, one-time consumption,
   exact expiry, concurrent starts, atomic uniqueness, and conditional updates.
 
+The 2026-08-23 Level 3 conformance refresh added:
+
+- present/null/empty `topOrigin` distinction, RFU flag rejection, identifier
+  grammar boundaries, and unknown authenticator-attachment normalization;
+- CTAP2 canonical CBOR rejection, exact attestation-object maps, required-only
+  COSE parameters, Ed448 typed-key routing, and storage revalidation;
+- byte-for-byte CR vectors for none, cross-origin, top-origin, the 1023-byte
+  credential-ID boundary, Ed448, Apple anonymous attestation, and PRF;
+- packed enterprise/firmware/subject rules, TPM SAN profiles, Android
+  hardware-enforced policy, and Apple nonce ASN.1 rejection paths;
+- Playwright 1.62.1 Credentials lifecycle and in-memory credential storage-state
+  E2E while retaining every existing Chromium CDP fault-injection test.
+
 ## Fuzzing targets
 
 Current fuzzing targets are:
@@ -350,6 +377,12 @@ CI fuzzing is a bounded smoke check. Longer fuzz campaigns should be run locally
 ## Browser interoperability tests
 
 Browser-produced registration and authentication outputs are generated specifically for this project by `scripts/generate-browser-fixtures.mjs` through the Playwright dependency pinned by `e2e/package-lock.json` and Chrome DevTools virtual authenticators. The committed fixture suite lives under `testdata/browser/virtual-authenticator`.
+
+The committed fixture remains immutable historical provenance from Playwright
+1.60.0 and Chrome 148. Live E2E uses Playwright 1.62.1. Its Credentials API
+exercises capture, deletion, reseeding, and credential-inclusive storage state
+without writing passkey private material to disk. Chromium CDP remains the
+native-browser path for transport selection, UV failure, and bogus signatures.
 
 Current fixture coverage:
 

@@ -284,6 +284,11 @@ func TestVerifierRejectsCertificateRequirementFailures(t *testing.T) {
 		{name: "missing aik eku", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, omitAIKEKU: true}},
 		{name: "basic constraints ca", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, isCA: true}},
 		{name: "aaguid mismatch", options: certificateOptions{aaguid: differentAAGUID, includeAAGUID: true}},
+		{name: "non-critical san", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, sanFailure: "noncritical"}},
+		{name: "manufacturer format", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, sanFailure: "manufacturer"}},
+		{name: "empty model", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, sanFailure: "model"}},
+		{name: "version format", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, sanFailure: "version"}},
+		{name: "san string type", options: certificateOptions{aaguid: fixture.aaguid, includeAAGUID: true, sanFailure: "stringtype"}},
 	}
 
 	for _, tt := range tests {
@@ -583,6 +588,7 @@ type certificateOptions struct {
 	omitSAN         bool
 	omitAIKEKU      bool
 	isCA            bool
+	sanFailure      string
 }
 
 type testCertificate struct {
@@ -615,7 +621,7 @@ func newCertificate(t *testing.T, options certificateOptions) testCertificate {
 		template.UnknownExtKeyUsage = []asn1.ObjectIdentifier{oidAIKEKU}
 	}
 	if !options.omitSAN {
-		template.ExtraExtensions = append(template.ExtraExtensions, tpmSANExtension(t))
+		template.ExtraExtensions = append(template.ExtraExtensions, tpmSANExtension(t, options.sanFailure))
 	}
 	if options.includeAAGUID {
 		extensionValue, err := asn1.Marshal(options.aaguid.Bytes())
@@ -660,13 +666,30 @@ func newCertificateKey(t *testing.T, useRSA bool) (any, any) {
 	return key, &key.PublicKey
 }
 
-func tpmSANExtension(t *testing.T) pkix.Extension {
+func tpmSANExtension(t *testing.T, failure string) pkix.Extension {
 	t.Helper()
+	manufacturer := "id:FFFFF1D0"
+	model := "example-model"
+	version := "id:00010000"
+	stringTag := asn1.TagUTF8String
+	critical := true
+	switch failure {
+	case "noncritical":
+		critical = false
+	case "manufacturer":
+		manufacturer = "id:fffff1d0"
+	case "model":
+		model = ""
+	case "version":
+		version = "1.0"
+	case "stringtype":
+		stringTag = asn1.TagPrintableString
+	}
 
 	nameDER, err := asn1.Marshal(pkix.RDNSequence{
-		[]pkix.AttributeTypeAndValue{{Type: oidTPMManufacturer, Value: "id:FFFFF1D0"}},
-		[]pkix.AttributeTypeAndValue{{Type: oidTPMModel, Value: "example-model"}},
-		[]pkix.AttributeTypeAndValue{{Type: oidTPMVersion, Value: "1.0"}},
+		[]pkix.AttributeTypeAndValue{{Type: oidTPMManufacturer, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte(manufacturer)}}},
+		[]pkix.AttributeTypeAndValue{{Type: oidTPMModel, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte(model)}}},
+		[]pkix.AttributeTypeAndValue{{Type: oidTPMVersion, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte(version)}}},
 	})
 	if err != nil {
 		t.Fatalf("asn1.Marshal() name error = %v", err)
@@ -681,7 +704,7 @@ func tpmSANExtension(t *testing.T) pkix.Extension {
 		t.Fatalf("asn1.Marshal() general names error = %v", err)
 	}
 
-	return pkix.Extension{Id: oidExtensionSubjectAltName, Value: generalNames}
+	return pkix.Extension{Id: oidExtensionSubjectAltName, Critical: critical, Value: generalNames}
 }
 
 func cloneStatement(statement codec.AttestationStatement) codec.AttestationStatement {

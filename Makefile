@@ -31,11 +31,11 @@ help:
 format:
 	$(GOLANGCI_LINT) fmt ./...
 	$(GO) fix ./...
-	$(PRETTIER) --write .
+	$(PRETTIER) --write e2e/tests e2e/support docs .github testdata
 
 format-check:
 	$(GOLANGCI_LINT) fmt -d ./...
-	$(PRETTIER) --check .
+	$(PRETTIER) --check e2e/tests e2e/support docs .github testdata
 	$(GO) fix -diff ./...
 
 lint:

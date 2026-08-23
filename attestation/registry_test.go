@@ -39,6 +39,11 @@ func TestRegistryRejectsDuplicateAndEmptyFormats(t *testing.T) {
 	if !errors.Is(err, attestation.ErrInvalidFormat) {
 		t.Fatalf("NewRegistry() error = %v, want ErrInvalidFormat", err)
 	}
+	for _, format := range []string{"not valid", `not"valid`, `not\valid`, "012345678901234567890123456789012", "格式"} {
+		if _, err := attestation.NewRegistry(fakeVerifier{format: format}); !errors.Is(err, attestation.ErrInvalidFormat) {
+			t.Fatalf("NewRegistry(%q) error = %v, want ErrInvalidFormat", format, err)
+		}
+	}
 }
 
 type fakeVerifier struct {

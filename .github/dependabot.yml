@@ -13,3 +13,12 @@ updates:
     directory: /
     schedule:
       interval: monthly
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+    groups:
+      all:
+        patterns:
+          - "*"

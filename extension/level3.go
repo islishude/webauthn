@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"slices"
@@ -111,7 +112,7 @@ func (handler PRFHandler) VerifyOutput(_ context.Context, request OutputRequest)
 	if !request.Requested {
 		return Result{}, invalidRequest("prf must be requested")
 	}
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		return Result{}, invalidRequest("prf has no authenticator output")
 	}
 
@@ -125,10 +126,10 @@ func (handler PRFHandler) VerifyOutput(_ context.Context, request OutputRequest)
 		Eval:             clonePRFValuesPtr(input.Eval),
 		EvalByCredential: clonePRFValuesMap(input.EvalByCredential),
 	}
-	if request.ClientOutput == nil {
+	if !hasClientOutput(request) {
 		return Result{ID: IDPRF, Outputs: map[string]any{IDPRF: output}}, nil
 	}
-	if err := parsePRFOutput(request.ClientOutput, &output); err != nil {
+	if err := parsePRFOutput(request.Operation, input, request.ClientOutput, &output); err != nil {
 		return Result{}, err
 	}
 
@@ -193,10 +194,19 @@ func prfInputFromFields(fields map[string]any) (PRFInput, error) {
 	return input, nil
 }
 
-func parsePRFOutput(value any, output *PRFResult) error {
+type prfOutputPresence struct {
+	enabled bool
+	results bool
+}
+
+func parsePRFOutput(operation Operation, input PRFInput, value any, output *PRFResult) error {
+	var presence prfOutputPresence
 	if typed, ok := value.(PRFResult); ok {
-		*output = clonePRFResult(typed)
-		return validatePRFResult(output.Results)
+		typed = clonePRFResult(typed)
+		output.Enabled = typed.Enabled
+		output.Results = typed.Results
+		presence = prfOutputPresence{enabled: typed.Enabled != nil, results: typed.Results != nil}
+		return validatePRFOutput(operation, input, presence, output)
 	}
 	fields, ok := objectFields(value)
 	if !ok {
@@ -208,6 +218,7 @@ func parsePRFOutput(value any, output *PRFResult) error {
 			return invalidRequest("prf enabled must be boolean")
 		}
 		output.Enabled = boolPtr(enabled)
+		presence.enabled = true
 	}
 	if raw, ok := fields["results"]; ok {
 		values, err := parsePRFValues(raw, true)
@@ -215,9 +226,59 @@ func parsePRFOutput(value any, output *PRFResult) error {
 			return err
 		}
 		output.Results = &values
+		presence.results = true
 	}
 
+	return validatePRFOutput(operation, input, presence, output)
+}
+
+func validatePRFOutput(operation Operation, input PRFInput, presence prfOutputPresence, output *PRFResult) error {
+	if err := validatePRFResult(output.Results); err != nil {
+		return err
+	}
+	switch operation {
+	case OperationRegistration:
+		if !presence.enabled {
+			return invalidRequest("prf registration output must contain enabled")
+		}
+		if presence.results && output.Enabled != nil && !*output.Enabled {
+			return invalidRequest("prf disabled output cannot contain results")
+		}
+		if presence.results && (input.Eval == nil || !prfResultMatchesInput(*input.Eval, *output.Results)) {
+			return invalidRequest("prf results do not match registration inputs")
+		}
+	case OperationAuthentication:
+		if presence.enabled {
+			return invalidRequest("prf enabled is registration-only")
+		}
+		if presence.results && !prfResultsMatchAnyInput(input, *output.Results) {
+			return invalidRequest("prf results do not match authentication inputs")
+		}
+	}
 	return nil
+}
+
+func prfResultsMatchAnyInput(input PRFInput, results PRFValues) bool {
+	if input.Eval != nil && prfResultMatchesInput(*input.Eval, results) {
+		return true
+	}
+	for _, values := range input.EvalByCredential {
+		if prfResultMatchesInput(values, results) {
+			return true
+		}
+	}
+	return false
+}
+
+func prfResultCardinalityMatches(input PRFValues, result PRFValues) bool {
+	return (input.Second == nil) == (result.Second == nil)
+}
+
+func prfResultMatchesInput(input PRFValues, result PRFValues) bool {
+	if !prfResultCardinalityMatches(input, result) {
+		return false
+	}
+	return input.Second == nil || !bytes.Equal(input.First, input.Second) || bytes.Equal(result.First, result.Second)
 }
 
 func parsePRFValues(value any, requireOutputLength bool) (PRFValues, error) {

@@ -94,8 +94,18 @@ func validateNonceExtension(certificate *x509.Certificate, expected []byte) erro
 		return ErrCertificateRequirements
 	}
 
+	var sequence asn1.RawValue
+	rest, err := asn1.Unmarshal(extension.Value, &sequence)
+	if err != nil || len(rest) != 0 || sequence.Class != asn1.ClassUniversal || sequence.Tag != asn1.TagSequence || !sequence.IsCompound {
+		return ErrInvalidNonce
+	}
+	var explicitNonce asn1.RawValue
+	rest, err = asn1.Unmarshal(sequence.Bytes, &explicitNonce)
+	if err != nil || len(rest) != 0 || explicitNonce.Class != asn1.ClassContextSpecific || explicitNonce.Tag != 1 || !explicitNonce.IsCompound {
+		return ErrInvalidNonce
+	}
 	var nonce []byte
-	rest, err := asn1.Unmarshal(extension.Value, &nonce)
+	rest, err = asn1.Unmarshal(explicitNonce.Bytes, &nonce)
 	if err != nil || len(rest) != 0 || len(nonce) != sha256.Size {
 		return ErrInvalidNonce
 	}

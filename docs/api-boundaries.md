@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: registration and authentication ceremony APIs, Level 3 extension
-handlers, attestation trust policy, optional browser/HTTP adapters, and examples
-implemented, revised 2026-08-23.
+Status: 26 May 2026 Level 3 CR ceremony APIs, strict protocol decoding, opt-in
+Editor's Draft extension handling, attestation trust policy, optional
+browser/HTTP adapters, and examples implemented, revised 2026-08-23.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -27,11 +27,12 @@ The root package must not import optional attestation format packages, `browser`
   state, origin policy, policy inputs, result records, and module documentation;
 - `protocol`: byte-safe protocol values, option dictionaries, Level 3 hints,
   transports, client capabilities, collected client data, and authenticator data
-  parsing;
+  parsing; `CollectedClientData.HasTopOrigin` preserves optional-member presence
+  and `AlgorithmEd448` identifies COSE algorithm `-53`;
 - `codec`: attestation object, COSE key, extension map, public-key material, and
   compound statement decoder contracts;
-- `codec/cbor`: optional concrete CBOR and COSE_Key decoder behind narrow
-  codec contracts;
+- `codec/cbor`: optional concrete CTAP2-canonical CBOR and COSE_Key decoder
+  behind narrow codec contracts;
 - `crypto`: algorithm policy, signature, certificate, and JWS/JWT
   verifier contracts;
 - `crypto/standard`: optional explicit-policy verifier using Go standard-library
@@ -108,10 +109,11 @@ eligibility is checked against registration state and never updated.
 allowed origins, allowed top origins, and an explicit escape hatch for legacy
 cross-origin responses without `topOrigin`.
 
-`CollectedClientData.origin` must match `AllowedOrigins`. If `topOrigin` is
-present, `crossOrigin` must be true and the value must match
-`AllowedTopOrigins`. Reserved `tokenBinding` client data is parsed but ignored
-for relying-party verification.
+`CollectedClientData.origin` must match `AllowedOrigins`. Presence of
+`topOrigin` is tracked independently of its value: a present null, empty, or
+non-string value is malformed; a valid present value requires `crossOrigin`
+and must match `AllowedTopOrigins`. Reserved `tokenBinding` client data is
+parsed but ignored for relying-party verification.
 
 The root package never infers origins from HTTP headers.
 
@@ -152,8 +154,10 @@ primitives.
 require the exact decoding surface they use. `codec/cbor` is optional and
 replaceable.
 `codec.CredentialPublicKey` carries defensive raw COSE bytes plus typed EC2, RSA,
-or OKP material. It never exposes a dependency-owned key handle. Known algorithm,
-key type, curve, and coordinate combinations are validated by `codec/cbor`.
+or OKP material. It never exposes a dependency-owned key handle. The concrete
+codec rejects non-canonical CTAP2 encoding, duplicate or extra attestation-object
+members, invalid identifier syntax, and optional/private COSE key parameters.
+Known algorithm, key type, curve, and coordinate combinations are validated.
 
 `crypto` contracts delegate algorithm policy, signature verification,
 certificate verification, and JWS/JWT verification. Root APIs should avoid
@@ -181,6 +185,12 @@ Optional verifiers are selected explicitly by callers:
 caller-supplied registry. It returns raw sub-results as evidence and does not
 make trust decisions for the relying party.
 
+`attestation.VerificationRequest.ConveyancePreference` carries registration
+attestation conveyance into format validation. Packed verification uses it to
+reject enterprise device serial extensions outside enterprise requests.
+`androidkey.New` retains union authorization-list semantics, while
+`androidkey.NewWithPolicy` can require hardware/TEE-enforced evidence.
+
 ## Extension boundary
 
 Extensions have two boundaries: `ValidateInput` during option construction and
@@ -189,10 +199,19 @@ Registries are immutable after construction. Known inputs are normalized and
 deep-copied; unknown inputs are preserved unless `ExtensionInputPolicy` rejects
 them.
 
+`extension.OutputRequest.ClientOutputPresent` and
+`AuthenticatorOutputPresent` distinguish an absent extension member from an
+explicit null value, so built-in handlers can reject malformed null outputs.
+
 `extension.NewLevel3Registry` includes `appid`, `appidExclude`, `credProps`,
 `largeBlob`, and `prf`. `extension.NewLevel3RegistryWithDeprecated` also
 includes `uvm`. `uvm` is retained for callers that still need it and marks
 results as deprecated.
+
+`extension.RemoteClientDataJSONHandler` implements the 30 July 2026 Editor's
+Draft preview extension and is absent from both default Level 3 registries.
+When explicitly registered, start binds it to ceremony type and challenge;
+finish requires byte-for-byte signed client-data equality and a true output.
 
 Unknown extension results are represented in raw form and processed in sorted ID
 order. `RejectUnknown` applies only when an unknown output exists; a requested

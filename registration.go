@@ -12,6 +12,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -145,7 +146,12 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		return RegistrationResult{}, err
 	}
 
-	_, clientDataHash, err := verifyRegistrationClientData(options.State, options.Response.ClientDataJSON)
+	clientDataHash, err := verifyClientData(
+		options.Response.ClientDataJSON,
+		protocol.ClientDataTypeCreate,
+		options.State.Challenge,
+		options.State.OriginPolicy,
+	)
 	if err != nil {
 		return RegistrationResult{}, err
 	}
@@ -189,6 +195,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		credentialPublicKey: credentialPublicKey,
 		clientDataHash:      clientDataHash,
 		aaguid:              attested.AAGUID,
+		conveyance:          options.State.Attestation,
 	})
 	if err != nil {
 		return RegistrationResult{}, err
@@ -199,6 +206,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		registry:                options.ExtensionRegistry,
 		clientExtensionResults:  options.Response.ClientExtensionResults,
 		authenticatorExtensions: authenticatorExtensions,
+		clientDataJSON:          options.Response.ClientDataJSON,
 	})
 	if err != nil {
 		return RegistrationResult{}, err
@@ -216,7 +224,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 			BackupEligible:          parsedAuthData.Flags.BackupEligible(),
 			BackupState:             parsedAuthData.Flags.BackupState(),
 			UVInitialized:           parsedAuthData.Flags.UserVerified(),
-			AuthenticatorAttachment: options.Response.AuthenticatorAttachment,
+			AuthenticatorAttachment: normalizeAuthenticatorAttachment(options.Response.AuthenticatorAttachment),
 			AttestationType:         attestationResult.Type,
 		},
 		Attestation:      attestationResult,
@@ -266,6 +274,14 @@ func validateRegistrationState(state RegistrationState, now time.Time) error {
 	if len(state.AllowedAlgorithms) == 0 {
 		return fmt.Errorf("%w: allowed algorithms are required", ErrInvalidCeremonyState)
 	}
+	for _, algorithm := range state.AllowedAlgorithms {
+		if err := algorithm.Validate(); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
+		}
+	}
+	if !state.Attestation.Known() {
+		return fmt.Errorf("%w: invalid attestation conveyance", ErrInvalidCeremonyState)
+	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
@@ -282,29 +298,6 @@ func validateRegistrationResponseShape(response RegistrationResponse) error {
 	}
 
 	return nil
-}
-
-func verifyRegistrationClientData(state RegistrationState, raw protocol.ClientDataJSON) (protocol.CollectedClientData, []byte, error) {
-	clientData, err := protocol.ParseCollectedClientData(raw)
-	if err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	if err := clientData.ValidateType(protocol.ClientDataTypeCreate); err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	challengeBytes, err := clientData.ChallengeBytes()
-	if err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	if !state.Challenge.EqualBytes(challengeBytes) {
-		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
-	}
-	if err := verifyCollectedClientOrigin(state.OriginPolicy, clientData); err != nil {
-		return protocol.CollectedClientData{}, nil, err
-	}
-
-	hash := sha256.Sum256(raw.AppendTo(nil))
-	return clientData, hash[:], nil
 }
 
 func verifyRegistrationAuthenticatorData(state RegistrationState, raw protocol.AuthenticatorData) (protocol.ParsedAuthenticatorData, error) {
@@ -374,9 +367,13 @@ type registrationAttestationInputs struct {
 	credentialPublicKey codec.CredentialPublicKey
 	clientDataHash      []byte
 	aaguid              protocol.AAGUID
+	conveyance          protocol.AttestationConveyancePreference
 }
 
 func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttestationInputs) (attestation.VerificationResult, AttestationTrustResult, error) {
+	if !protocolidentifier.Valid(inputs.decodedAttestation.Format) {
+		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrInvalidAttestation
+	}
 	verifier, ok := inputs.registry.Lookup(inputs.decodedAttestation.Format)
 	if !ok {
 		return attestation.VerificationResult{}, AttestationTrustResult{}, ErrUnsupportedAttestationFormat
@@ -384,6 +381,7 @@ func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttes
 
 	result, err := verifier.VerifyAttestation(ctx, attestation.VerificationRequest{
 		Format:               inputs.decodedAttestation.Format,
+		ConveyancePreference: inputs.conveyance,
 		AuthenticatorData:    inputs.decodedAttestation.AuthenticatorData,
 		ClientDataHash:       inputs.clientDataHash,
 		Statement:            inputs.decodedAttestation.Statement,

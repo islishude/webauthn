@@ -563,6 +563,23 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 	}
 }
 
+func TestAuthenticationIgnoresUnknownAuthenticatorAttachment(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, false)
+	fixture.credential.AuthenticatorAttachment = protocol.AuthenticatorAttachmentPlatform
+	options := fixture.finishOptions()
+	options.Credential = fixture.credential
+	options.Response.AuthenticatorAttachment = protocol.AuthenticatorAttachment("future-attachment")
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+	if result.Credential.AuthenticatorAttachment != protocol.AuthenticatorAttachmentPlatform {
+		t.Fatalf("AuthenticatorAttachment = %q, want platform", result.Credential.AuthenticatorAttachment)
+	}
+}
+
 type authenticationFixture struct {
 	challenge    protocol.Challenge
 	credentialID []byte

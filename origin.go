@@ -46,7 +46,7 @@ func verifyCollectedClientOrigin(policy OriginPolicy, clientData protocol.Collec
 	}
 
 	crossOrigin := clientData.CrossOrigin != nil && *clientData.CrossOrigin
-	if clientData.TopOrigin != "" {
+	if clientData.HasTopOrigin() {
 		if !crossOrigin {
 			return ErrOriginMismatch
 		}

@@ -314,7 +314,11 @@ func mustUserHandle(t testing.TB) protocol.UserHandle {
 func validCOSEKey(t testing.TB) []byte {
 	t.Helper()
 	curve := elliptic.P256().Params()
-	encoded, err := fxcbor.Marshal(map[int]any{
+	mode, err := fxcbor.CTAP2EncOptions().EncMode()
+	if err != nil {
+		t.Fatalf("CTAP2 EncMode() error = %v", err)
+	}
+	encoded, err := mode.Marshal(map[int]any{
 		1:  2,
 		3:  -7,
 		-1: 1,

@@ -99,7 +99,7 @@ func (v Verifier) verifyX5C(ctx context.Context, request attestation.Verificatio
 		return attestation.VerificationResult{}, err
 	}
 	leaf := certificates[0]
-	if err := validatePackedCertificate(leaf, parsedAuthData.AttestedCredentialData.AAGUID); err != nil {
+	if err := validatePackedCertificate(leaf, parsedAuthData.AttestedCredentialData.AAGUID, request.ConveyancePreference); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 	leafMaterial, ok := x509util.PublicKeyMaterial(leaf.PublicKey)

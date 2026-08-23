@@ -148,6 +148,9 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	if err := validateRemoteClientDataInput(extension.OperationRegistration, preparedExtensions, options.ExtensionRegistry, challenge); err != nil {
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	optionExtensions, err := cloneExtensionInputs(preparedExtensions)
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)

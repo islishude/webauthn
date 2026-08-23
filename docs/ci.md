@@ -12,7 +12,8 @@ The local workflow is controlled by the root `Makefile`. The GitHub workflow is 
 
 Action major versions and trigger branches are defined only in
 `.github/workflows/ci.yml` to avoid duplicated version drift. CI uses stable Go,
-Node.js 24 for e2e, golangci-lint `v2.12.2`, and `.golangci.yml` version 2.
+Node.js 24 for e2e, Playwright `1.62.1`, golangci-lint `v2.12.2`, and
+`.golangci.yml` version 2.
 
 `go.mod` records minimum supported Go version `1.25.0`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
 
@@ -23,7 +24,7 @@ Required local tools:
 - `make`;
 - a Go toolchain compatible with the `go.mod` minimum version;
 - Node.js with `npx` available for Prettier formatting;
-- Node.js/npm for `make e2e`;
+- Node.js 20 or newer with npm for `make e2e`;
 - `golangci-lint v2.12.2` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
@@ -77,7 +78,9 @@ HTTPS relying-party app under `internal/e2eapp` through Playwright's
 `webServer`, drives Chromium virtual authenticators, and verifies real browser
 registration, authentication, replay rejection, session behavior, UV failure,
 state/email binding rejection, generic error responses, and bad-signature
-rejection.
+rejection. It also runs Playwright Credentials passkey capture, filtering,
+deletion, reseeding, and credential-inclusive in-memory storage-state recovery.
+The selected browser matrix remains Chromium-only.
 
 ## Formatting policy
 
@@ -140,6 +143,11 @@ Any change to quality gates must update all of these files in the same change:
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
 
 Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it uses the Playwright dependency pinned by `e2e/package-lock.json`, requires a Chromium/Chrome executable, and is an explicit developer action through `make browser-fixtures`.
+
+The committed Playwright 1.60.0/Chrome 148 fixture remains immutable provenance;
+upgrading the live E2E dependency does not rewrite it. Passkey private keys
+returned by Playwright Credentials or included in storage state remain in
+memory and must not be written to tracked files or uploaded artifacts.
 
 The Playwright e2e job is separate from browser fixture regeneration. It does
 not update committed fixtures and does not import optional browser or HTTP

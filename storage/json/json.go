@@ -372,6 +372,11 @@ func validateRegistrationState(state webauthn.RegistrationState) error {
 	if !state.RequestedUserVerification.Known() || !state.Attestation.Known() {
 		return fmt.Errorf("%w: registration state policy", ErrInvalidEnvelope)
 	}
+	for _, algorithm := range state.AllowedAlgorithms {
+		if err := algorithm.Validate(); err != nil {
+			return invalid(err)
+		}
+	}
 	return nil
 }
 
@@ -393,6 +398,9 @@ func validateAuthenticationState(state webauthn.AuthenticationState) error {
 func validateCredentialRecord(record webauthn.CredentialRecord) error {
 	if record.ID.Len() == 0 || record.UserHandle.Len() == 0 || record.RPID == "" || record.PublicKey.Algorithm == 0 || len(record.PublicKey.Raw()) == 0 || len(record.PublicKey.Raw()) > MaxStoredPublicKeyBytes || record.AttestationType == "" {
 		return fmt.Errorf("%w: credential required fields", ErrInvalidEnvelope)
+	}
+	if err := record.PublicKey.Algorithm.Validate(); err != nil {
+		return invalid(err)
 	}
 	if record.BackupState && !record.BackupEligible {
 		return fmt.Errorf("%w: backup state", ErrInvalidEnvelope)

@@ -100,6 +100,22 @@ func TestParseAuthenticatorDataRejectsUnexpectedTrailingBytes(t *testing.T) {
 	}
 }
 
+func TestParseAuthenticatorDataRejectsReservedFlags(t *testing.T) {
+	t.Parallel()
+
+	for _, reserved := range []byte{0x02, 0x20, 0x22} {
+		rawBytes := bytes.Repeat([]byte{0x00}, protocol.MinAuthenticatorDataLength)
+		rawBytes[32] = 0x01 | reserved
+		raw, err := protocol.NewAuthenticatorData(rawBytes)
+		if err != nil {
+			t.Fatalf("NewAuthenticatorData() error = %v", err)
+		}
+		if _, err := protocol.ParseAuthenticatorData(raw); !errors.Is(err, protocol.ErrMalformedAuthenticatorData) {
+			t.Fatalf("ParseAuthenticatorData(flags=%#x) error = %v, want ErrMalformedAuthenticatorData", rawBytes[32], err)
+		}
+	}
+}
+
 func buildProtocolAuthenticatorData(t *testing.T, flags byte, credentialID []byte, credentialPublicKey []byte) []byte {
 	t.Helper()
 

@@ -21,8 +21,6 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 		Type         ClientDataType `json:"type"`
 		Challenge    string         `json:"challenge"`
 		Origin       string         `json:"origin"`
-		CrossOrigin  *bool          `json:"crossOrigin"`
-		TopOrigin    string         `json:"topOrigin"`
 		TokenBinding *TokenBinding  `json:"tokenBinding"`
 	}
 
@@ -33,17 +31,49 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 	if err := json.Unmarshal(jsonText, &decoded); err != nil {
 		return CollectedClientData{}, err
 	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(jsonText, &members); err != nil {
+		return CollectedClientData{}, err
+	}
 	if decoded.Type == "" || decoded.Challenge == "" || decoded.Origin == "" {
 		return CollectedClientData{}, ErrMalformedClientData
+	}
+
+	var crossOrigin *bool
+	if rawCrossOrigin, present := members["crossOrigin"]; present {
+		var value any
+		if err := json.Unmarshal(rawCrossOrigin, &value); err != nil {
+			return CollectedClientData{}, ErrMalformedClientData
+		}
+		boolean, ok := value.(bool)
+		if !ok {
+			return CollectedClientData{}, ErrMalformedClientData
+		}
+		crossOrigin = &boolean
+	}
+
+	var topOrigin string
+	_, topOriginSet := members["topOrigin"]
+	if topOriginSet {
+		var value any
+		if err := json.Unmarshal(members["topOrigin"], &value); err != nil {
+			return CollectedClientData{}, ErrMalformedClientData
+		}
+		var ok bool
+		topOrigin, ok = value.(string)
+		if !ok || topOrigin == "" {
+			return CollectedClientData{}, ErrMalformedClientData
+		}
 	}
 	return CollectedClientData{
 		Type:         decoded.Type,
 		Challenge:    decoded.Challenge,
 		Origin:       decoded.Origin,
-		CrossOrigin:  decoded.CrossOrigin,
-		TopOrigin:    decoded.TopOrigin,
+		CrossOrigin:  crossOrigin,
+		TopOrigin:    topOrigin,
 		TokenBinding: decoded.TokenBinding,
 		Raw:          raw,
+		topOriginSet: topOriginSet,
 	}, nil
 }
 

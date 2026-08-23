@@ -34,12 +34,27 @@ var (
 // Verifier verifies the exact "android-key" attestation format.
 type Verifier struct {
 	signatureVerifier webcrypto.SignatureVerifier
+	policy            Policy
+}
+
+// Policy controls which Android authorization list can satisfy key-origin and
+// signing-purpose requirements.
+type Policy struct {
+	// RequireHardwareEnforced accepts only TrustedEnvironment or StrongBox
+	// attestations whose teeEnforced authorization list satisfies WebAuthn.
+	RequireHardwareEnforced bool
 }
 
 // New returns an Android Key attestation verifier using signatureVerifier for
 // the attestation signature check.
 func New(signatureVerifier webcrypto.SignatureVerifier) Verifier {
 	return Verifier{signatureVerifier: signatureVerifier}
+}
+
+// NewWithPolicy returns an Android Key verifier using an explicit authorization
+// list policy.
+func NewWithPolicy(signatureVerifier webcrypto.SignatureVerifier, policy Policy) Verifier {
+	return Verifier{signatureVerifier: signatureVerifier, policy: policy}
 }
 
 // Format returns the WebAuthn attestation format identifier.
@@ -76,7 +91,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if !ok {
 		return attestation.VerificationResult{}, ErrCertificateRequirements
 	}
-	if err := validateAndroidKeyExtension(extension.Value, request.ClientDataHash); err != nil {
+	if err := validateAndroidKeyExtension(extension.Value, request.ClientDataHash, v.policy); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 	leafMaterial, ok := x509util.PublicKeyMaterial(leaf.PublicKey)

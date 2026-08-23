@@ -20,7 +20,7 @@ Challenge mismatch is a hard protocol failure. The library must not offer a perm
 
 The core library must not infer trusted origins from HTTP request headers. The caller supplies allowed origins and RP ID policy explicitly.
 
-Registration and authentication verification must compare `CollectedClientData.origin` to the configured origin policy. If `topOrigin` is present, it must be explicitly allowed and must be paired with `crossOrigin`. Authenticator data `rpIdHash` must match SHA-256 of the expected RP ID, except when authentication explicitly uses the AppID extension and the client output indicates AppID was used.
+Registration and authentication verification must compare `CollectedClientData.origin` to the configured origin policy. `topOrigin` presence is tracked separately: present null, empty, or non-string values are malformed, while a valid present value must be explicitly allowed and paired with `crossOrigin`. Authenticator data `rpIdHash` must match SHA-256 of the expected RP ID, except when authentication explicitly uses the AppID extension and the client output indicates AppID was used.
 
 Cross-origin use must be policy-controlled. The presence of `crossOrigin` must not be ignored if the application has configured a strict policy.
 
@@ -62,6 +62,11 @@ Authentication signatures are verified over authenticator data concatenated with
 
 The project must not implement cryptographic primitives. Signature verification and key parsing must be delegated to standard library code or adapter dependencies. The WebAuthn layer is responsible for selecting the correct signature base, algorithm policy, and protocol binding checks.
 
+The concrete CBOR adapter rejects non-canonical CTAP2 encodings, tags,
+indefinite lengths, duplicate or extra attestation-object keys, and optional or
+private COSE key parameters. Authenticator RFU flag bits are rejected. These
+checks occur before decoded material reaches signature or trust policy.
+
 ## Signature counter policy
 
 Signature counters are clone-detection signals, not universally reliable monotonic counters. If both the stored counter and new counter are zero, no clone signal is available. If either is nonzero and the new counter is not greater than the stored counter, the library should return a clone-risk result.
@@ -81,6 +86,11 @@ A statement can be cryptographically valid but untrusted. A `none` attestation c
 
 Trust anchors, metadata, certificate status, AAGUID policy, and enterprise acceptance must be explicit relying-party policy. The root package must not ship a hidden global trust store.
 
+Attestation conveyance is passed into format verification. Packed device serial
+extensions are accepted only for enterprise conveyance; TPM identity attributes,
+Android hardware-enforced authorization lists, and Apple nonce ASN.1 structure
+are validated before trust evaluation.
+
 The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration rejects every attestation after format verification. Callers that accept consumer passkey `none` attestation must pass an explicit policy such as `attestation.AcceptNone()`. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
 The `attestation` package provides explicit trust policy building blocks for `none`, self attestation, format and type allow-lists, x5c trust-root verification through caller-provided certificate verifiers, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies do not include built-in trust anchors, network fetching, metadata caches, or automatic restricted-enrollment defaults.
@@ -98,9 +108,19 @@ Extension outputs must not be elevated into security facts unless the extension 
 The AppID extension is accepted for RP ID hash fallback only when the request included the same `appid` input, the caller configured the same AppID in policy, and the client output reports that AppID was used.
 
 The PRF extension validates requested inputs, output result lengths, and
-`evalByCredential` binding to the authentication allow-credentials list. PRF
+`evalByCredential` binding to the authentication allow-credentials list,
+operation-specific output members, result cardinality, and the equal-input
+equal-output invariant. PRF
 outputs are extension results for caller policy and storage; they are not login
 success criteria by themselves.
+
+`largeBlob` writes require exactly one allowed credential and a `written`
+result. An `appidExclude` output, when present, must be true. Editor's Draft
+`remoteClientDataJSON` requires a true client output. The remote extension is
+not in default registries; an opt-in caller must configure the remote origin
+explicitly, and the serialized input must remain byte-for-byte identical to
+signed client data. Raw remote client data must not be included in result
+logging.
 
 The `uvm` extension is deprecated in Level 3. It is retained as explicit opt-in
 support and marks parsed results as deprecated so callers can phase out policy
@@ -125,6 +145,8 @@ Malformed data should fail closed. The parser and verifier must test:
 - missing attested credential data during registration;
 - invalid credential ID lengths;
 - malformed CBOR maps from the selected codec;
+- non-canonical CBOR and COSE keys with optional/private parameters;
+- invalid extension and attestation identifier grammar;
 - unknown or unsupported `fmt` values;
 - unsupported algorithms;
 - invalid signatures;
@@ -165,7 +187,10 @@ Before stable release, defaults should be:
 - non-`none` attestation accepted only when caller trust policy accepts it;
 - unsupported attestation formats rejected;
 - unsupported algorithms rejected;
+- malformed/non-canonical CBOR, optional/private COSE parameters, RFU flags,
+  and invalid identifier grammar rejected;
 - unsolicited extensions ignored or rejected by configured policy;
+- Editor's Draft extensions absent from default Level 3 registries;
 - counter rollback surfaced as clone risk;
 - stored counter preserved on clone risk unless explicit policy updates it;
 - BE/BS invariants and immutable backup eligibility;

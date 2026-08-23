@@ -9,6 +9,7 @@ import (
 
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/codec"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 )
 
 const (
@@ -92,6 +93,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 
 		result, err := verifier.VerifyAttestation(ctx, attestation.VerificationRequest{
 			Format:               statement.Format,
+			ConveyancePreference: request.ConveyancePreference,
 			AuthenticatorData:    request.AuthenticatorData,
 			ClientDataHash:       slices.Clone(request.ClientDataHash),
 			Statement:            statement.Statement,
@@ -140,7 +142,7 @@ func compoundSubStatements(statement codec.AttestationStatement) ([]codec.Compou
 		return nil, ErrInvalidStatement
 	}
 	for _, statement := range statements {
-		if statement.Format == "" || statement.Statement == nil {
+		if !protocolidentifier.Valid(statement.Format) || statement.Statement == nil {
 			return nil, ErrInvalidStatement
 		}
 	}

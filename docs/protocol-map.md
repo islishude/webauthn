@@ -8,7 +8,11 @@ components. It is a completeness checklist, not implementation code.
 
 ## Normative baseline
 
-Primary normative source: W3C Web Authentication Level 3.
+Stable normative source: W3C Web Authentication Level 3 Candidate
+Recommendation, 26 May 2026.
+
+Preview source: the 30 July 2026 Editor's Draft. Preview-only behavior is
+explicitly opt-in and is not included in default Level 3 registries.
 
 Browser-context source: MDN Web Authentication API.
 
@@ -23,34 +27,34 @@ behavior.
 | `PublicKeyCredentialCreationOptions` | Protocol model and registration options builder   | Required RP, user, challenge, and credential parameters; supports timeout, exclude list, authenticator selection, hints, attestation, attestation formats, extensions. |
 | `PublicKeyCredentialRequestOptions`  | Protocol model and authentication options builder | Required challenge; supports timeout, RP ID, allow credentials, user verification, hints, and extensions.                                                              |
 | `PublicKeyCredentialRpEntity`        | Protocol model                                    | Enforce RP ID and display-name validation separately from HTTP origin discovery.                                                                                       |
-| `PublicKeyCredentialUserEntity`      | Protocol model                                    | Preserve user handle as bytes; avoid assuming usernames are stable identifiers.                                                                                        |
+| `PublicKeyCredentialUserEntity`      | Protocol model                                    | Preserve user handle as bytes; allow the required `displayName` member to contain the specified empty-string value.                                                    |
 | `PublicKeyCredentialDescriptor`      | Protocol model                                    | Store and replay transport hints including `hybrid` and `smart-card`; unknown transports must not break parsing before validation boundaries.                          |
 | `PublicKeyCredentialHint`            | Protocol model and browser DTOs                   | Preserve `security-key`, `client-device`, and `hybrid` hints as UI hints, not security facts.                                                                          |
-| COSE algorithm identifiers           | Crypto adapter policy                             | Expose Level 3 algorithm constants and recommended parameter helper; do not implement COSE or cryptographic primitives in root.                                        |
+| COSE algorithm identifiers           | Crypto adapter policy                             | Enforce Web IDL `long`, expose Ed448 `-53`, and route unsupported cryptography through caller adapters.                                                                |
 
 ## Client data
 
-| Protocol surface                   | Component             | Required behavior                                                                    |
-| ---------------------------------- | --------------------- | ------------------------------------------------------------------------------------ |
-| `CollectedClientData.type`         | Ceremony verification | Must match `webauthn.create` for registration and `webauthn.get` for authentication. |
-| `CollectedClientData.challenge`    | Ceremony verification | Must equal the base64url encoding of the server-generated challenge.                 |
-| `CollectedClientData.origin`       | Origin policy         | Must match configured allowed origins. No HTTP request inference in core.            |
-| `CollectedClientData.crossOrigin`  | Origin policy         | Must be accepted or rejected by explicit RP policy.                                  |
-| `CollectedClientData.topOrigin`    | Origin policy         | If present, requires `crossOrigin` and must match configured allowed top origins.    |
-| `CollectedClientData.tokenBinding` | Reserved client data  | Parsed for preservation but ignored for relying-party verification in Level 3.       |
-| Unknown client data keys           | Client data parser    | Must be tolerated. Future extension fields must not break parsing.                   |
+| Protocol surface                   | Component             | Required behavior                                                                                                                  |
+| ---------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `CollectedClientData.type`         | Ceremony verification | Must match `webauthn.create` for registration and `webauthn.get` for authentication.                                               |
+| `CollectedClientData.challenge`    | Ceremony verification | Must equal the base64url encoding of the server-generated challenge.                                                               |
+| `CollectedClientData.origin`       | Origin policy         | Must match configured allowed origins. No HTTP request inference in core.                                                          |
+| `CollectedClientData.crossOrigin`  | Origin policy         | Must be accepted or rejected by explicit RP policy.                                                                                |
+| `CollectedClientData.topOrigin`    | Origin policy         | Presence is tracked separately; if present it must be a non-empty string, require `crossOrigin`, and match configured top origins. |
+| `CollectedClientData.tokenBinding` | Reserved client data  | Parsed for preservation but ignored for relying-party verification in Level 3.                                                     |
+| Unknown client data keys           | Client data parser    | Must be tolerated. Future extension fields must not break parsing.                                                                 |
 
 ## Authenticator data
 
 | Field                    | Component                                  | Required behavior                                                                                 |
 | ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `rpIdHash`               | Authenticator data parser and verifier     | Must equal SHA-256 of expected RP ID, or AppID hash when AppID request, policy, and output agree. |
-| Flags                    | Authenticator data parser                  | Expose UP/UV/AT/ED, reject BS without BE, and keep backup eligibility immutable.                  |
+| Flags                    | Authenticator data parser                  | Expose UP/UV/AT/ED, reject RFU bits and BS without BE, and keep backup eligibility immutable.     |
 | `signCount`              | Counter policy                             | Return comparison and clone risk; preserve stored value unless explicit policy updates it.        |
 | Attested credential data | Registration parser                        | Required when AT flag is set in registration attestation data.                                    |
 | AAGUID                   | Registration result and attestation policy | Needed for trust policy and metadata lookup.                                                      |
 | Credential ID            | Registration result                        | Must be uniqueness-checked by the application or caller-provided result.                          |
-| Credential public key    | Codec and crypto adapter input             | Persist raw COSE plus typed EC2/RSA/OKP material; reject known algorithm/key mismatches.          |
+| Credential public key    | Codec and crypto adapter input             | Require CTAP2 canonical COSE with only required parameters; persist typed EC2/RSA/OKP material.   |
 | Extensions               | Extension framework                        | Decode through CBOR adapter and route by extension identifier.                                    |
 
 ## Registration relying-party operation
@@ -95,12 +99,12 @@ associated with the credential.
 | Format identifier   | Package                        | Modular dependency notes                                                            | Status   |
 | ------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | -------- |
 | `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                       | Complete |
-| `packed`            | `attestation/packed`           | Signature verification through adapter; X.509 parsing uses Go standard library      | Complete |
-| `tpm`               | `attestation/tpm`              | Narrow TPM structure parsing and X.509 requirement checks using Go standard library | Complete |
-| `android-key`       | `attestation/androidkey`       | Android Key extension parsing with Go standard library ASN.1/X.509 support          | Complete |
+| `packed`            | `attestation/packed`           | Exact subject encodings, AAGUID/firmware fields, and enterprise-only serial policy  | Complete |
+| `tpm`               | `attestation/tpm`              | TPM bindings plus critical SAN attribute type and manufacturer/model/version checks | Complete |
+| `android-key`       | `attestation/androidkey`       | Union default plus explicit hardware/TEE-only authorization-list policy             | Complete |
 | `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`; legacy format | Complete |
 | `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters            | Complete |
-| `apple`             | `attestation/apple`            | Apple anonymous attestation certificate checks through Go standard library X.509    | Complete |
+| `apple`             | `attestation/apple`            | DER sequence/explicit nonce and credential-certificate public-key binding           | Complete |
 | `compound`          | `attestation/compound`         | Dispatches normalized sub-statements through caller-selected verifiers              | Complete |
 
 The root package must not import these packages automatically. Trust acceptance
@@ -108,18 +112,23 @@ remains caller policy after format verification succeeds.
 
 ## Extensions
 
-| Extension identifier | Applicability                   | Behavior                                                                                              | Status                |
-| -------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------- |
-| `appid`              | Authentication                  | Allows RP ID hash verification against AppID when request, policy, and client output agree.           | Complete              |
-| `appidExclude`       | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                   | Complete              |
-| `credProps`          | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                          | Complete              |
-| `largeBlob`          | Registration and authentication | Represents inputs/outputs and leaves application data storage policy to caller.                       | Complete              |
-| `prf`                | Registration and authentication | Validates PRF input/output, output lengths, and authentication `evalByCredential` allow-list binding. | Complete              |
-| `uvm`                | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.       | Deprecated, supported |
+| Extension identifier   | Applicability                   | Behavior                                                                                                     | Status                |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `appid`                | Authentication                  | Allows RP ID hash verification against AppID when request, policy, and client output agree.                  | Complete              |
+| `appidExclude`         | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                          | Complete              |
+| `credProps`            | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                 | Complete              |
+| `largeBlob`            | Registration and authentication | Represents inputs/outputs and leaves application data storage policy to caller.                              | Complete              |
+| `prf`                  | Registration and authentication | Validates PRF input/output, output lengths, and authentication `evalByCredential` allow-list binding.        | Complete              |
+| `remoteClientDataJSON` | Registration and authentication | Editor's Draft client-only extension; validates ceremony/challenge and exact serialized client-data binding. | Preview, opt-in       |
+| `uvm`                  | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.              | Deprecated, supported |
 
 `extension.NewLevel3Registry` excludes `uvm` by default.
 `extension.NewLevel3RegistryWithDeprecated` includes it for callers that still
 need to parse existing outputs.
+
+`extension.RemoteClientDataJSONHandler` is not included in either default
+registry. A caller opting into it must also configure the remote origin in
+`OriginPolicy`; no origin inference or wildcard is introduced.
 
 ## Security and privacy policy surfaces
 

@@ -1,6 +1,7 @@
 package webauthn
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"maps"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -17,9 +19,13 @@ type registrationExtensionInputs struct {
 	registry                *extension.Registry
 	clientExtensionResults  map[string]any
 	authenticatorExtensions codec.ExtensionMap
+	clientDataJSON          protocol.ClientDataJSON
 }
 
 func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtensionInputs) ([]extension.Result, error) {
+	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.registry, inputs.clientDataJSON); err != nil {
+		return nil, err
+	}
 	return verifyExtensions(ctx, extensionVerificationInputs{
 		operation:               extension.OperationRegistration,
 		requestedExtensions:     inputs.state.RequestedExtensions,
@@ -28,6 +34,75 @@ func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtens
 		clientExtensionResults:  inputs.clientExtensionResults,
 		authenticatorExtensions: inputs.authenticatorExtensions,
 	})
+}
+
+func validateRemoteClientDataInput(operation extension.Operation, inputs protocol.ExtensionInputs, registry *extension.Registry, challenge protocol.Challenge) error {
+	value, requested := inputs[extension.IDRemoteClientDataJSON]
+	if !requested || registry == nil {
+		return nil
+	}
+	if _, known := registry.Lookup(extension.IDRemoteClientDataJSON); !known {
+		return nil
+	}
+	normalized, err := (extension.RemoteClientDataJSONHandler{}).ValidateInput(extension.InputRequest{
+		Operation: operation,
+		ID:        extension.IDRemoteClientDataJSON,
+		Input:     value,
+	})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	raw, err := protocol.NewClientDataJSON([]byte(normalized.(string)))
+	if err != nil {
+		return fmt.Errorf("%w: invalid remote client data", ErrExtensionPolicy)
+	}
+	clientData, err := protocol.ParseCollectedClientData(raw)
+	if err != nil {
+		return fmt.Errorf("%w: invalid remote client data", ErrExtensionPolicy)
+	}
+	challengeBytes, err := clientData.ChallengeBytes()
+	if err != nil || !challenge.EqualBytes(challengeBytes) {
+		return fmt.Errorf("%w: remote client data challenge mismatch", ErrExtensionPolicy)
+	}
+	return nil
+}
+
+func verifyRemoteClientDataBinding(inputs protocol.ExtensionInputs, registry *extension.Registry, raw protocol.ClientDataJSON) error {
+	value, requested := inputs[extension.IDRemoteClientDataJSON]
+	if !requested || registry == nil {
+		return nil
+	}
+	if _, known := registry.Lookup(extension.IDRemoteClientDataJSON); !known {
+		return nil
+	}
+	serialized, ok := value.(string)
+	if !ok || !bytes.Equal(raw.Bytes(), []byte(serialized)) {
+		return fmt.Errorf("%w: remote client data changed", ErrExtensionPolicy)
+	}
+	return nil
+}
+
+func validateAuthenticationExtensionContext(inputs protocol.ExtensionInputs, registry *extension.Registry, allowCredentials []protocol.CredentialDescriptor) error {
+	value, requested := inputs[extension.IDLargeBlob]
+	if !requested || registry == nil {
+		return nil
+	}
+	if _, known := registry.Lookup(extension.IDLargeBlob); !known {
+		return nil
+	}
+	normalized, err := (extension.LargeBlobHandler{}).ValidateInput(extension.InputRequest{
+		Operation: extension.OperationAuthentication,
+		ID:        extension.IDLargeBlob,
+		Input:     value,
+	})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	largeBlob := normalized.(extension.LargeBlobInput)
+	if largeBlob.Write != nil && len(allowCredentials) != 1 {
+		return fmt.Errorf("%w: largeBlob write requires exactly one allowed credential", ErrExtensionPolicy)
+	}
+	return nil
 }
 
 func lookupExtensionHandler(registry *extension.Registry, id string) (extension.Handler, bool) {
@@ -55,12 +130,21 @@ type extensionVerificationInputs struct {
 func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) ([]extension.Result, error) {
 	ids := map[string]struct{}{}
 	for id := range inputs.requestedExtensions {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
 		ids[id] = struct{}{}
 	}
 	for id := range inputs.clientExtensionResults {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
 		ids[id] = struct{}{}
 	}
 	for id := range inputs.authenticatorExtensions {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
 		ids[id] = struct{}{}
 	}
 
@@ -120,12 +204,14 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 		}
 
 		result, err := handler.VerifyOutput(ctx, extension.OutputRequest{
-			Operation:           inputs.operation,
-			ID:                  id,
-			Requested:           requested,
-			ClientInput:         clientInput,
-			ClientOutput:        clientOutput,
-			AuthenticatorOutput: authenticatorOutput,
+			Operation:                  inputs.operation,
+			ID:                         id,
+			Requested:                  requested,
+			ClientInput:                clientInput,
+			ClientOutput:               clientOutput,
+			ClientOutputPresent:        hasClientOutput,
+			AuthenticatorOutput:        authenticatorOutput,
+			AuthenticatorOutputPresent: hasAuthenticatorOutput,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
@@ -153,8 +239,8 @@ func prepareExtensionInputs(operation extension.Operation, inputs protocol.Exten
 	}
 	out := make(protocol.ExtensionInputs, len(inputs))
 	for _, id := range slices.Sorted(maps.Keys(inputs)) {
-		if id == "" {
-			return nil, fmt.Errorf("%w: extension id is empty", ErrExtensionPolicy)
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: extension id is invalid", ErrExtensionPolicy)
 		}
 		value, err := extension.CloneValue(inputs[id])
 		if err != nil {

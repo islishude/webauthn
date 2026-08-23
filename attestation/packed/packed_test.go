@@ -83,6 +83,25 @@ func TestVerifierAcceptsX5CAttestation(t *testing.T) {
 	}
 }
 
+func TestVerifierAcceptsEnterpriseSerialNumber(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPackedFixture(t)
+	certificate := newAttestationCertificate(t, certificateOptions{aaguid: fixture.aaguid, enterpriseSerial: []byte("device-serial")})
+	verifier := attpacked.New(signatureVerifier{t: t})
+	_, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:               "packed",
+		ConveyancePreference: protocol.AttestationEnterprise,
+		AuthenticatorData:    fixture.authenticatorData,
+		ClientDataHash:       fixture.clientDataHash,
+		Statement:            codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature"), "x5c": [][]byte{certificate.raw}},
+		CredentialPublicKey:  codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
+	})
+	if err != nil {
+		t.Fatalf("VerifyAttestation() error = %v", err)
+	}
+}
+
 func TestVerifierRejectsMalformedStatement(t *testing.T) {
 	t.Parallel()
 
@@ -162,12 +181,19 @@ func TestVerifierRejectsCertificateRequirementFailures(t *testing.T) {
 	differentAAGUID := protocol.AAGUID{0xff}
 
 	tests := []struct {
-		name    string
-		options certificateOptions
+		name       string
+		options    certificateOptions
+		conveyance protocol.AttestationConveyancePreference
 	}{
 		{name: "missing subject ou", options: certificateOptions{aaguid: fixture.aaguid, omitOU: true}},
 		{name: "basic constraints ca", options: certificateOptions{aaguid: fixture.aaguid, isCA: true}},
 		{name: "aaguid mismatch", options: certificateOptions{aaguid: differentAAGUID, includeAAGUID: true}},
+		{name: "subject string types", options: certificateOptions{aaguid: fixture.aaguid, wrongSubjectTypes: true}},
+		{name: "negative firmware", options: certificateOptions{aaguid: fixture.aaguid, firmwarePresent: true, firmware: -1}},
+		{name: "critical firmware", options: certificateOptions{aaguid: fixture.aaguid, firmwarePresent: true, firmware: 1, firmwareCritical: true}},
+		{name: "non-enterprise serial", options: certificateOptions{aaguid: fixture.aaguid, enterpriseSerial: []byte("device")}},
+		{name: "critical enterprise serial", options: certificateOptions{aaguid: fixture.aaguid, enterpriseSerial: []byte("device"), enterpriseSerialCritical: true}, conveyance: protocol.AttestationEnterprise},
+		{name: "empty enterprise serial", options: certificateOptions{aaguid: fixture.aaguid, enterpriseSerialPresent: true}, conveyance: protocol.AttestationEnterprise},
 	}
 
 	for _, tt := range tests {
@@ -177,11 +203,12 @@ func TestVerifierRejectsCertificateRequirementFailures(t *testing.T) {
 			certificate := newAttestationCertificate(t, tt.options)
 			verifier := attpacked.New(signatureVerifier{t: t})
 			_, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
-				Format:              "packed",
-				AuthenticatorData:   fixture.authenticatorData,
-				ClientDataHash:      fixture.clientDataHash,
-				Statement:           codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature"), "x5c": [][]byte{certificate.raw}},
-				CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
+				Format:               "packed",
+				ConveyancePreference: tt.conveyance,
+				AuthenticatorData:    fixture.authenticatorData,
+				ClientDataHash:       fixture.clientDataHash,
+				Statement:            codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature"), "x5c": [][]byte{certificate.raw}},
+				CredentialPublicKey:  codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 			})
 			if !errors.Is(err, attpacked.ErrCertificateRequirements) {
 				t.Fatalf("VerifyAttestation() error = %v, want ErrCertificateRequirements", err)
@@ -237,10 +264,17 @@ func authenticatorDataWithAAGUID(t *testing.T, aaguid protocol.AAGUID) protocol.
 }
 
 type certificateOptions struct {
-	aaguid        protocol.AAGUID
-	includeAAGUID bool
-	omitOU        bool
-	isCA          bool
+	aaguid                   protocol.AAGUID
+	includeAAGUID            bool
+	omitOU                   bool
+	isCA                     bool
+	wrongSubjectTypes        bool
+	firmwarePresent          bool
+	firmware                 int64
+	firmwareCritical         bool
+	enterpriseSerialPresent  bool
+	enterpriseSerial         []byte
+	enterpriseSerialCritical bool
 }
 
 type testCertificate struct {
@@ -273,6 +307,7 @@ func newAttestationCertificate(t *testing.T, options certificateOptions) testCer
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               subject,
+		RawSubject:            packedSubjectDER(t, options.omitOU, options.wrongSubjectTypes),
 		NotBefore:             time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC),
 		NotAfter:              time.Date(2027, 5, 31, 0, 0, 0, 0, time.UTC),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
@@ -284,10 +319,24 @@ func newAttestationCertificate(t *testing.T, options certificateOptions) testCer
 		if err != nil {
 			t.Fatalf("asn1.Marshal() error = %v", err)
 		}
-		template.ExtraExtensions = []pkix.Extension{{
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{
 			Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4},
 			Value: extensionValue,
-		}}
+		})
+	}
+	if options.firmwarePresent {
+		value, err := asn1.Marshal(options.firmware)
+		if err != nil {
+			t.Fatalf("asn1.Marshal() firmware error = %v", err)
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 5}, Critical: options.firmwareCritical, Value: value})
+	}
+	if options.enterpriseSerialPresent || options.enterpriseSerial != nil {
+		value, err := asn1.Marshal(options.enterpriseSerial)
+		if err != nil {
+			t.Fatalf("asn1.Marshal() serial error = %v", err)
+		}
+		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 2}, Critical: options.enterpriseSerialCritical, Value: value})
 	}
 
 	raw, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
@@ -300,6 +349,27 @@ func newAttestationCertificate(t *testing.T, options certificateOptions) testCer
 	}
 
 	return testCertificate{leaf: leaf, raw: raw}
+}
+
+func packedSubjectDER(t *testing.T, omitOU bool, wrongTypes bool) []byte {
+	t.Helper()
+	stringTag := asn1.TagUTF8String
+	if wrongTypes {
+		stringTag = asn1.TagPrintableString
+	}
+	rdns := pkix.RDNSequence{
+		[]pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 6}, Value: asn1.RawValue{Tag: asn1.TagPrintableString, Bytes: []byte("US")}}},
+		[]pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 10}, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte("Example Authenticator Vendor")}}},
+		[]pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 3}, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte("Example Authenticator")}}},
+	}
+	if !omitOU {
+		rdns = append(rdns, []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier{2, 5, 4, 11}, Value: asn1.RawValue{Tag: stringTag, Bytes: []byte("Authenticator Attestation")}}})
+	}
+	encoded, err := asn1.Marshal(rdns)
+	if err != nil {
+		t.Fatalf("asn1.Marshal() subject error = %v", err)
+	}
+	return encoded
 }
 
 type signatureVerifier struct {

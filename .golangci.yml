@@ -15,6 +15,13 @@ linters:
     - gosec
     - nilerr
     - noctx
+    - dupl
+    - gocognit
+  settings:
+    dupl:
+      threshold: 150
+    gocognit:
+      min-complexity: 150
 
 formatters:
   enable:

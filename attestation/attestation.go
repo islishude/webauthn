@@ -8,6 +8,7 @@ import (
 
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -49,6 +50,7 @@ type TrustPath struct {
 // VerificationRequest is the input passed to an attestation format verifier.
 type VerificationRequest struct {
 	Format               string
+	ConveyancePreference protocol.AttestationConveyancePreference
 	AuthenticatorData    protocol.AuthenticatorData
 	ClientDataHash       []byte
 	Statement            codec.AttestationStatement
@@ -113,7 +115,7 @@ type Registry struct {
 func NewRegistry(verifiers ...Verifier) (*Registry, error) {
 	registry := &Registry{verifiers: make(map[string]Verifier, len(verifiers))}
 	for _, verifier := range verifiers {
-		if verifier == nil || verifier.Format() == "" {
+		if verifier == nil || !protocolidentifier.Valid(verifier.Format()) {
 			return nil, ErrInvalidFormat
 		}
 		format := verifier.Format()

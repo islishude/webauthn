@@ -115,6 +115,12 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	if err := validateRemoteClientDataInput(extension.OperationAuthentication, preparedExtensions, options.ExtensionRegistry, challenge); err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
+	if err := validateAuthenticationExtensionContext(preparedExtensions, options.ExtensionRegistry, options.AllowCredentials); err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	optionExtensions, err := cloneExtensionInputs(preparedExtensions)
 	if err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
@@ -270,7 +276,12 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		return AuthenticationResult{}, err
 	}
 
-	_, clientDataHash, err := verifyAuthenticationClientData(options.State, options.Response.ClientDataJSON)
+	clientDataHash, err := verifyClientData(
+		options.Response.ClientDataJSON,
+		protocol.ClientDataTypeGet,
+		options.State.Challenge,
+		options.State.OriginPolicy,
+	)
 	if err != nil {
 		return AuthenticationResult{}, err
 	}
@@ -295,6 +306,7 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		registry:                options.ExtensionRegistry,
 		clientExtensionResults:  options.Response.ClientExtensionResults,
 		authenticatorExtensions: authenticatorExtensions,
+		clientDataJSON:          options.Response.ClientDataJSON,
 	})
 	if err != nil {
 		return AuthenticationResult{}, err
@@ -319,8 +331,8 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	credential.SignCount = nextSignCount
 	credential.BackupState = nextBackupState
 	credential.UVInitialized = nextUVInitialized
-	if options.Response.AuthenticatorAttachment != "" {
-		credential.AuthenticatorAttachment = options.Response.AuthenticatorAttachment
+	if attachment := normalizeAuthenticatorAttachment(options.Response.AuthenticatorAttachment); attachment != "" {
+		credential.AuthenticatorAttachment = attachment
 	}
 
 	return AuthenticationResult{
@@ -436,29 +448,6 @@ func verifyAuthenticationUserBinding(state AuthenticationState, response Authent
 	return nil
 }
 
-func verifyAuthenticationClientData(state AuthenticationState, raw protocol.ClientDataJSON) (protocol.CollectedClientData, []byte, error) {
-	clientData, err := protocol.ParseCollectedClientData(raw)
-	if err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	if err := clientData.ValidateType(protocol.ClientDataTypeGet); err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	challengeBytes, err := clientData.ChallengeBytes()
-	if err != nil {
-		return protocol.CollectedClientData{}, nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
-	}
-	if !state.Challenge.EqualBytes(challengeBytes) {
-		return protocol.CollectedClientData{}, nil, ErrChallengeMismatch
-	}
-	if err := verifyCollectedClientOrigin(state.OriginPolicy, clientData); err != nil {
-		return protocol.CollectedClientData{}, nil, err
-	}
-
-	hash := sha256.Sum256(raw.AppendTo(nil))
-	return clientData, hash[:], nil
-}
-
 func verifyAuthenticationAuthenticatorData(state AuthenticationState, response AuthenticationResponse, credential CredentialRecord, policy AuthenticationExtensionPolicy) (protocol.ParsedAuthenticatorData, error) {
 	parsed, err := protocol.ParseAuthenticatorData(response.AuthenticatorData)
 	if err != nil {
@@ -486,7 +475,7 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 	if parsed.Flags.BackupEligible() != credential.BackupEligible {
 		return protocol.ParsedAuthenticatorData{}, ErrBackupEligibilityMismatch
 	}
-	if credential.PublicKey.Algorithm == 0 {
+	if credential.PublicKey.Algorithm == 0 || credential.PublicKey.Algorithm.Validate() != nil {
 		return protocol.ParsedAuthenticatorData{}, ErrUnsupportedAlgorithm
 	}
 
@@ -536,9 +525,13 @@ type authenticationExtensionInputs struct {
 	registry                *extension.Registry
 	clientExtensionResults  map[string]any
 	authenticatorExtensions codec.ExtensionMap
+	clientDataJSON          protocol.ClientDataJSON
 }
 
 func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationExtensionInputs) ([]extension.Result, error) {
+	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.registry, inputs.clientDataJSON); err != nil {
+		return nil, err
+	}
 	return verifyExtensions(ctx, extensionVerificationInputs{
 		operation:               extension.OperationAuthentication,
 		requestedExtensions:     inputs.state.RequestedExtensions,

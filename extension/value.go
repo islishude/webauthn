@@ -38,6 +38,8 @@ func CloneValue(value any) (any, error) {
 		return cloneUVMEntries(typed), nil
 	case AppIDResult, AppIDExcludeResult:
 		return typed, nil
+	case RemoteClientDataJSONResult:
+		return typed, nil
 	}
 
 	reflected := reflect.ValueOf(value)

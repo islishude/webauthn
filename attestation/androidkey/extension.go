@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"encoding/asn1"
 	"fmt"
-	"slices"
 )
 
 const (
 	asn1TagSequence = 16
 	asn1TagSet      = 17
 
-	androidKeyPurposeSign     = 2
-	androidKeyOriginGenerated = 0
+	androidKeyPurposeSign         = 2
+	androidKeyOriginGenerated     = 0
+	androidSecurityLevelTEE       = 1
+	androidSecurityLevelStrongBox = 2
 
 	androidTagPurpose         = 1
 	androidTagAllApplications = 600
@@ -20,19 +21,20 @@ const (
 )
 
 type androidKeyDescription struct {
-	attestationChallenge []byte
-	softwareEnforced     androidAuthorizationList
-	hardwareEnforced     androidAuthorizationList
+	attestationSecurityLevel int
+	keymasterSecurityLevel   int
+	attestationChallenge     []byte
+	softwareEnforced         androidAuthorizationList
+	hardwareEnforced         androidAuthorizationList
 }
 
 type androidAuthorizationList struct {
 	purposes        []int
-	hasOrigin       bool
-	origin          int
+	origins         []int
 	allApplications bool
 }
 
-func validateAndroidKeyExtension(raw []byte, clientDataHash []byte) error {
+func validateAndroidKeyExtension(raw []byte, clientDataHash []byte, policy Policy) error {
 	description, err := parseAndroidKeyDescription(raw)
 	if err != nil {
 		return err
@@ -43,10 +45,14 @@ func validateAndroidKeyExtension(raw []byte, clientDataHash []byte) error {
 	if description.softwareEnforced.allApplications || description.hardwareEnforced.allApplications {
 		return ErrCertificateRequirements
 	}
-	if !authorizationListsContainGeneratedOrigin(description.softwareEnforced, description.hardwareEnforced) {
-		return ErrCertificateRequirements
+	selected := []androidAuthorizationList{description.softwareEnforced, description.hardwareEnforced}
+	if policy.RequireHardwareEnforced {
+		if !hardwareSecurityLevel(description.attestationSecurityLevel) || !hardwareSecurityLevel(description.keymasterSecurityLevel) {
+			return ErrCertificateRequirements
+		}
+		selected = []androidAuthorizationList{description.hardwareEnforced}
 	}
-	if !authorizationListsContainSigningPurpose(description.softwareEnforced, description.hardwareEnforced) {
+	if !authorizationListsExactlyMatchWebAuthn(selected...) {
 		return ErrCertificateRequirements
 	}
 
@@ -75,10 +81,21 @@ func parseAndroidKeyDescription(raw []byte) (androidKeyDescription, error) {
 		return androidKeyDescription{}, err
 	}
 
+	attestationSecurityLevel, err := parseEnumerated(fields[1])
+	if err != nil {
+		return androidKeyDescription{}, err
+	}
+	keymasterSecurityLevel, err := parseEnumerated(fields[3])
+	if err != nil {
+		return androidKeyDescription{}, err
+	}
+
 	return androidKeyDescription{
-		attestationChallenge: challenge,
-		softwareEnforced:     softwareEnforced,
-		hardwareEnforced:     hardwareEnforced,
+		attestationSecurityLevel: attestationSecurityLevel,
+		keymasterSecurityLevel:   keymasterSecurityLevel,
+		attestationChallenge:     challenge,
+		softwareEnforced:         softwareEnforced,
+		hardwareEnforced:         hardwareEnforced,
 	}, nil
 }
 
@@ -110,32 +127,31 @@ func parseAuthorizationList(raw asn1.RawValue) (androidAuthorizationList, error)
 			if err != nil {
 				return androidAuthorizationList{}, err
 			}
-			list.hasOrigin = true
-			list.origin = origin
+			list.origins = append(list.origins, origin)
 		}
 	}
 
 	return list, nil
 }
 
-func authorizationListsContainGeneratedOrigin(lists ...androidAuthorizationList) bool {
+func authorizationListsExactlyMatchWebAuthn(lists ...androidAuthorizationList) bool {
+	origins := map[int]struct{}{}
+	purposes := map[int]struct{}{}
 	for _, list := range lists {
-		if list.hasOrigin && list.origin == androidKeyOriginGenerated {
-			return true
+		for _, origin := range list.origins {
+			origins[origin] = struct{}{}
+		}
+		for _, purpose := range list.purposes {
+			purposes[purpose] = struct{}{}
 		}
 	}
-
-	return false
+	_, generated := origins[androidKeyOriginGenerated]
+	_, signing := purposes[androidKeyPurposeSign]
+	return generated && signing && len(origins) == 1 && len(purposes) == 1
 }
 
-func authorizationListsContainSigningPurpose(lists ...androidAuthorizationList) bool {
-	for _, list := range lists {
-		if slices.Contains(list.purposes, androidKeyPurposeSign) {
-			return true
-		}
-	}
-
-	return false
+func hardwareSecurityLevel(level int) bool {
+	return level == androidSecurityLevelTEE || level == androidSecurityLevelStrongBox
 }
 
 func parseSequence(raw []byte) ([]asn1.RawValue, error) {
@@ -188,6 +204,15 @@ func parseOctetString(raw asn1.RawValue) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+func parseEnumerated(raw asn1.RawValue) (int, error) {
+	var out asn1.Enumerated
+	rest, err := asn1.Unmarshal(raw.FullBytes, &out)
+	if err != nil || len(rest) != 0 {
+		return 0, ErrInvalidExtension
+	}
+	return int(out), nil
 }
 
 func parseExplicitInt(raw asn1.RawValue) (int, error) {

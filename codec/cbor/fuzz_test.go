@@ -64,7 +64,11 @@ func FuzzDecodeExtensionMap(f *testing.F) {
 }
 
 func seedCBOR(value any) []byte {
-	encoded, err := fxcbor.Marshal(value)
+	mode, err := fxcbor.CTAP2EncOptions().EncMode()
+	if err != nil {
+		panic(err)
+	}
+	encoded, err := mode.Marshal(value)
 	if err != nil {
 		panic(err)
 	}

@@ -35,6 +35,31 @@ func TestParseCollectedClientData(t *testing.T) {
 	if clientData.CrossOrigin == nil || !*clientData.CrossOrigin || clientData.TopOrigin != "https://top.example" {
 		t.Fatalf("cross/top origin = %v %q", clientData.CrossOrigin, clientData.TopOrigin)
 	}
+	if !clientData.HasTopOrigin() {
+		t.Fatal("HasTopOrigin() = false, want true")
+	}
+}
+
+func TestParseCollectedClientDataRejectsInvalidOptionalMembers(t *testing.T) {
+	t.Parallel()
+
+	challenge := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef"))
+	tests := []string{
+		`"crossOrigin":null`,
+		`"crossOrigin":"true"`,
+		`"topOrigin":null`,
+		`"topOrigin":""`,
+		`"topOrigin":true`,
+	}
+	for _, member := range tests {
+		raw, err := protocol.NewClientDataJSON([]byte(`{"type":"webauthn.create","challenge":"` + challenge + `","origin":"https://example.com",` + member + `}`))
+		if err != nil {
+			t.Fatalf("NewClientDataJSON() error = %v", err)
+		}
+		if _, err := protocol.ParseCollectedClientData(raw); !errors.Is(err, protocol.ErrMalformedClientData) {
+			t.Fatalf("ParseCollectedClientData(%s) error = %v, want ErrMalformedClientData", member, err)
+		}
+	}
 }
 
 func TestParseCollectedClientDataRejectsMalformedInput(t *testing.T) {
@@ -68,5 +93,8 @@ func TestParseCollectedClientDataStripsBOMForParsing(t *testing.T) {
 	}
 	if !bytes.Equal(clientData.Raw.Bytes(), rawBytes) {
 		t.Fatalf("Raw = %x, want original BOM-prefixed bytes", clientData.Raw.Bytes())
+	}
+	if clientData.HasTopOrigin() {
+		t.Fatal("HasTopOrigin() = true for absent member")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/elliptic"
 	"errors"
+	"maps"
 	"testing"
 
 	fxcbor "github.com/fxamacker/cbor/v2"
@@ -144,6 +145,45 @@ func TestDecoderRejectsDuplicateMapKeys(t *testing.T) {
 	}
 }
 
+func TestDecoderRejectsNonCanonicalCBOR(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{name: "tag", raw: []byte{0xc0, 0xa0}},
+		{name: "indefinite map", raw: []byte{0xbf, 0xff}},
+		{name: "non-minimal integer", raw: []byte{0xa1, 0x61, 0x61, 0x18, 0x01}},
+		{name: "map key order", raw: []byte{0xa2, 0x61, 0x62, 0x01, 0x61, 0x61, 0x02}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := codeccbor.MustNewDecoder().DecodeExtensionMap(test.raw); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+				t.Fatalf("DecodeExtensionMap() error = %v, want ErrMalformedCBOR", err)
+			}
+		})
+	}
+}
+
+func TestDecoderRejectsUnexpectedAttestationObjectField(t *testing.T) {
+	t.Parallel()
+
+	raw, err := protocol.NewAttestationObject(mustCBOR(t, map[string]any{
+		"fmt":        "none",
+		"authData":   make([]byte, protocol.MinAuthenticatorDataLength),
+		"attStmt":    map[string]any{},
+		"unexpected": true,
+	}))
+	if err != nil {
+		t.Fatalf("NewAttestationObject() error = %v", err)
+	}
+	if _, err := codeccbor.MustNewDecoder().DecodeAttestationObject(raw); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+		t.Fatalf("DecodeAttestationObject() error = %v, want ErrMalformedCBOR", err)
+	}
+}
+
 func TestDecoderCredentialPublicKeyReportsConsumedRaw(t *testing.T) {
 	t.Parallel()
 
@@ -233,6 +273,19 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 					bytes.Equal(material.okpX, bytes.Repeat([]byte{0x04}, 32))
 			},
 		},
+		{
+			name: "okp ed448",
+			key: map[int]any{
+				1:  1,
+				3:  -53,
+				-1: 7,
+				-2: bytes.Repeat([]byte{0x05}, 57),
+			},
+			want: func(material codecMaterial) bool {
+				return material.okpCurve == codec.OKPCurveEd448 &&
+					bytes.Equal(material.okpX, bytes.Repeat([]byte{0x05}, 57))
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -271,6 +324,34 @@ func TestDecoderCredentialPublicKeyRejectsWrongKnownKeyShape(t *testing.T) {
 
 			_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
 			if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
+			}
+		})
+	}
+}
+
+func TestDecoderCredentialPublicKeyRejectsOptionalParameters(t *testing.T) {
+	t.Parallel()
+
+	x, y := curveCoordinates(elliptic.P256(), 32)
+	base := coseKeyMap(-7, 1, x, y)
+	tests := []struct {
+		name  string
+		key   int
+		value any
+	}{
+		{name: "kid", key: 2, value: []byte("kid")},
+		{name: "key ops", key: 4, value: []any{2}},
+		{name: "base iv", key: 5, value: []byte("iv")},
+		{name: "private key", key: -4, value: bytes.Repeat([]byte{0x03}, 32)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			key := make(map[int]any, len(base)+1)
+			maps.Copy(key, base)
+			key[test.key] = test.value
+			if _, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, key)); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
 				t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
 			}
 		})
@@ -397,7 +478,11 @@ func coseKeyMap(algorithm int, curve int, x []byte, y []byte) map[int]any {
 func mustCBOR(t *testing.T, value any) []byte {
 	t.Helper()
 
-	encoded, err := fxcbor.Marshal(value)
+	mode, err := fxcbor.CTAP2EncOptions().EncMode()
+	if err != nil {
+		t.Fatalf("CTAP2 EncMode() error = %v", err)
+	}
+	encoded, err := mode.Marshal(value)
 	if err != nil {
 		t.Fatalf("cbor.Marshal() error = %v", err)
 	}

@@ -8,12 +8,23 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 - Local `make ci` passes from a clean worktree.
 - GitHub Actions CI passes on the release branch.
-- Root package import graph does not include `net/http`, `browser`, `transport/http`, or optional attestation format packages.
+- Root package import graph does not include `net/http`, `browser`,
+  `transport/http`, `crypto/standard`, `storage/json`, or optional attestation
+  format packages.
 - Public examples compile through `make example-build`.
 - README feature claims match implemented and tested behavior.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
 ## Release notes
+
+2026-08-23: Aligned the implementation with the 26 May 2026 WebAuthn Level 3
+Candidate Recommendation and kept the 30 July Editor's Draft
+`remoteClientDataJSON` extension explicit and opt-in. Added optional-member
+presence checks, identifier grammar, CTAP2 canonical CBOR/required-only COSE,
+Ed448 routing, complete packed/TPM/Android/Apple certificate checks, and
+licensed W3C vectors. Upgraded test-only Playwright to 1.62.1 and added
+Credentials lifecycle and in-memory passkey storage-state E2E. No Go dependency
+or storage envelope version changed.
 
 2026-08-23: Completed the pre-v1 Level 3 security and API cleanup. Added strict
 backup/UV/RP-ID/counter state transitions, five-minute default ceremony expiry,

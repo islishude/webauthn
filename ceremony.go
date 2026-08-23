@@ -1,7 +1,9 @@
 package webauthn
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -59,4 +61,34 @@ func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []p
 		out[i] = descriptor.Clone()
 	}
 	return out
+}
+
+func normalizeAuthenticatorAttachment(value protocol.AuthenticatorAttachment) protocol.AuthenticatorAttachment {
+	if value.Known() {
+		return value
+	}
+	return ""
+}
+
+func verifyClientData(raw protocol.ClientDataJSON, expectedType protocol.ClientDataType, challenge protocol.Challenge, originPolicy OriginPolicy) ([]byte, error) {
+	clientData, err := protocol.ParseCollectedClientData(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
+	}
+	if err := clientData.ValidateType(expectedType); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
+	}
+	challengeBytes, err := clientData.ChallengeBytes()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedResponse, err)
+	}
+	if !challenge.EqualBytes(challengeBytes) {
+		return nil, ErrChallengeMismatch
+	}
+	if err := verifyCollectedClientOrigin(originPolicy, clientData); err != nil {
+		return nil, err
+	}
+
+	hash := sha256.Sum256(raw.AppendTo(nil))
+	return hash[:], nil
 }

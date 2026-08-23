@@ -117,6 +117,7 @@ func TestVerifierRejectsNonceFailures(t *testing.T) {
 	}{
 		{name: "missing extension", options: certificateOptions{omitNonceExtension: true}, wantErr: ErrCertificateRequirements},
 		{name: "malformed extension", options: certificateOptions{malformedNonceExtension: true}, wantErr: ErrInvalidNonce},
+		{name: "direct octet string", options: certificateOptions{directNonceEncoding: true}, wantErr: ErrInvalidNonce},
 		{name: "nonce mismatch", options: certificateOptions{nonce: bytes.Repeat([]byte{0xff}, 32)}, wantErr: ErrInvalidNonce},
 	}
 
@@ -284,6 +285,7 @@ type certificateOptions struct {
 	nonce                   []byte
 	omitNonceExtension      bool
 	malformedNonceExtension bool
+	directNonceEncoding     bool
 	extraChainCertificate   bool
 }
 
@@ -348,7 +350,22 @@ func appleNonceExtension(t *testing.T, options certificateOptions) pkix.Extensio
 	if nonce == nil {
 		nonce = expectedNonce(options.authenticatorData, options.clientDataHash)
 	}
-	value := mustMarshal(t, nonce)
+	encodedNonce := mustMarshal(t, nonce)
+	explicitNonce := mustMarshal(t, asn1.RawValue{
+		Class:      asn1.ClassContextSpecific,
+		Tag:        1,
+		IsCompound: true,
+		Bytes:      encodedNonce,
+	})
+	value := mustMarshal(t, asn1.RawValue{
+		Class:      asn1.ClassUniversal,
+		Tag:        asn1.TagSequence,
+		IsCompound: true,
+		Bytes:      explicitNonce,
+	})
+	if options.directNonceEncoding {
+		value = encodedNonce
+	}
 	if options.malformedNonceExtension {
 		value = []byte{0x04, 0x03, 0x01}
 	}

@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 )
 
 const (
@@ -40,8 +41,8 @@ func encodeExtensionValues(values map[string]any) (map[string]encodedValue, erro
 	}
 	out := make(map[string]encodedValue, len(values))
 	for id, value := range values {
-		if id == "" {
-			return nil, fmt.Errorf("%w: empty extension id", ErrUnsupportedExtensionValue)
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrUnsupportedExtensionValue)
 		}
 		encoded, err := encodeValueAt(normalizeBuiltInValue(value), 0)
 		if err != nil {
@@ -58,8 +59,8 @@ func decodeExtensionValues(values map[string]encodedValue) (map[string]any, erro
 	}
 	out := make(map[string]any, len(values))
 	for id, value := range values {
-		if id == "" {
-			return nil, fmt.Errorf("%w: empty extension id", ErrInvalidEnvelope)
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrInvalidEnvelope)
 		}
 		decoded, err := decodeValueAt(value, 0)
 		if err != nil {

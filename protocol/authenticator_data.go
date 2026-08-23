@@ -13,12 +13,13 @@ const (
 	// RPIDHashLength is the SHA-256 output size used for rpIdHash.
 	RPIDHashLength = 32
 
-	authDataFlagUP = byte(0x01)
-	authDataFlagUV = byte(0x04)
-	authDataFlagBE = byte(0x08)
-	authDataFlagBS = byte(0x10)
-	authDataFlagAT = byte(0x40)
-	authDataFlagED = byte(0x80)
+	authDataFlagUP  = byte(0x01)
+	authDataFlagUV  = byte(0x04)
+	authDataFlagBE  = byte(0x08)
+	authDataFlagBS  = byte(0x10)
+	authDataFlagAT  = byte(0x40)
+	authDataFlagED  = byte(0x80)
+	authDataRFUMask = byte(0x22)
 )
 
 var (
@@ -107,6 +108,9 @@ func ParseAuthenticatorData(raw AuthenticatorData) (ParsedAuthenticatorData, err
 		RPIDHash:  slices.Clone(bytes[:RPIDHashLength]),
 		Flags:     AuthenticatorFlags(bytes[RPIDHashLength]),
 		SignCount: binary.BigEndian.Uint32(bytes[RPIDHashLength+1 : MinAuthenticatorDataLength]),
+	}
+	if byte(parsed.Flags)&authDataRFUMask != 0 {
+		return ParsedAuthenticatorData{}, ErrMalformedAuthenticatorData
 	}
 
 	if !parsed.Flags.HasAttestedCredentialData() {

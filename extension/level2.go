@@ -72,12 +72,12 @@ func (handler AppIDHandler) VerifyOutput(_ context.Context, request OutputReques
 		return Result{}, err
 	}
 	appID := normalized.(string)
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		return Result{}, invalidRequest("appid has no authenticator output")
 	}
 
 	output := AppIDResult{AppID: appID}
-	if request.ClientOutput == nil {
+	if !hasClientOutput(request) {
 		return Result{ID: IDAppID, Outputs: map[string]any{IDAppID: output}}, nil
 	}
 
@@ -125,18 +125,18 @@ func (handler AppIDExcludeHandler) VerifyOutput(_ context.Context, request Outpu
 		return Result{}, err
 	}
 	appID := normalized.(string)
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		return Result{}, invalidRequest("appidExclude has no authenticator output")
 	}
 
 	output := AppIDExcludeResult{AppID: appID}
-	if request.ClientOutput == nil {
+	if !hasClientOutput(request) {
 		return Result{ID: IDAppIDExclude, Outputs: map[string]any{IDAppIDExclude: output}}, nil
 	}
 
 	excluded, ok := request.ClientOutput.(bool)
-	if !ok {
-		return Result{}, invalidRequest("appidExclude client output must be boolean")
+	if !ok || !excluded {
+		return Result{}, invalidRequest("appidExclude client output must be true")
 	}
 	output.Excluded = excluded
 
@@ -178,11 +178,11 @@ func (handler CredPropsHandler) VerifyOutput(_ context.Context, request OutputRe
 	if _, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput}); err != nil {
 		return Result{}, err
 	}
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		return Result{}, invalidRequest("credProps has no authenticator output")
 	}
 
-	if request.ClientOutput == nil {
+	if !hasClientOutput(request) {
 		return Result{ID: IDCredProps, Outputs: map[string]any{IDCredProps: CredentialPropertiesResult{}}}, nil
 	}
 	output, err := parseCredentialPropertiesOutput(request.ClientOutput)

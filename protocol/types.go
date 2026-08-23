@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/islishude/webauthn/internal/protocolidentifier"
 )
 
 // ErrUnsupportedValue marks a DOMString value that is not accepted at a
@@ -174,6 +176,7 @@ const (
 	AlgorithmESP384  COSEAlgorithmIdentifier = -51
 	AlgorithmES512   COSEAlgorithmIdentifier = -36
 	AlgorithmESP512  COSEAlgorithmIdentifier = -52
+	AlgorithmEd448   COSEAlgorithmIdentifier = -53
 	AlgorithmRS256   COSEAlgorithmIdentifier = -257
 	AlgorithmRS384   COSEAlgorithmIdentifier = -258
 	AlgorithmRS512   COSEAlgorithmIdentifier = -259
@@ -182,6 +185,19 @@ const (
 	AlgorithmPS512   COSEAlgorithmIdentifier = -39
 	AlgorithmEd25519 COSEAlgorithmIdentifier = -19
 )
+
+const (
+	minCOSEAlgorithmIdentifier = COSEAlgorithmIdentifier(-1 << 31)
+	maxCOSEAlgorithmIdentifier = COSEAlgorithmIdentifier(1<<31 - 1)
+)
+
+// Validate rejects values outside the Web IDL long range used by WebAuthn.
+func (a COSEAlgorithmIdentifier) Validate() error {
+	if a < minCOSEAlgorithmIdentifier || a > maxCOSEAlgorithmIdentifier {
+		return ValueError{Field: "COSE algorithm", Value: fmt.Sprint(a)}
+	}
+	return nil
+}
 
 // RecommendedLevel3CredentialParameters returns the WebAuthn Level 3 baseline
 // public-key credential algorithm preference order.
@@ -201,7 +217,10 @@ type CredentialParameter struct {
 
 // Validate rejects credential parameter values that WebAuthn cannot use.
 func (p CredentialParameter) Validate() error {
-	return p.Type.Validate()
+	if err := p.Type.Validate(); err != nil {
+		return err
+	}
+	return p.Algorithm.Validate()
 }
 
 // RPEntity is the relying-party entity dictionary.
@@ -237,10 +256,6 @@ func (e UserEntity) Validate() error {
 	if e.Name == "" {
 		return errors.New("user name is required")
 	}
-	if e.DisplayName == "" {
-		return errors.New("user display name is required")
-	}
-
 	return nil
 }
 
@@ -365,6 +380,11 @@ func (o PublicKeyCredentialCreationOptions) Validate() error {
 			return err
 		}
 	}
+	for _, format := range o.AttestationFormats {
+		if !protocolidentifier.Valid(format) {
+			return errors.New("attestation format identifier is invalid")
+		}
+	}
 	for _, descriptor := range o.ExcludeCredentials {
 		if err := descriptor.Validate(); err != nil {
 			return err
@@ -448,6 +468,13 @@ type CollectedClientData struct {
 	TopOrigin    string
 	TokenBinding *TokenBinding
 	Raw          ClientDataJSON
+	topOriginSet bool
+}
+
+// HasTopOrigin reports whether topOrigin was present in the serialized client
+// data. It distinguishes an absent member from a present invalid empty value.
+func (d CollectedClientData) HasTopOrigin() bool {
+	return d.topOriginSet
 }
 
 // ValidateType checks the ceremony type at verification boundaries.

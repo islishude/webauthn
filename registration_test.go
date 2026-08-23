@@ -45,6 +45,21 @@ func TestRegistrationWithNoneAttestation(t *testing.T) {
 	}
 }
 
+func TestRegistrationTreatsUnknownAuthenticatorAttachmentAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.AuthenticatorAttachment = protocol.AuthenticatorAttachment("future-attachment")
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+	if result.Credential.AuthenticatorAttachment != "" {
+		t.Fatalf("AuthenticatorAttachment = %q, want absent", result.Credential.AuthenticatorAttachment)
+	}
+}
+
 func TestRegistrationCapturesUVInitialization(t *testing.T) {
 	t.Parallel()
 
@@ -1077,7 +1092,11 @@ func coseKeyCBOR(t *testing.T) []byte {
 func mustCBOR(t *testing.T, value any) []byte {
 	t.Helper()
 
-	encoded, err := fxcbor.Marshal(value)
+	mode, err := fxcbor.CTAP2EncOptions().EncMode()
+	if err != nil {
+		t.Fatalf("CTAP2 EncMode() error = %v", err)
+	}
+	encoded, err := mode.Marshal(value)
 	if err != nil {
 		t.Fatalf("cbor.Marshal() error = %v", err)
 	}

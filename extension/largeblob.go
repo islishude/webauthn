@@ -69,12 +69,12 @@ func (handler LargeBlobHandler) VerifyOutput(_ context.Context, request OutputRe
 	}
 	input := normalized.(LargeBlobInput)
 	presence := largeBlobInputPresence{support: input.Support != "", read: input.Read != nil, write: input.Write != nil}
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		return Result{}, invalidRequest("largeBlob has no authenticator output")
 	}
 
 	output := largeBlobResultFromInput(input)
-	if request.ClientOutput == nil {
+	if !hasClientOutput(request) {
 		return Result{ID: IDLargeBlob, Outputs: map[string]any{IDLargeBlob: output}}, nil
 	}
 	if err := parseLargeBlobOutput(request.Operation, input, presence, request.ClientOutput, &output); err != nil {
@@ -205,7 +205,10 @@ func validateLargeBlobOutput(operation Operation, input LargeBlobInput, inputPre
 		if outputPresence.blob || outputPresence.written {
 			return invalidRequest("largeBlob blob and written are authentication-only outputs")
 		}
-		if inputPresence.support && input.Support == LargeBlobSupportRequired && outputPresence.supported && output.Supported != nil && !*output.Supported {
+		if !outputPresence.supported {
+			return invalidRequest("largeBlob registration output must contain supported")
+		}
+		if inputPresence.support && input.Support == LargeBlobSupportRequired && output.Supported != nil && !*output.Supported {
 			return invalidRequest("largeBlob required support was not provided")
 		}
 	case OperationAuthentication:
@@ -218,6 +221,9 @@ func validateLargeBlobOutput(operation Operation, input LargeBlobInput, inputPre
 		}
 		if outputPresence.written && !inputPresence.write {
 			return invalidRequest("largeBlob written requires write input")
+		}
+		if inputPresence.write && !outputPresence.written {
+			return invalidRequest("largeBlob write output must contain written")
 		}
 	}
 	return nil

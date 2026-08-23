@@ -162,6 +162,20 @@ func TestAppIDExcludeHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("false output", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:    extension.OperationRegistration,
+			ID:           extension.IDAppIDExclude,
+			Requested:    true,
+			ClientInput:  "https://legacy.example/appid",
+			ClientOutput: false,
+		})
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
 	t.Run("wrong operation", func(t *testing.T) {
 		t.Parallel()
 
@@ -418,6 +432,34 @@ func TestLargeBlobHandler(t *testing.T) {
 			ClientOutput: map[string]any{"supported": false},
 		})
 
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("registration output missing supported", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:    extension.OperationRegistration,
+			ID:           extension.IDLargeBlob,
+			Requested:    true,
+			ClientInput:  map[string]any{"support": "preferred"},
+			ClientOutput: map[string]any{},
+		})
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("write output missing written", func(t *testing.T) {
+		t.Parallel()
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation:    extension.OperationAuthentication,
+			ID:           extension.IDLargeBlob,
+			Requested:    true,
+			ClientInput:  extension.LargeBlobInput{Write: []byte("blob")},
+			ClientOutput: map[string]any{},
+		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
 		}

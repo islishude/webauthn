@@ -59,7 +59,7 @@ func (handler UVMHandler) VerifyOutput(_ context.Context, request OutputRequest)
 
 	var entries []UVMEntry
 	var haveOutput bool
-	if request.ClientOutput != nil {
+	if hasClientOutput(request) {
 		parsed, err := parseUVMEntries(request.ClientOutput)
 		if err != nil {
 			return Result{}, err
@@ -67,7 +67,7 @@ func (handler UVMHandler) VerifyOutput(_ context.Context, request OutputRequest)
 		entries = parsed
 		haveOutput = true
 	}
-	if request.AuthenticatorOutput != nil {
+	if hasAuthenticatorOutput(request) {
 		parsed, err := parseUVMEntries(request.AuthenticatorOutput)
 		if err != nil {
 			return Result{}, err

@@ -11,32 +11,45 @@ import (
 
 // Algorithm parses a COSE algorithm identifier from a decoded attStmt value.
 func Algorithm(value any, invalid error) (protocol.COSEAlgorithmIdentifier, error) {
+	var algorithm protocol.COSEAlgorithmIdentifier
 	switch typed := value.(type) {
 	case protocol.COSEAlgorithmIdentifier:
-		return typed, nil
+		algorithm = typed
 	case int:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case int8:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case int16:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case int32:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case int64:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case uint:
-		return uintAlgorithm(uint64(typed), invalid)
+		parsed, err := uintAlgorithm(uint64(typed), invalid)
+		if err != nil {
+			return 0, err
+		}
+		algorithm = parsed
 	case uint8:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case uint16:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case uint32:
-		return protocol.COSEAlgorithmIdentifier(typed), nil
+		algorithm = protocol.COSEAlgorithmIdentifier(typed)
 	case uint64:
-		return uintAlgorithm(typed, invalid)
+		parsed, err := uintAlgorithm(typed, invalid)
+		if err != nil {
+			return 0, err
+		}
+		algorithm = parsed
 	default:
 		return 0, fmt.Errorf("%w: alg field has type %T", invalid, value)
 	}
+	if err := algorithm.Validate(); err != nil {
+		return 0, fmt.Errorf("%w: %w", invalid, err)
+	}
+	return algorithm, nil
 }
 
 func uintAlgorithm(value uint64, invalid error) (protocol.COSEAlgorithmIdentifier, error) {

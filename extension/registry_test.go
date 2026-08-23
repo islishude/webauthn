@@ -39,6 +39,11 @@ func TestRegistryRejectsDuplicateAndEmptyIDs(t *testing.T) {
 	if !errors.Is(err, extension.ErrInvalidID) {
 		t.Fatalf("NewRegistry() error = %v, want ErrInvalidID", err)
 	}
+	for _, id := range []string{"not valid", `not"valid`, `not\valid`, "012345678901234567890123456789012", "扩展"} {
+		if _, err := extension.NewRegistry(fakeHandler{id: id}); !errors.Is(err, extension.ErrInvalidID) {
+			t.Fatalf("NewRegistry(%q) error = %v, want ErrInvalidID", id, err)
+		}
+	}
 }
 
 type fakeHandler struct {

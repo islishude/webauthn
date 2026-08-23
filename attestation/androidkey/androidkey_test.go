@@ -54,6 +54,33 @@ func TestVerifierAcceptsEC2AndroidKeyAttestation(t *testing.T) {
 	}
 }
 
+func TestVerifierHardwareEnforcedPolicy(t *testing.T) {
+	t.Parallel()
+
+	valid := newEC2Fixture(t, extensionOptions{hardwareEnforced: true})
+	verifier := NewWithPolicy(signatureVerifier{t: t}, Policy{RequireHardwareEnforced: true})
+	if _, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:              "android-key",
+		AuthenticatorData:   valid.authenticatorData,
+		ClientDataHash:      valid.clientDataHash,
+		Statement:           valid.statement,
+		CredentialPublicKey: valid.credentialPublicKey,
+	}); err != nil {
+		t.Fatalf("VerifyAttestation() hardware error = %v", err)
+	}
+
+	software := newEC2Fixture(t, extensionOptions{})
+	if _, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:              "android-key",
+		AuthenticatorData:   software.authenticatorData,
+		ClientDataHash:      software.clientDataHash,
+		Statement:           software.statement,
+		CredentialPublicKey: software.credentialPublicKey,
+	}); !errors.Is(err, ErrCertificateRequirements) {
+		t.Fatalf("VerifyAttestation() software error = %v, want ErrCertificateRequirements", err)
+	}
+}
+
 func TestVerifierAcceptsRSAAndroidKeyAttestation(t *testing.T) {
 	t.Parallel()
 
@@ -326,6 +353,7 @@ type extensionOptions struct {
 	origin                  int
 	omitPurpose             bool
 	purpose                 int
+	hardwareEnforced        bool
 }
 
 type testCertificate struct {
@@ -389,21 +417,27 @@ func androidKeyDescriptionDER(t *testing.T, options extensionOptions) []byte {
 	origin := options.origin
 
 	software := authorizationList(t, authListOptions{
-		includePurpose:  !options.omitPurpose,
+		includePurpose:  !options.omitPurpose && !options.hardwareEnforced,
 		purpose:         purpose,
 		allApplications: options.softwareAllApplications,
 	})
 	hardware := authorizationList(t, authListOptions{
+		includePurpose:  !options.omitPurpose && options.hardwareEnforced,
+		purpose:         purpose,
 		includeOrigin:   !options.omitOrigin,
 		origin:          origin,
 		allApplications: options.hardwareAllApplications,
 	})
 
+	securityLevel := asn1.Enumerated(0)
+	if options.hardwareEnforced {
+		securityLevel = asn1.Enumerated(androidSecurityLevelTEE)
+	}
 	return mustMarshal(t, []asn1.RawValue{
 		rawValue(t, mustMarshal(t, 3)),
-		rawValue(t, mustMarshal(t, 0)),
+		rawValue(t, mustMarshal(t, securityLevel)),
 		rawValue(t, mustMarshal(t, 4)),
-		rawValue(t, mustMarshal(t, 0)),
+		rawValue(t, mustMarshal(t, securityLevel)),
 		rawValue(t, mustMarshal(t, challenge)),
 		rawValue(t, mustMarshal(t, []byte{})),
 		software,

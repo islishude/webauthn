@@ -10,12 +10,26 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 )
+
+const (
+	asn1TagSequence = 16
+	asn1TagSet      = 17
+)
+
+// NameAttribute is one ASN.1 AttributeTypeAndValue from an X.509 Name while
+// retaining the source string tag needed by attestation certificate profiles.
+type NameAttribute struct {
+	Type  asn1.ObjectIdentifier
+	Value string
+	Tag   int
+}
 
 // ParseCertificateChain parses a non-empty leaf-first X.509 certificate chain
 // and returns both the public trust-path representation and parsed
@@ -54,6 +68,66 @@ func FindExtension(certificate *x509.Certificate, oid asn1.ObjectIdentifier) (pk
 func HasExtension(certificate *x509.Certificate, oid asn1.ObjectIdentifier) bool {
 	_, ok := FindExtension(certificate, oid)
 	return ok
+}
+
+// ParseNameAttributes decodes an X.509 Name and retains each value's ASN.1
+// string tag. It accepts only the standard SEQUENCE of SETs of attribute
+// SEQUENCEs used by X.509 names.
+func ParseNameAttributes(raw []byte) ([]NameAttribute, error) {
+	var sequence asn1.RawValue
+	rest, err := asn1.Unmarshal(raw, &sequence)
+	if err != nil || len(rest) != 0 || sequence.Class != asn1.ClassUniversal || sequence.Tag != asn1TagSequence || !sequence.IsCompound {
+		return nil, errors.New("invalid x509 name")
+	}
+	sets, err := rawItems(sequence.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	attributes := make([]NameAttribute, 0, len(sets))
+	for _, set := range sets {
+		if set.Class != asn1.ClassUniversal || set.Tag != asn1TagSet || !set.IsCompound {
+			return nil, errors.New("invalid x509 name set")
+		}
+		items, err := rawItems(set.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.Class != asn1.ClassUniversal || item.Tag != asn1TagSequence || !item.IsCompound {
+				return nil, errors.New("invalid x509 name attribute")
+			}
+			var oid asn1.ObjectIdentifier
+			remainder, err := asn1.Unmarshal(item.Bytes, &oid)
+			if err != nil || len(remainder) == 0 {
+				return nil, errors.New("invalid x509 name attribute oid")
+			}
+			var value asn1.RawValue
+			trailing, err := asn1.Unmarshal(remainder, &value)
+			if err != nil || len(trailing) != 0 {
+				return nil, errors.New("invalid x509 name attribute value")
+			}
+			var text string
+			if trailing, err := asn1.Unmarshal(value.FullBytes, &text); err != nil || len(trailing) != 0 {
+				return nil, errors.New("invalid x509 name attribute string")
+			}
+			attributes = append(attributes, NameAttribute{Type: oid, Value: text, Tag: value.Tag})
+		}
+	}
+	return attributes, nil
+}
+
+func rawItems(data []byte) ([]asn1.RawValue, error) {
+	items := make([]asn1.RawValue, 0)
+	for len(data) > 0 {
+		var item asn1.RawValue
+		rest, err := asn1.Unmarshal(data, &item)
+		if err != nil || len(rest) == len(data) {
+			return nil, errors.New("invalid asn1 items")
+		}
+		items = append(items, item)
+		data = rest
+	}
+	return items, nil
 }
 
 // ValidatePublicKey verifies that publicKey matches codec-derived credential

@@ -63,7 +63,7 @@ func hasAIKEKU(certificate *x509.Certificate) bool {
 
 func hasTPMSANAttributes(certificate *x509.Certificate) bool {
 	extension, ok := x509util.FindExtension(certificate, oidExtensionSubjectAltName)
-	if !ok {
+	if !ok || !extension.Critical {
 		return false
 	}
 
@@ -72,33 +72,42 @@ func hasTPMSANAttributes(certificate *x509.Certificate) bool {
 	if err != nil || len(rest) != 0 {
 		return false
 	}
-	for _, generalName := range generalNames {
-		if generalName.Class != asn1.ClassContextSpecific || generalName.Tag != 4 || !generalName.IsCompound {
-			continue
-		}
-		var rdnSequence pkix.RDNSequence
-		rest, err := asn1.Unmarshal(generalName.Bytes, &rdnSequence)
-		if err == nil && len(rest) == 0 && rdnSequenceHasTPMAttributes(rdnSequence) {
-			return true
-		}
+	if len(generalNames) != 1 {
+		return false
 	}
-
-	return false
+	generalName := generalNames[0]
+	if generalName.Class != asn1.ClassContextSpecific || generalName.Tag != 4 || !generalName.IsCompound {
+		return false
+	}
+	attributes, err := x509util.ParseNameAttributes(generalName.Bytes)
+	return err == nil && nameHasTPMAttributes(attributes)
 }
 
-func rdnSequenceHasTPMAttributes(rdnSequence pkix.RDNSequence) bool {
+func nameHasTPMAttributes(attributes []x509util.NameAttribute) bool {
 	required := map[string]bool{
 		oidTPMManufacturer.String(): false,
 		oidTPMModel.String():        false,
 		oidTPMVersion.String():      false,
 	}
-	for _, relativeNames := range rdnSequence {
-		for _, attribute := range relativeNames {
-			key := attribute.Type.String()
-			if _, ok := required[key]; ok {
-				required[key] = true
+	for _, attribute := range attributes {
+		key := attribute.Type.String()
+		if _, ok := required[key]; !ok {
+			continue
+		}
+		if required[key] || attribute.Tag != asn1.TagUTF8String {
+			return false
+		}
+		switch {
+		case attribute.Type.Equal(oidTPMManufacturer), attribute.Type.Equal(oidTPMVersion):
+			if !validTPMHexID(attribute.Value) {
+				return false
+			}
+		case attribute.Type.Equal(oidTPMModel):
+			if attribute.Value == "" {
+				return false
 			}
 		}
+		required[key] = true
 	}
 	for _, found := range required {
 		if !found {
@@ -106,6 +115,18 @@ func rdnSequenceHasTPMAttributes(rdnSequence pkix.RDNSequence) bool {
 		}
 	}
 
+	return true
+}
+
+func validTPMHexID(value string) bool {
+	if len(value) != 11 || value[:3] != "id:" {
+		return false
+	}
+	for i := 3; i < len(value); i++ {
+		if (value[i] < '0' || value[i] > '9') && (value[i] < 'A' || value[i] > 'F') {
+			return false
+		}
+	}
 	return true
 }
 
