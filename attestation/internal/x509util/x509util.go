@@ -5,6 +5,7 @@ package x509util
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -94,6 +95,44 @@ func ValidatePublicKey(publicKey any, material codec.CredentialPublicKeyMaterial
 	}
 
 	return nil
+}
+
+// PublicKeyMaterial converts a standard-library X.509 public key into the
+// typed material accepted by crypto signature adapters.
+func PublicKeyMaterial(publicKey any) (codec.CredentialPublicKeyMaterial, bool) {
+	switch typed := publicKey.(type) {
+	case *ecdsa.PublicKey:
+		if typed == nil || typed.X == nil || typed.Y == nil {
+			return codec.CredentialPublicKeyMaterial{}, false
+		}
+		curve, coordinateLength, ok := curveMaterial(typed)
+		if !ok {
+			return codec.CredentialPublicKeyMaterial{}, false
+		}
+		return codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{
+			Curve: curve,
+			X:     fixedBytes(typed.X, coordinateLength),
+			Y:     fixedBytes(typed.Y, coordinateLength),
+		}}, true
+	case *rsa.PublicKey:
+		if typed == nil || typed.N == nil || typed.E < 3 || typed.E%2 == 0 || uint64(typed.E) > uint64(^uint32(0)) {
+			return codec.CredentialPublicKeyMaterial{}, false
+		}
+		return codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{
+			Modulus:  typed.N.Bytes(),
+			Exponent: uint32(typed.E),
+		}}, true
+	case ed25519.PublicKey:
+		if len(typed) != ed25519.PublicKeySize {
+			return codec.CredentialPublicKeyMaterial{}, false
+		}
+		return codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{
+			Curve: codec.OKPCurveEd25519,
+			X:     bytes.Clone(typed),
+		}}, true
+	default:
+		return codec.CredentialPublicKeyMaterial{}, false
+	}
 }
 
 func curveMaterial(publicKey *ecdsa.PublicKey) (string, int, bool) {

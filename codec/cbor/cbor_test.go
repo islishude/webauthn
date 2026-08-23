@@ -2,6 +2,7 @@ package cbor_test
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"errors"
 	"testing"
 
@@ -171,8 +172,9 @@ func TestDecoderCredentialPublicKeyReportsU2FPublicKey(t *testing.T) {
 		t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
 	}
 
-	want := append([]byte{0x04}, []byte("01234567890123456789012345678901")...)
-	want = append(want, []byte("abcdefghijklmnopqrstuvwxyzabcdef")...)
+	x, y := curveCoordinates(elliptic.P256(), 32)
+	want := append([]byte{0x04}, x...)
+	want = append(want, y...)
 	if got := key.U2FPublicKey(); len(got) != 65 || !equalBytes(got, want) {
 		t.Fatalf("U2FPublicKey() = %x, want %x", got, want)
 	}
@@ -180,6 +182,8 @@ func TestDecoderCredentialPublicKeyReportsU2FPublicKey(t *testing.T) {
 
 func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 	t.Parallel()
+	p256X, p256Y := curveCoordinates(elliptic.P256(), 32)
+	p384X, p384Y := curveCoordinates(elliptic.P384(), 48)
 
 	tests := []struct {
 		name string
@@ -188,20 +192,20 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 	}{
 		{
 			name: "ec2 p256",
-			key:  coseKeyMap(-7, 1, []byte("01234567890123456789012345678901"), []byte("abcdefghijklmnopqrstuvwxyzabcdef")),
+			key:  coseKeyMap(-7, 1, p256X, p256Y),
 			want: func(material codecMaterial) bool {
 				return material.ec2Curve == "P-256" &&
-					bytes.Equal(material.ec2X, []byte("01234567890123456789012345678901")) &&
-					bytes.Equal(material.ec2Y, []byte("abcdefghijklmnopqrstuvwxyzabcdef"))
+					bytes.Equal(material.ec2X, p256X) &&
+					bytes.Equal(material.ec2Y, p256Y)
 			},
 		},
 		{
 			name: "ec2 p384",
-			key:  coseKeyMap(-35, 2, bytes.Repeat([]byte{0x01}, 48), bytes.Repeat([]byte{0x02}, 48)),
+			key:  coseKeyMap(-35, 2, p384X, p384Y),
 			want: func(material codecMaterial) bool {
 				return material.ec2Curve == "P-384" &&
-					bytes.Equal(material.ec2X, bytes.Repeat([]byte{0x01}, 48)) &&
-					bytes.Equal(material.ec2Y, bytes.Repeat([]byte{0x02}, 48))
+					bytes.Equal(material.ec2X, p384X) &&
+					bytes.Equal(material.ec2Y, p384Y)
 			},
 		},
 		{
@@ -246,7 +250,7 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 	}
 }
 
-func TestDecoderCredentialPublicKeyOmitsPublicKeyMaterialForWrongShape(t *testing.T) {
+func TestDecoderCredentialPublicKeyRejectsWrongKnownKeyShape(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -265,19 +269,15 @@ func TestDecoderCredentialPublicKeyOmitsPublicKeyMaterialForWrongShape(t *testin
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
-			if err != nil {
-				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
-			}
-			material := key.PublicKeyMaterial()
-			if material.EC2 != nil || material.RSA != nil || material.OKP != nil {
-				t.Fatalf("PublicKeyMaterial() = %+v, want empty", material)
+			_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
+			if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
 			}
 		})
 	}
 }
 
-func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) {
+func TestDecoderCredentialPublicKeyRejectsU2FKnownKeyMismatch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -311,12 +311,9 @@ func TestDecoderCredentialPublicKeyOmitsU2FPublicKeyForWrongShape(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			key, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
-			if err != nil {
-				t.Fatalf("DecodeCredentialPublicKey() error = %v", err)
-			}
-			if got := key.U2FPublicKey(); got != nil {
-				t.Fatalf("U2FPublicKey() = %x, want nil", got)
+			_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, tt.key))
+			if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
 			}
 		})
 	}
@@ -373,13 +370,18 @@ func TestDecoderRejectsMalformedCBOR(t *testing.T) {
 
 func mustCOSEKey(t *testing.T) []byte {
 	t.Helper()
+	x, y := curveCoordinates(elliptic.P256(), 32)
 
 	return mustCBOR(t, coseKeyMap(
 		-7,
 		1,
-		[]byte("01234567890123456789012345678901"),
-		[]byte("abcdefghijklmnopqrstuvwxyzabcdef"),
+		x,
+		y,
 	))
+}
+
+func curveCoordinates(curve elliptic.Curve, length int) ([]byte, []byte) {
+	return curve.Params().Gx.FillBytes(make([]byte, length)), curve.Params().Gy.FillBytes(make([]byte, length))
 }
 
 func coseKeyMap(algorithm int, curve int, x []byte, y []byte) map[int]any {

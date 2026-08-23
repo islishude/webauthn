@@ -6,7 +6,7 @@ import (
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
-	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/crypto/standard"
 	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -17,11 +17,16 @@ type passkeyStore interface {
 }
 
 func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
+	extensions, err := extension.NewLevel3RegistryWithDeprecated()
+	if err != nil {
+		return browser.CredentialRequestOptionsJSON{}, webauthn.AuthenticationState{}, err
+	}
 	start, err := webauthn.StartAuthentication(ctx, webauthn.AuthenticationStartOptions{
-		RPID:             "example.com",
-		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		UserVerification: protocol.UserVerificationRequired,
-		Extensions:       protocol.ExtensionInputs{extension.IDUVM: true},
+		RPID:              "example.com",
+		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		UserVerification:  protocol.UserVerificationRequired,
+		Extensions:        protocol.ExtensionInputs{extension.IDUVM: true},
+		ExtensionRegistry: extensions,
 	})
 	if err != nil {
 		return browser.CredentialRequestOptionsJSON{}, webauthn.AuthenticationState{}, err
@@ -30,7 +35,7 @@ func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestO
 	return browser.CredentialRequestOptionsFromProtocol(start.Options), start.State, nil
 }
 
-func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifier webcrypto.SignatureVerifier, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
+func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifier *standard.Verifier, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
 	response, err := browser.AuthenticationResponseFromJSON(body)
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
@@ -53,6 +58,7 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 		Response:          response,
 		Credential:        credential,
 		SignatureVerifier: verifier,
+		AlgorithmPolicy:   verifier,
 		ExtensionRegistry: extensions,
 	})
 	if err != nil {

@@ -3,6 +3,7 @@
 package cbor
 
 import (
+	"crypto/ecdh"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -141,13 +142,13 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.Credentia
 		return codec.CredentialPublicKey{}, ErrMalformedCBOR
 	}
 
-	return codec.NewCredentialPublicKeyWithMaterial(
-		protocol.COSEAlgorithmIdentifier(key.Alg()),
-		key,
-		raw[:consumed],
-		u2fPublicKey(key),
-		publicKeyMaterial(key),
-	), nil
+	algorithm := protocol.COSEAlgorithmIdentifier(key.Alg())
+	material := publicKeyMaterial(key)
+	if err := validateCredentialPublicKey(algorithm, material); err != nil {
+		return codec.CredentialPublicKey{}, err
+	}
+
+	return codec.NewCredentialPublicKey(algorithm, raw[:consumed], material), nil
 }
 
 // DecodeExtensionMap decodes authenticator extension output CBOR.
@@ -174,32 +175,6 @@ func (d *Decoder) decode(data []byte, out any) error {
 	return nil
 }
 
-func u2fPublicKey(key cosekey.Key) []byte {
-	if key.Kty() != iana.KeyTypeEC2 || int(key.Alg()) != iana.AlgorithmES256 {
-		return nil
-	}
-
-	curve, err := key.GetInt(iana.EC2KeyParameterCrv)
-	if err != nil || curve != iana.EllipticCurveP_256 {
-		return nil
-	}
-	x, err := key.GetBytes(iana.EC2KeyParameterX)
-	if err != nil || len(x) != 32 {
-		return nil
-	}
-	y, err := key.GetBytes(iana.EC2KeyParameterY)
-	if err != nil || len(y) != 32 {
-		return nil
-	}
-
-	out := make([]byte, 1, 65)
-	out[0] = 0x04
-	out = append(out, x...)
-	out = append(out, y...)
-
-	return out
-}
-
 func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 	switch key.Kty() {
 	case iana.KeyTypeEC2:
@@ -211,6 +186,42 @@ func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 	default:
 		return codec.CredentialPublicKeyMaterial{}
 	}
+}
+
+func validateCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, material codec.CredentialPublicKeyMaterial) error {
+	switch algorithm {
+	case protocol.AlgorithmES256, protocol.AlgorithmESP256:
+		return validateEC2Material(material, codec.EC2CurveP256, ecdh.P256())
+	case protocol.AlgorithmES384, protocol.AlgorithmESP384:
+		return validateEC2Material(material, codec.EC2CurveP384, ecdh.P384())
+	case protocol.AlgorithmES512, protocol.AlgorithmESP512:
+		return validateEC2Material(material, codec.EC2CurveP521, ecdh.P521())
+	case protocol.AlgorithmRS256, protocol.AlgorithmRS384, protocol.AlgorithmRS512,
+		protocol.AlgorithmPS256, protocol.AlgorithmPS384, protocol.AlgorithmPS512:
+		if material.RSA == nil || material.EC2 != nil || material.OKP != nil || len(material.RSA.Modulus) == 0 || material.RSA.Exponent < 3 || material.RSA.Exponent%2 == 0 {
+			return ErrMalformedCBOR
+		}
+	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
+		if material.OKP == nil || material.EC2 != nil || material.RSA != nil || material.OKP.Curve != codec.OKPCurveEd25519 || len(material.OKP.X) != 32 {
+			return ErrMalformedCBOR
+		}
+	}
+
+	return nil
+}
+
+func validateEC2Material(material codec.CredentialPublicKeyMaterial, curveName string, curve ecdh.Curve) error {
+	if material.EC2 == nil || material.RSA != nil || material.OKP != nil || material.EC2.Curve != curveName {
+		return ErrMalformedCBOR
+	}
+	raw := make([]byte, 1, 1+len(material.EC2.X)+len(material.EC2.Y))
+	raw[0] = 0x04
+	raw = append(raw, material.EC2.X...)
+	raw = append(raw, material.EC2.Y...)
+	if _, err := curve.NewPublicKey(raw); err != nil {
+		return ErrMalformedCBOR
+	}
+	return nil
 }
 
 func ec2PublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {

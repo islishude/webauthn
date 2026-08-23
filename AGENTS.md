@@ -7,11 +7,12 @@ Current project state: All plans are complete. The repository now
 contains the root ceremony APIs, protocol types, codec and crypto contracts,
 optional attestation format packages including compound attestation, Level 3
 extension handling with deprecated `uvm` retained, optional browser and HTTP
-transport helpers, compile-checked examples, conformance-oriented tests, fuzz
-smoke targets, import graph checks, dependency license checks, and release
-documentation. The current API cleanup keeps byte accessors defensive while
-using typed helpers internally, requires explicit attestation trust policy, and
-keeps root decoder contracts narrow.
+transport helpers, a standard-library signature verifier, versioned server-side
+storage JSON, compile-checked examples, conformance-oriented tests, fuzz smoke
+targets, import graph checks, dependency license checks, and release
+documentation. The current API keeps byte accessors defensive, removes public
+adapter-owned key handles, validates extension inputs before ceremonies, uses
+explicit attestation trust policy, and keeps root decoder contracts narrow.
 
 Agents working in this repository must preserve the documented architecture and
 quality gates. If code, tests, README, plans, or design documents disagree, fix
@@ -37,7 +38,8 @@ the drift in the same change instead of treating the documents as stale notes.
 5. Keep the root package independent of `net/http`, web frameworks, databases,
    sessions, cookies, CSRF handling, account lookup, routing, and persistence.
 6. Keep optional packages optional. Importing the root package must not import
-   `browser`, `transport/http`, or optional attestation format packages.
+   `browser`, `transport/http`, `crypto/standard`, `storage/json`, or optional
+   attestation format packages.
 7. Keep attestation verification and attestation trust separate. Format
    packages prove statement structure and cryptographic validity; relying-party
    trust acceptance must remain explicit caller policy.
@@ -94,12 +96,15 @@ Current package boundaries are documented in `docs/technical.md` and
 - `codec/cbor` is an optional concrete CBOR/COSE decoder package;
 - `crypto` contains narrow algorithm policy, signature, certificate, and
   JWS/JWT contracts;
+- `crypto/standard` is an optional standard-library signature verifier;
 - `attestation` contains format verifier and trust policy contracts;
 - `attestation/*` packages are optional selected format verifiers;
 - `extension` contains operation-aware Level 2 and Level 3 extension handling;
 - `browser` contains optional browser JSON DTO conversion helpers;
 - `transport/http` contains optional standard-library JSON request/response
   helpers.
+- `storage/json` contains optional versioned encoding for trusted server-side
+  ceremony state and credential records; it performs no storage I/O or sealing.
 
 Do not add files or imports that conflict with documented package boundaries.
 If a boundary must change, update `docs/technical.md`,
@@ -134,6 +139,9 @@ Default behavior must be safe for relying parties:
 - user presence is required;
 - user verification is checked according to ceremony policy;
 - signature counters are surfaced with clone-risk semantics;
+- backup eligibility is immutable, invalid BE/BS combinations fail closed, and
+  UV initialization transitions require explicit caller authorization;
+- zero-value ceremony timeouts expire after five minutes;
 - attestation trust is separate from attestation cryptographic validity;
 - unknown, unsolicited, or unsupported extensions are handled by explicit
   policy;
@@ -212,8 +220,8 @@ Quality workflow files are:
 - Use internal comments sparingly to explain intent, constraints, assumptions,
   or edge cases.
 - Keep the root package API transport-neutral and persistence-neutral.
-- Keep optional attestation, browser, and HTTP dependencies outside the root
-  import graph.
+- Keep optional attestation, browser, HTTP, standard crypto, and storage
+  dependencies outside the root import graph.
 - Do not broaden public API types around concrete third-party dependencies
   unless the compatibility reason is documented.
 
@@ -224,7 +232,7 @@ A release candidate must not be tagged until:
 - local `make ci` passes from a clean worktree;
 - GitHub Actions CI passes on the release branch;
 - the root package import graph does not include optional attestation formats,
-  `browser`, `transport/http`, or `net/http`;
+  `browser`, `transport/http`, `crypto/standard`, `storage/json`, or `net/http`;
 - examples demonstrate integration without `net/http` and, separately, with the
   optional HTTP adapter;
 - conformance coverage is documented in `docs/testing.md`;

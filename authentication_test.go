@@ -78,6 +78,65 @@ func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 }
 
+func TestAuthenticationStartUsesSafeTimeoutDefault(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 2, 12, 30, 0, 0, time.UTC)
+	result, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
+		RPID:         "example.com",
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		Now:          func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("StartAuthentication() error = %v", err)
+	}
+	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultCeremonyTimeout.Milliseconds() {
+		t.Fatalf("TimeoutMilliseconds = %d", result.Options.TimeoutMilliseconds)
+	}
+	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultCeremonyTimeout)) {
+		t.Fatalf("ExpiresAt = %v", result.State.ExpiresAt)
+	}
+}
+
+func TestAuthenticationStartRejectsNegativeTimeout(t *testing.T) {
+	t.Parallel()
+
+	_, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
+		RPID:         "example.com",
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		Timeout:      -time.Second,
+	})
+	if !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("StartAuthentication() error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestAuthenticationStartValidatesPRFInputAgainstAllowCredentials(t *testing.T) {
+	t.Parallel()
+
+	credentialID := mustCredentialID(t, []byte("credential-id"))
+	encodedID := base64.RawURLEncoding.EncodeToString(credentialID.Bytes())
+	result, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
+		RPID:         "example.com",
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		AllowCredentials: []protocol.CredentialDescriptor{{
+			Type: protocol.CredentialTypePublicKey,
+			ID:   credentialID,
+		}},
+		Extensions: protocol.ExtensionInputs{extension.IDPRF: extension.PRFInput{
+			EvalByCredential: map[string]extension.PRFValues{encodedID: {First: []byte("salt")}},
+		}},
+		ExtensionRegistry: mustLevel3Registry(t),
+	})
+	if err != nil {
+		t.Fatalf("StartAuthentication() error = %v", err)
+	}
+	input, ok := result.State.RequestedExtensions[extension.IDPRF].(extension.PRFInput)
+	if !ok || len(input.AllowCredentials) != 1 || input.AllowCredentials[0] != encodedID {
+		t.Fatalf("state PRF input = %#v", result.State.RequestedExtensions[extension.IDPRF])
+	}
+}
+
 func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
 
@@ -113,6 +172,14 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 				}}
 			},
 			wantErr: webauthn.ErrCredentialNotAllowed,
+		},
+		{
+			name: "credential rp id mismatch",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.Credential.RPID = "other.example"
+			},
+			wantErr: webauthn.ErrCredentialRPIDMismatch,
 		},
 		{
 			name: "challenge mismatch",
@@ -155,6 +222,22 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 			wantErr: webauthn.ErrUserVerificationRequired,
 		},
 		{
+			name: "backup state without eligibility",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagBS, 8, nil))
+			},
+			wantErr: webauthn.ErrInvalidBackupState,
+		},
+		{
+			name: "backup eligibility changed",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagBE, 8, nil))
+			},
+			wantErr: webauthn.ErrBackupEligibilityMismatch,
+		},
+		{
 			name: "invalid signature",
 			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
 				t.Helper()
@@ -178,6 +261,16 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 				options.CounterPolicy.RejectCloneRisk = true
 			},
 			wantErr: webauthn.ErrCloneRisk,
+		},
+		{
+			name: "ceremony expires at exact deadline",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				deadline := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+				options.State.ExpiresAt = deadline
+				options.Now = func() time.Time { return deadline }
+			},
+			wantErr: webauthn.ErrCeremonyExpired,
 		},
 		{
 			name: "unsolicited extension rejected",
@@ -274,16 +367,93 @@ func TestAuthenticationCounterPolicy(t *testing.T) {
 
 		fixture := newAuthenticationFixture(t, true)
 		options := fixture.finishOptions()
+		options.Credential.SignCount = 8
 		options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP, 7, nil))
 
 		result, err := webauthn.FinishAuthentication(context.Background(), options)
 		if err != nil {
 			t.Fatalf("FinishAuthentication() error = %v", err)
 		}
-		if !result.Counter.CloneRisk || len(result.Warnings) == 0 {
+		if !result.Counter.CloneRisk || len(result.Warnings) == 0 || result.Update.SignCount != 8 || result.Update.SignCountChanged {
 			t.Fatalf("counter = %+v warnings = %v, want clone risk warning", result.Counter, result.Warnings)
 		}
 	})
+
+	t.Run("rollback explicitly updated", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newAuthenticationFixture(t, true)
+		options := fixture.finishOptions()
+		options.Credential.SignCount = 8
+		options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP, 7, nil))
+		options.CounterPolicy.UpdateOnCloneRisk = true
+
+		result, err := webauthn.FinishAuthentication(context.Background(), options)
+		if err != nil {
+			t.Fatalf("FinishAuthentication() error = %v", err)
+		}
+		if result.Update.SignCount != 7 || !result.Update.SignCountChanged {
+			t.Fatalf("update = %+v, want explicit rollback update", result.Update)
+		}
+	})
+
+	t.Run("conflicting policy rejected", func(t *testing.T) {
+		t.Parallel()
+
+		fixture := newAuthenticationFixture(t, true)
+		options := fixture.finishOptions()
+		options.CounterPolicy = webauthn.CounterPolicy{RejectCloneRisk: true, UpdateOnCloneRisk: true}
+		if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+			t.Fatalf("FinishAuthentication() error = %v, want ErrInvalidConfiguration", err)
+		}
+	})
+}
+
+func TestAuthenticationUVInitializationPolicy(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagUV, 8, nil))
+
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+	if !result.UserPresent || !result.UserVerified || !result.UVInitializationPending || result.Update.UVInitializedChanged {
+		t.Fatalf("result = %+v update = %+v", result, result.Update)
+	}
+
+	options.UVInitializationAuthorized = true
+	result, err = webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("authorized FinishAuthentication() error = %v", err)
+	}
+	if result.UVInitializationPending || !result.Update.UVInitialized || !result.Update.UVInitializedChanged {
+		t.Fatalf("authorized result = %+v update = %+v", result, result.Update)
+	}
+}
+
+func TestAuthenticationExtensionOutputRunsAfterSignatureVerification(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	called := false
+	registry, err := extension.NewRegistry(trackingExtensionHandler{id: "track", called: &called})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.ExtensionRegistry = registry
+	options.SignatureVerifier = failingSignatureVerifier{}
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidSignature) {
+		t.Fatalf("FinishAuthentication() error = %v, want ErrInvalidSignature", err)
+	}
+	if called {
+		t.Fatal("extension output handler ran before signature verification")
+	}
 }
 
 func TestAuthenticationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(t *testing.T) {
@@ -432,7 +602,7 @@ func newAuthenticationFixture(t *testing.T, usernameFirst bool) *authenticationF
 
 	credential := webauthn.CredentialRecord{
 		ID:         mustCredentialID(t, credentialID),
-		PublicKey:  codec.NewCredentialPublicKey(-7, "public-key", []byte("raw-key")),
+		PublicKey:  codec.NewCredentialPublicKey(-7, []byte("raw-key"), codec.CredentialPublicKeyMaterial{}),
 		UserHandle: userHandle,
 		RPID:       "example.com",
 		SignCount:  7,
@@ -472,6 +642,8 @@ func (f *authenticationFixture) finishOptions() webauthn.AuthenticationFinishOpt
 const (
 	authenticationFlagUP = byte(0x01)
 	authenticationFlagUV = byte(0x04)
+	authenticationFlagBE = byte(0x08)
+	authenticationFlagBS = byte(0x10)
 	authenticationFlagED = byte(0x80)
 )
 

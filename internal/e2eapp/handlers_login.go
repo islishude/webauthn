@@ -109,7 +109,10 @@ func (a *app) loginFinish(response http.ResponseWriter, request *http.Request) {
 		writeGenericError(response, http.StatusUnauthorized)
 		return
 	}
-	a.store.updateCredential(result.Update)
+	if !a.store.updateCredential(result.Update) {
+		writeGenericError(response, http.StatusConflict)
+		return
+	}
 	if err := a.setSession(response, result.AuthenticatedAs); err != nil {
 		writeGenericError(response, http.StatusInternalServerError)
 		return

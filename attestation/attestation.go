@@ -113,35 +113,17 @@ type Registry struct {
 func NewRegistry(verifiers ...Verifier) (*Registry, error) {
 	registry := &Registry{verifiers: make(map[string]Verifier, len(verifiers))}
 	for _, verifier := range verifiers {
-		if err := registry.Register(verifier); err != nil {
-			return nil, err
+		if verifier == nil || verifier.Format() == "" {
+			return nil, ErrInvalidFormat
 		}
+		format := verifier.Format()
+		if _, exists := registry.verifiers[format]; exists {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateFormat, format)
+		}
+		registry.verifiers[format] = verifier
 	}
 
 	return registry, nil
-}
-
-// Register adds a verifier. Duplicate format identifiers fail by default.
-func (r *Registry) Register(verifier Verifier) error {
-	if verifier == nil {
-		return ErrInvalidFormat
-	}
-
-	format := verifier.Format()
-	if format == "" {
-		return ErrInvalidFormat
-	}
-
-	if r.verifiers == nil {
-		r.verifiers = make(map[string]Verifier)
-	}
-
-	if _, exists := r.verifiers[format]; exists {
-		return fmt.Errorf("%w: %s", ErrDuplicateFormat, format)
-	}
-
-	r.verifiers[format] = verifier
-	return nil
 }
 
 // Lookup returns the verifier for format.

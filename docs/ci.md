@@ -1,6 +1,6 @@
 # Local and GitHub Actions quality workflow
 
-Status: Level 3 checks active, revised 2026-06-29.
+Status: Level 3 security, storage, standard crypto, and adapter checks active, revised 2026-08-23.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
@@ -10,16 +10,9 @@ The repository has `go.mod` and Go source files. Go-oriented targets are mandato
 
 The local workflow is controlled by the root `Makefile`. The GitHub workflow is `.github/workflows/ci.yml`.
 
-CI uses:
-
-- `actions/checkout@v6`;
-- `actions/setup-go@v6` with `go-version: stable`;
-- `actions/setup-node@v6` for `npx`-based Prettier formatting checks;
-- `actions/setup-node@v6` with Node.js 24 for the independent Playwright e2e job;
-- `actions/cache@v4` for Playwright browser binaries in the independent e2e job;
-- `golangci/golangci-lint-action@v9`;
-- `golangci-lint` pinned to `v2.12.2`;
-- `.golangci.yml` with configuration version `2`.
+Action major versions and trigger branches are defined only in
+`.github/workflows/ci.yml` to avoid duplicated version drift. CI uses stable Go,
+Node.js 24 for e2e, golangci-lint `v2.12.2`, and `.golangci.yml` version 2.
 
 `go.mod` records minimum supported Go version `1.25.0`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
 
@@ -64,7 +57,7 @@ Run these commands from the repository root.
 | `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
 | `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
 | `make example-build`      | Build public examples with `go test ./examples/...`.                                    | No                                   |
-| `make import-graph-check` | Verify the root package does not import forbidden optional/transport packages.          | No                                   |
+| `make import-graph-check` | Verify root excludes optional attestation, transport, standard crypto, and storage.     | No                                   |
 | `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
 | `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
 | `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Installs e2e npm dependencies        |
@@ -75,7 +68,7 @@ Run these commands from the repository root.
 | `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
 
 `make ci` is the required pre-PR command. It runs documentation presence checks
-including Level 3 plan files, README checks, formatting, linting, unit tests,
+including required Level 3 documentation, README checks, formatting, linting, unit tests,
 race tests, fuzz smoke tests, example builds, import graph checks, dependency
 license checks, and module hygiene.
 
@@ -108,7 +101,7 @@ The test gate has four layers:
 
 1. `go test ./...` for ordinary unit and integration tests.
 2. `go test -race ./...` for race detection on stateless and shared-state code.
-3. bounded fuzz smoke tests for parser and transport-conversion fuzz targets.
+3. bounded fuzz smoke tests for parser, transport-conversion, and storage JSON targets.
 4. public example builds for optional adapters and integration patterns.
 5. import graph verification that the root package remains independent of optional attestation and transport helpers.
 6. dependency license manifest verification.
@@ -118,7 +111,7 @@ Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. The
 
 ## GitHub Actions workflow
 
-`.github/workflows/ci.yml` runs on pull requests and pushes to `main` or `master`.
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`.
 
 The workflow has four jobs:
 

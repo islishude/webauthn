@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":1,\"kind\":\"registration-state\",\"registrAtionStAte\":{\"ChAllenge\":\"0000000000000000000000\",\"userHAndle\":\"00\",\"requestedEXtensions\":{\"0\":{\"tYpe\":\"object\",\"oBjeCt\":{\"0\":{\"tYpe\":\"int\",\"string\":\"\"}}}},\"eXpiresAt\":\"0000-01-01T00:00:00Z\"}}")

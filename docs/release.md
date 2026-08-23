@@ -1,6 +1,6 @@
 # Release checklist
 
-Status: Historical implementation plans complete and removed, revised 2026-06-29.
+Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-23.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
@@ -14,6 +14,14 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
 ## Release notes
+
+2026-08-23: Completed the pre-v1 Level 3 security and API cleanup. Added strict
+backup/UV/RP-ID/counter state transitions, five-minute default ceremony expiry,
+the 1023-byte credential ID limit, BOM-compatible client-data parsing, typed
+COSE key material, an optional standard-library signature verifier, optional
+versioned server-side storage JSON, start-time extension validation, immutable
+registries, deterministic extension results, and replay-safe concurrent HTTP
+example wiring. No third-party dependency was added.
 
 2026-06-01: Completed Plan 09. Added optional browser JSON DTO conversion helpers, optional standard-library HTTP JSON helpers, compile-checked manual/HTTP/passkey/attestation examples, README example reference checks, CI example builds, and release documentation. No third-party dependency was added.
 
@@ -29,6 +37,23 @@ acceptance depend only on explicit trust policy, added typed byte
 comparison/append helpers, clarified configuration and ceremony-state errors,
 and shared extension/signature helper logic. No third-party dependency was
 added.
+
+## Pre-v1 migration notes
+
+- Move registration UV configuration to
+  `AuthenticatorSelectionCriteria.UserVerification`; the duplicate start option
+  field was removed.
+- Pass the selected immutable extension registry to start options whenever
+  extension inputs are non-empty. Custom handlers now implement `ValidateInput`
+  and `VerifyOutput`; post-construction `Register` mutation was removed.
+- Construct credential keys from raw COSE plus typed material. Signature inputs
+  no longer carry adapter-owned `any` key handles.
+- Persist credential updates conditionally using `PreviousSignCount` and the
+  `*Changed` fields. `BackupEligible` is no longer an authentication update.
+- Treat zero timeout as five minutes and reject negative timeout, invalid backup
+  flags, RP-ID mismatch, and credential IDs longer than 1023 bytes.
+- Use optional `storage/json` for versioned trusted server-side state encoding or
+  map the storage-neutral root records into an application schema.
 
 ## Non-goals
 

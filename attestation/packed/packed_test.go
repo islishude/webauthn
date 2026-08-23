@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/islishude/webauthn/attestation"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	attpacked "github.com/islishude/webauthn/attestation/packed"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
@@ -27,11 +28,11 @@ func TestVerifierAcceptsSelfAttestation(t *testing.T) {
 	t.Parallel()
 
 	fixture := newPackedFixture(t)
-	credentialPublicKey := codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0})
+	credentialPublicKey := codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{})
 	verifier := attpacked.New(signatureVerifier{
 		t:             t,
 		wantAlgorithm: -7,
-		wantPublicKey: "credential-key",
+		wantPublicKey: []byte{0xa0},
 		wantSigned:    fixture.signed,
 		wantSignature: []byte("signature"),
 	})
@@ -69,7 +70,7 @@ func TestVerifierAcceptsX5CAttestation(t *testing.T) {
 		AuthenticatorData:   fixture.authenticatorData,
 		ClientDataHash:      fixture.clientDataHash,
 		Statement:           codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature"), "x5c": [][]byte{certificate.raw}},
-		CredentialPublicKey: codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+		CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 	})
 	if err != nil {
 		t.Fatalf("VerifyAttestation() error = %v", err)
@@ -109,7 +110,7 @@ func TestVerifierRejectsMalformedStatement(t *testing.T) {
 				AuthenticatorData:   fixture.authenticatorData,
 				ClientDataHash:      fixture.clientDataHash,
 				Statement:           tt.statement,
-				CredentialPublicKey: codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+				CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 			})
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("VerifyAttestation() error = %v, want %v", err, tt.wantErr)
@@ -129,7 +130,7 @@ func TestVerifierRejectsAlgorithmMismatch(t *testing.T) {
 		AuthenticatorData:   fixture.authenticatorData,
 		ClientDataHash:      fixture.clientDataHash,
 		Statement:           codec.AttestationStatement{"alg": int64(-257), "sig": []byte("signature")},
-		CredentialPublicKey: codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+		CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 	})
 	if !errors.Is(err, attpacked.ErrAlgorithmMismatch) {
 		t.Fatalf("VerifyAttestation() error = %v, want ErrAlgorithmMismatch", err)
@@ -147,7 +148,7 @@ func TestVerifierRejectsInvalidSignature(t *testing.T) {
 		AuthenticatorData:   fixture.authenticatorData,
 		ClientDataHash:      fixture.clientDataHash,
 		Statement:           codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature")},
-		CredentialPublicKey: codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+		CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 	})
 	if !errors.Is(err, attpacked.ErrInvalidSignature) {
 		t.Fatalf("VerifyAttestation() error = %v, want ErrInvalidSignature", err)
@@ -180,7 +181,7 @@ func TestVerifierRejectsCertificateRequirementFailures(t *testing.T) {
 				AuthenticatorData:   fixture.authenticatorData,
 				ClientDataHash:      fixture.clientDataHash,
 				Statement:           codec.AttestationStatement{"alg": int64(-7), "sig": []byte("signature"), "x5c": [][]byte{certificate.raw}},
-				CredentialPublicKey: codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+				CredentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 			})
 			if !errors.Is(err, attpacked.ErrCertificateRequirements) {
 				t.Fatalf("VerifyAttestation() error = %v, want ErrCertificateRequirements", err)
@@ -319,8 +320,15 @@ func (v signatureVerifier) VerifySignature(_ context.Context, input webcrypto.Si
 	if v.wantAlgorithm != 0 && input.Algorithm != v.wantAlgorithm {
 		v.t.Fatalf("Algorithm = %d, want %d", input.Algorithm, v.wantAlgorithm)
 	}
-	if v.wantPublicKey != nil && !reflect.DeepEqual(input.PublicKey, v.wantPublicKey) {
-		v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, v.wantPublicKey)
+	if raw, ok := v.wantPublicKey.([]byte); ok {
+		if !bytes.Equal(input.RawCredentialPublicKey, raw) {
+			v.t.Fatalf("RawCredentialPublicKey = %x, want %x", input.RawCredentialPublicKey, raw)
+		}
+	} else if v.wantPublicKey != nil {
+		want, ok := x509util.PublicKeyMaterial(v.wantPublicKey)
+		if !ok || !reflect.DeepEqual(input.PublicKey, want) {
+			v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, want)
+		}
 	}
 	if v.wantSigned != nil && !bytes.Equal(input.Signed, v.wantSigned) {
 		v.t.Fatalf("Signed = %x, want %x", input.Signed, v.wantSigned)

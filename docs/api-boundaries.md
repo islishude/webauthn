@@ -2,7 +2,7 @@
 
 Status: registration and authentication ceremony APIs, Level 3 extension
 handlers, attestation trust policy, optional browser/HTTP adapters, and examples
-implemented, revised 2026-06-02.
+implemented, revised 2026-08-23.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -34,6 +34,8 @@ The root package must not import optional attestation format packages, `browser`
   codec contracts;
 - `crypto`: algorithm policy, signature, certificate, and JWS/JWT
   verifier contracts;
+- `crypto/standard`: optional explicit-policy verifier using Go standard-library
+  ECDSA, RSA PKCS#1/PSS, and Ed25519 operations;
 - `attestation`: format verifier contract, duplicate-rejecting registry, result
   types, and trust policy contracts;
 - `attestation/*`: optional selected format verifiers, including
@@ -44,6 +46,8 @@ The root package must not import optional attestation format packages, `browser`
   base64url for WebAuthn binary fields and Level 3 DTOs;
 - `transport/http`: optional standard-library HTTP JSON helpers that depend on
   `browser` but are not imported by the root package.
+- `storage/json`: optional bounded, versioned JSON encoding for trusted
+  server-side ceremony state and credential records.
 
 ## Ceremony API shape
 
@@ -52,8 +56,10 @@ The root package must not import optional attestation format packages, `browser`
 `StartRegistration(ctx, RegistrationStartOptions)` accepts RP/user entities,
 `OriginPolicy`, challenge configuration, credential parameters, exclude
 descriptors, authenticator selection, hints, attestation conveyance,
-attestation format preferences, requested extensions, user verification, and
-timeout. `Now` may be injected for deterministic timeout state.
+attestation format preferences, requested extensions, an extension registry and
+input policy, and timeout. Registration user verification comes only from
+`AuthenticatorSelection`; the zero value is `preferred`. `Now` may be injected
+for deterministic timeout state. A zero timeout means five minutes.
 
 It returns creation options and caller-stored ceremony state. The core does not
 persist ceremony state.
@@ -66,8 +72,9 @@ credential public-key decoder, extension map decoder, attestation registry,
 trust policy, extension registry, extension policy, and caller-provided
 credential uniqueness result.
 
-It returns a persistence-ready credential record, attestation validity, trust
-result, extension results, backup state, authenticator attachment, and warnings.
+It returns a credential record, attestation validity, trust result, ordered
+extension results, immutable backup eligibility, backup state, UV initialization,
+authenticator attachment, and warnings.
 If `AttestationTrustPolicy` is nil, no attestation is accepted after format
 verification. Callers that accept consumer passkey `none` attestation should use
 an explicit policy such as `attestation.AcceptNone()`.
@@ -77,7 +84,8 @@ an explicit policy such as `attestation.AcceptNone()`.
 `StartAuthentication(ctx, AuthenticationStartOptions)` accepts RP ID,
 `OriginPolicy`, challenge configuration, optional allow credentials,
 username-first user binding, user verification, hints, requested extensions, and
-timeout. `Now` may be injected for deterministic timeout state.
+an extension registry/input policy, and timeout. `Now` may be injected for
+deterministic timeout state; zero means five minutes.
 
 It returns request options and caller-stored ceremony state. Empty
 `allowCredentials` is supported for discoverable/passkey flows.
@@ -89,9 +97,10 @@ structured assertion response, stored credential record, signature verifier,
 algorithm policy, extension map decoder, extension registry/policy, AppID
 policy, and counter policy.
 
-It returns the authenticated user handle, counter comparison, persistence-ready
-credential update, backup state, authenticator attachment, extension results,
-and warnings. The core does not create a login session.
+It returns the authenticated user handle, UP/UV observations, counter comparison,
+UV initialization status, conditional credential update fields, backup state,
+authenticator attachment, ordered extension results, and warnings. Backup
+eligibility is checked against registration state and never updated.
 
 ## Origin boundary
 
@@ -142,12 +151,14 @@ primitives.
 `codec.ExtensionMapDecoder` are separate contracts so root finish options only
 require the exact decoding surface they use. `codec/cbor` is optional and
 replaceable.
-`codec.CredentialPublicKey` may carry U2F raw public key bytes and codec-derived
-EC2, RSA, or OKP public key material for optional attestation packages.
+`codec.CredentialPublicKey` carries defensive raw COSE bytes plus typed EC2, RSA,
+or OKP material. It never exposes a dependency-owned key handle. Known algorithm,
+key type, curve, and coordinate combinations are validated by `codec/cbor`.
 
 `crypto` contracts delegate algorithm policy, signature verification,
 certificate verification, and JWS/JWT verification. Root APIs should avoid
 concrete CBOR, COSE, certificate, or metadata dependency types.
+`crypto/standard` is optional and requires an explicit non-empty allow-list.
 
 ## Attestation boundary
 
@@ -172,25 +183,29 @@ make trust decisions for the relying party.
 
 ## Extension boundary
 
-Extensions have two boundaries: option construction and result verification.
-Handlers are registered by identifier and receive the ceremony operation so they
-can reject extensions used in the wrong ceremony.
+Extensions have two boundaries: `ValidateInput` during option construction and
+`VerifyOutput` only after core signature or attestation verification succeeds.
+Registries are immutable after construction. Known inputs are normalized and
+deep-copied; unknown inputs are preserved unless `ExtensionInputPolicy` rejects
+them.
 
 `extension.NewLevel3Registry` includes `appid`, `appidExclude`, `credProps`,
 `largeBlob`, and `prf`. `extension.NewLevel3RegistryWithDeprecated` also
 includes `uvm`. `uvm` is retained for callers that still need it and marks
 results as deprecated.
 
-Unknown extension results are represented in raw form and processed according to
-policy. The core preserves unknown and unrequested outputs as `Accepted: false`
-results by default, can reject unknown outputs with `RejectUnknown`, and can
-reject unrequested outputs with `RejectUnrequested`.
+Unknown extension results are represented in raw form and processed in sorted ID
+order. `RejectUnknown` applies only when an unknown output exists; a requested
+extension with no output remains valid. Unrequested outputs can be rejected with
+`RejectUnrequested`.
 
 ## Storage boundary
 
-The library defines persistence-ready result structures, not persistence
-adapters. Applications map credential records, credential updates, attestation
-results, extension results, and trust outcomes into their own schema.
+The root defines storage-neutral records and conditional updates. Applications
+may map them into their own schema or use optional `storage/json` for strict,
+versioned serialization. That package performs no storage I/O, encryption,
+authentication, cookie sealing, or replay prevention and is only for trusted
+server-side storage.
 
-Storage, sessions, cookies, framework adapters, CLI tools, and conformance
-harness helpers remain outside the core API.
+Storage backends, sessions, cookies, framework adapters, CLI tools, and
+conformance harness helpers remain outside the root API.

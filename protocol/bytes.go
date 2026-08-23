@@ -11,9 +11,8 @@ const (
 	MinChallengeLength = 16
 	// RecommendedChallengeLength is the target default challenge length.
 	RecommendedChallengeLength = 32
-	// MaxCredentialIDLength is the maximum credential ID length carried by
-	// authenticator data's uint16 length field.
-	MaxCredentialIDLength = 65535
+	// MaxCredentialIDLength is the WebAuthn maximum credential ID length.
+	MaxCredentialIDLength = 1023
 	// MaxUserHandleLength is the WebAuthn user handle size limit in bytes.
 	MaxUserHandleLength = 64
 	// MinAuthenticatorDataLength is rpIdHash(32) + flags(1) + signCount(4).

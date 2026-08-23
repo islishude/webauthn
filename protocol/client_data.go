@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -25,7 +26,11 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 		TokenBinding *TokenBinding  `json:"tokenBinding"`
 	}
 
-	if err := json.Unmarshal(raw.value, &decoded); err != nil {
+	// WebAuthn's UTF-8 decode step strips one leading byte-order mark for JSON
+	// parsing. The original bytes remain in Raw and are still hashed verbatim by
+	// the ceremony verifier.
+	jsonText := bytes.TrimPrefix(raw.value, []byte{0xef, 0xbb, 0xbf})
+	if err := json.Unmarshal(jsonText, &decoded); err != nil {
 		return CollectedClientData{}, err
 	}
 	if decoded.Type == "" || decoded.Challenge == "" || decoded.Origin == "" {

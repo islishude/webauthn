@@ -30,7 +30,9 @@ func TestRootPackageImportGraphExcludesOptionalPackages(t *testing.T) {
 		"github.com/islishude/webauthn/attestation/",
 		"github.com/islishude/webauthn/transport",
 		"github.com/islishude/webauthn/browser",
+		"github.com/islishude/webauthn/crypto/standard",
 		"github.com/islishude/webauthn/http",
+		"github.com/islishude/webauthn/storage",
 	}
 
 	for dep := range strings.FieldsSeq(string(output)) {

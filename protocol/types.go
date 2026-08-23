@@ -175,6 +175,11 @@ const (
 	AlgorithmES512   COSEAlgorithmIdentifier = -36
 	AlgorithmESP512  COSEAlgorithmIdentifier = -52
 	AlgorithmRS256   COSEAlgorithmIdentifier = -257
+	AlgorithmRS384   COSEAlgorithmIdentifier = -258
+	AlgorithmRS512   COSEAlgorithmIdentifier = -259
+	AlgorithmPS256   COSEAlgorithmIdentifier = -37
+	AlgorithmPS384   COSEAlgorithmIdentifier = -38
+	AlgorithmPS512   COSEAlgorithmIdentifier = -39
 	AlgorithmEd25519 COSEAlgorithmIdentifier = -19
 )
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
@@ -169,7 +170,7 @@ func TestVerifierRejectsCertificatePublicKeyMismatch(t *testing.T) {
 	}{
 		{
 			name:    "missing material",
-			key:     codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+			key:     codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 			wantErr: ErrUnsupportedKey,
 		},
 		{
@@ -177,7 +178,7 @@ func TestVerifierRejectsCertificatePublicKeyMismatch(t *testing.T) {
 			key: func() codec.CredentialPublicKey {
 				material := fixture.credentialPublicKey.PublicKeyMaterial()
 				material.EC2.X[0] ^= 0xff
-				return codec.NewCredentialPublicKeyWithMaterial(-7, "credential-key", []byte{0xa0}, nil, material)
+				return codec.NewCredentialPublicKey(-7, []byte{0xa0}, material)
 			}(),
 			wantErr: ErrPublicKeyMismatch,
 		},
@@ -296,7 +297,7 @@ func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privat
 	return fixture{
 		authenticatorData:   authenticatorData,
 		clientDataHash:      clientDataHash,
-		credentialPublicKey: codec.NewCredentialPublicKeyWithMaterial(algorithm, "credential-key", []byte{0xa0}, nil, material),
+		credentialPublicKey: codec.NewCredentialPublicKey(algorithm, []byte{0xa0}, material),
 		certificate:         certificate,
 		signed:              signed,
 		statement:           statement,
@@ -543,8 +544,11 @@ func (v signatureVerifier) VerifySignature(_ context.Context, input webcrypto.Si
 	if v.wantAlgorithm != 0 && input.Algorithm != v.wantAlgorithm {
 		v.t.Fatalf("Algorithm = %d, want %d", input.Algorithm, v.wantAlgorithm)
 	}
-	if v.wantPublicKey != nil && !reflect.DeepEqual(input.PublicKey, v.wantPublicKey) {
-		v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, v.wantPublicKey)
+	if v.wantPublicKey != nil {
+		want, ok := x509util.PublicKeyMaterial(v.wantPublicKey)
+		if !ok || !reflect.DeepEqual(input.PublicKey, want) {
+			v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, want)
+		}
 	}
 	if v.wantSigned != nil && !bytes.Equal(input.Signed, v.wantSigned) {
 		v.t.Fatalf("Signed = %x, want %x", input.Signed, v.wantSigned)

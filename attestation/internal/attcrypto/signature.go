@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -18,17 +19,18 @@ func SignedData(authenticatorData protocol.AuthenticatorData, clientDataHash []b
 
 // VerifySignature validates the raw signature wrapper, then delegates signature
 // verification through verifier while preserving caller-selected sentinel errors.
-func VerifySignature(ctx context.Context, verifier webcrypto.SignatureVerifier, algorithm protocol.COSEAlgorithmIdentifier, publicKey any, signed []byte, signature []byte, malformedSignature error, invalidSignature error) error {
+func VerifySignature(ctx context.Context, verifier webcrypto.SignatureVerifier, algorithm protocol.COSEAlgorithmIdentifier, publicKey codec.CredentialPublicKeyMaterial, rawCredentialPublicKey []byte, signed []byte, signature []byte, malformedSignature error, invalidSignature error) error {
 	protocolSignature, err := protocol.NewSignature(signature)
 	if err != nil {
 		return fmt.Errorf("%w: %w", malformedSignature, err)
 	}
 
 	if err := verifier.VerifySignature(ctx, webcrypto.SignatureInput{
-		Algorithm: algorithm,
-		PublicKey: publicKey,
-		Signed:    slices.Clone(signed),
-		Signature: protocolSignature,
+		Algorithm:              algorithm,
+		PublicKey:              publicKey,
+		RawCredentialPublicKey: slices.Clone(rawCredentialPublicKey),
+		Signed:                 slices.Clone(signed),
+		Signature:              protocolSignature,
 	}); err != nil {
 		return fmt.Errorf("%w: %w", invalidSignature, err)
 	}

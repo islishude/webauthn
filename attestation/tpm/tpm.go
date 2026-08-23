@@ -9,6 +9,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/attestation/internal/x509util"
+	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -122,7 +123,11 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := v.verifySignature(ctx, statement.algorithm, certificates[0].PublicKey, statement.certInfo, tpmSignature.signature); err != nil {
+	certificateMaterial, ok := x509util.PublicKeyMaterial(certificates[0].PublicKey)
+	if !ok {
+		return attestation.VerificationResult{}, ErrUnsupportedKey
+	}
+	if err := v.verifySignature(ctx, statement.algorithm, certificateMaterial, statement.certInfo, tpmSignature.signature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -133,8 +138,8 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	}, nil
 }
 
-func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey any, signed []byte, signature []byte) error {
-	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithm, publicKey, signed, signature, ErrInvalidSignature, ErrInvalidSignature)
+func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey codec.CredentialPublicKeyMaterial, signed []byte, signature []byte) error {
+	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithm, publicKey, nil, signed, signature, ErrInvalidSignature, ErrInvalidSignature)
 }
 
 var _ attestation.Verifier = Verifier{}

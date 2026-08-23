@@ -3,6 +3,7 @@ package webauthn_test
 import (
 	"bytes"
 	"context"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -41,6 +42,21 @@ func TestRegistrationWithNoneAttestation(t *testing.T) {
 	}
 	if result.Attestation.Type != attestation.TypeNone || !result.AttestationTrust.Accepted {
 		t.Fatalf("attestation result = %+v trust = %+v", result.Attestation, result.AttestationTrust)
+	}
+}
+
+func TestRegistrationCapturesUVInitialization(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.AttestationObject = fixture.attestationObject(t, "none", "example.com", registrationFlagUP|registrationFlagUV|registrationFlagAT, nil, map[string]any{})
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+	if !result.Credential.UVInitialized {
+		t.Fatal("UVInitialized = false, want true")
 	}
 }
 
@@ -85,6 +101,109 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 	if !result.State.ExpiresAt.Equal(now.Add(1500 * time.Millisecond)) {
 		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(1500*time.Millisecond))
+	}
+}
+
+func TestRegistrationStartUsesSafeTimeoutDefault(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+	userHandle := mustUserHandle(t, []byte("user-1"))
+	result, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
+		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:             protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
+		Now:              func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("StartRegistration() error = %v", err)
+	}
+	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultCeremonyTimeout.Milliseconds() {
+		t.Fatalf("TimeoutMilliseconds = %d", result.Options.TimeoutMilliseconds)
+	}
+	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultCeremonyTimeout)) {
+		t.Fatalf("ExpiresAt = %v", result.State.ExpiresAt)
+	}
+	if !result.State.UserHandle.Equal(userHandle) {
+		t.Fatal("state user handle mismatch")
+	}
+}
+
+func TestRegistrationStartRejectsInvalidTimeAndChallengeConfiguration(t *testing.T) {
+	t.Parallel()
+
+	userHandle := mustUserHandle(t, []byte("user-1"))
+	base := webauthn.RegistrationStartOptions{
+		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:             protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
+	}
+
+	negativeTimeout := base
+	negativeTimeout.Timeout = -time.Second
+	if _, err := webauthn.StartRegistration(context.Background(), negativeTimeout); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("negative timeout error = %v, want ErrInvalidConfiguration", err)
+	}
+
+	shortChallenge := base
+	shortChallenge.ChallengeGenerator = webauthn.RandomChallengeGenerator{Length: -1}
+	if _, err := webauthn.StartRegistration(context.Background(), shortChallenge); err == nil {
+		t.Fatal("negative challenge length accepted")
+	}
+}
+
+func TestRegistrationStartValidatesAndCopiesExtensionInputs(t *testing.T) {
+	t.Parallel()
+
+	userHandle := mustUserHandle(t, []byte("user-1"))
+	base := webauthn.RegistrationStartOptions{
+		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:             protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
+	}
+
+	missingRegistry := base
+	missingRegistry.Extensions = protocol.ExtensionInputs{extension.IDCredProps: true}
+	if _, err := webauthn.StartRegistration(context.Background(), missingRegistry); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("missing registry error = %v, want ErrInvalidConfiguration", err)
+	}
+
+	invalidKnown := missingRegistry
+	invalidKnown.Extensions = protocol.ExtensionInputs{extension.IDCredProps: false}
+	invalidKnown.ExtensionRegistry = mustLevel3Registry(t)
+	if _, err := webauthn.StartRegistration(context.Background(), invalidKnown); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("invalid known extension error = %v, want ErrInvalidConfiguration", err)
+	}
+
+	emptyRegistry, err := extension.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	nested := map[string]any{"bytes": []byte{0x01}}
+	unknown := base
+	unknown.Extensions = protocol.ExtensionInputs{"future": nested}
+	unknown.ExtensionRegistry = emptyRegistry
+	result, err := webauthn.StartRegistration(context.Background(), unknown)
+	if err != nil {
+		t.Fatalf("StartRegistration() error = %v", err)
+	}
+	nested["bytes"].([]byte)[0] = 0xff
+	stateValue := result.State.RequestedExtensions["future"].(map[string]any)["bytes"].([]byte)
+	optionValue := result.Options.Extensions["future"].(map[string]any)["bytes"].([]byte)
+	if stateValue[0] != 0x01 || optionValue[0] != 0x01 {
+		t.Fatal("extension input aliases caller memory")
+	}
+	stateValue[0] = 0xee
+	if optionValue[0] != 0x01 {
+		t.Fatal("state and browser options share extension memory")
+	}
+
+	unknown.ExtensionInputPolicy.RejectUnknown = true
+	if _, err := webauthn.StartRegistration(context.Background(), unknown); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("unknown input policy error = %v, want ErrInvalidConfiguration", err)
 	}
 }
 
@@ -155,6 +274,14 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 			wantErr: webauthn.ErrUserVerificationRequired,
 		},
 		{
+			name: "backup state without eligibility",
+			mutate: func(t *testing.T, f *registrationFixture, options *webauthn.RegistrationFinishOptions) {
+				t.Helper()
+				options.Response.AttestationObject = f.attestationObject(t, "none", "example.com", registrationFlagUP|registrationFlagBS|registrationFlagAT, nil, map[string]any{})
+			},
+			wantErr: webauthn.ErrInvalidBackupState,
+		},
+		{
 			name: "unsupported algorithm",
 			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
 				t.Helper()
@@ -208,6 +335,16 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 				t.Helper()
 				options.State.ExpiresAt = time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
 				options.Now = func() time.Time { return time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC) }
+			},
+			wantErr: webauthn.ErrCeremonyExpired,
+		},
+		{
+			name: "ceremony expires at exact deadline",
+			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
+				t.Helper()
+				deadline := time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC)
+				options.State.ExpiresAt = deadline
+				options.Now = func() time.Time { return deadline }
 			},
 			wantErr: webauthn.ErrCeremonyExpired,
 		},
@@ -425,6 +562,63 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 			t.Fatalf("FinishRegistration() error = %v, want ErrExtensionPolicy", err)
 		}
 	})
+}
+
+func TestRegistrationRejectUnknownAllowsRequestedExtensionWithoutOutput(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
+	options.ExtensionPolicy.RejectUnknown = true
+	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+}
+
+func TestRegistrationExtensionResultsAreSorted(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.ClientExtensionResults = map[string]any{"zeta": true, "alpha": true}
+	result, err := webauthn.FinishRegistration(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+	if len(result.Extensions) != 2 || result.Extensions[0].ID != "alpha" || result.Extensions[1].ID != "zeta" {
+		t.Fatalf("extensions = %+v, want alpha then zeta", result.Extensions)
+	}
+}
+
+func TestRegistrationExtensionOutputRunsAfterAttestationVerification(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	called := false
+	handler := trackingExtensionHandler{id: "track", called: &called}
+	registry, err := extension.NewRegistry(handler)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	attesters, err := attestation.NewRegistry(fakeRegistrationAttestationVerifier{
+		format: "none",
+		result: attestation.VerificationResult{Type: attestation.TypeNone},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.ExtensionRegistry = registry
+	options.AttestationRegistry = attesters
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidAttestation) {
+		t.Fatalf("FinishRegistration() error = %v, want ErrInvalidAttestation", err)
+	}
+	if called {
+		t.Fatal("extension output handler ran before attestation verification")
+	}
 }
 
 func TestRegistrationUnrequestedKnownExtensionOutputIsUntrusted(t *testing.T) {
@@ -706,11 +900,10 @@ func newRegistrationFixture(t *testing.T) *registrationFixture {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
 	start, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
-		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:             protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
-		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		Challenge:        challenge,
-		UserVerification: protocol.UserVerificationPreferred,
+		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:         protocol.UserEntity{ID: userHandle, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		Challenge:    challenge,
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
 		},
@@ -785,6 +978,8 @@ func (f *registrationFixture) authenticatorData(t *testing.T, rpID string, flags
 const (
 	registrationFlagUP = byte(0x01)
 	registrationFlagUV = byte(0x04)
+	registrationFlagBE = byte(0x08)
+	registrationFlagBS = byte(0x10)
 	registrationFlagAT = byte(0x40)
 	registrationFlagED = byte(0x80)
 )
@@ -868,13 +1063,14 @@ func mustClientDataJSON(t *testing.T, value []byte) protocol.ClientDataJSON {
 
 func coseKeyCBOR(t *testing.T) []byte {
 	t.Helper()
+	curve := elliptic.P256().Params()
 
 	return mustCBOR(t, map[int]any{
 		1:  2,
 		3:  -7,
 		-1: 1,
-		-2: []byte("01234567890123456789012345678901"),
-		-3: []byte("abcdefghijklmnopqrstuvwxyzabcdef"),
+		-2: curve.Gx.FillBytes(make([]byte, 32)),
+		-3: curve.Gy.FillBytes(make([]byte, 32)),
 	})
 }
 
@@ -957,6 +1153,28 @@ func (v fakeRegistrationAttestationVerifier) VerifyAttestation(context.Context, 
 }
 
 var _ attestation.Verifier = fakeRegistrationAttestationVerifier{}
+
+type trackingExtensionHandler struct {
+	id     string
+	called *bool
+}
+
+func (h trackingExtensionHandler) ID() string {
+	return h.id
+}
+
+func (h trackingExtensionHandler) ValidateInput(request extension.InputRequest) (any, error) {
+	return extension.CloneValue(request.Input)
+}
+
+func (h trackingExtensionHandler) VerifyOutput(_ context.Context, request extension.OutputRequest) (extension.Result, error) {
+	if h.called != nil {
+		*h.called = true
+	}
+	return extension.Result{ID: h.id, Accepted: true, Outputs: map[string]any{"value": request.ClientOutput}}, nil
+}
+
+var _ extension.Handler = trackingExtensionHandler{}
 
 type registrationCertificateVerifier struct {
 	result webcrypto.CertificateVerification

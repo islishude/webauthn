@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: authentication ceremony, Level 3 extension handling, attestation trust policy, and optional transport helpers implemented, revised 2026-06-02.
+Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-23.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -35,6 +35,17 @@ User presence is required for both registration and authentication. User verific
 
 If user verification is preferred or discouraged, the result should be surfaced so the application can record or risk-score the ceremony.
 
+Credential records retain `uvInitialized`. A false-to-true authentication-time
+transition is returned as pending unless the caller explicitly confirms that an
+equivalent additional authentication factor authorized the change.
+
+## Credential backup state
+
+The verifier rejects BS when BE is not set. `backupEligible` is captured at
+registration and must remain identical on every assertion; only `backupState`
+is mutable. Applications receive changed flags separately so persistence can use
+conditional updates.
+
 ## Credential ownership and user handle policy
 
 Username-first authentication and discoverable-credential authentication have different ownership checks.
@@ -55,7 +66,9 @@ The project must not implement cryptographic primitives. Signature verification 
 
 Signature counters are clone-detection signals, not universally reliable monotonic counters. If both the stored counter and new counter are zero, no clone signal is available. If either is nonzero and the new counter is not greater than the stored counter, the library should return a clone-risk result.
 
-The authentication API surfaces counter rollback as clone risk by default. Callers can reject clone risk through counter policy or accept the result and apply their own warn, step-up, or continue behavior.
+The authentication API surfaces counter rollback as clone risk by default and
+preserves the stored counter. Callers can reject clone risk or explicitly opt in
+to updating the counter. Conflicting reject/update policy is invalid.
 
 ## Attestation policy
 
@@ -74,7 +87,11 @@ The `attestation` package provides explicit trust policy building blocks for `no
 
 ## Extension policy
 
-Extensions are optional for clients and authenticators. Missing requested extension outputs are surfaced as not accepted by the relevant handler. Unsolicited extension outputs may occur and must be ignored or rejected according to caller policy.
+Extensions are optional for clients and authenticators. Known inputs are
+validated before the ceremony is emitted. Missing requested outputs are
+surfaced as not accepted, while unknown-output rejection applies only when an
+output actually exists. Output handlers run only after core cryptographic and
+attestation trust checks succeed.
 
 Extension outputs must not be elevated into security facts unless the extension handler has validated them and the relying-party policy accepts them. Unknown and unrequested extension outputs are preserved as untrusted raw results by default; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed behavior.
 
@@ -116,7 +133,10 @@ Malformed data should fail closed. The parser and verifier must test:
 
 ## Time and replay
 
-Ceremony state must include enough information for the caller to enforce expiry and single use. The core should expose expiration metadata and exact challenge checks, but storage and replay prevention remain caller responsibilities.
+Ceremony state includes a five-minute expiry by default. Finish rejects at the
+exact deadline. Callers must still atomically consume state once; optional
+`storage/json` serializes trusted server-side state but does not enforce replay
+prevention or make it safe for client-side cookies.
 
 Registration and authentication start/finish options accept an injectable clock
 where timeout or expiry state is evaluated. Production callers can rely on the
@@ -135,6 +155,7 @@ Before stable release, defaults should be:
 
 - 32-byte server-generated random challenges;
 - exact challenge comparison;
+- five-minute default ceremony expiry and exact-deadline rejection;
 - explicit allowed origins;
 - explicit allowed top origins for cross-origin ceremonies;
 - explicit RP ID;
@@ -146,5 +167,7 @@ Before stable release, defaults should be:
 - unsupported algorithms rejected;
 - unsolicited extensions ignored or rejected by configured policy;
 - counter rollback surfaced as clone risk;
+- stored counter preserved on clone risk unless explicit policy updates it;
+- BE/BS invariants and immutable backup eligibility;
 - transport-neutral error objects;
 - optional HTTP helper errors written generically without raw protocol material.

@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, Level 3 attestation and extensions, attestation trust hooks, optional adapters, and examples implemented, revised 2026-06-02.
+Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-23.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -46,10 +46,12 @@ Plan 02 fixed the initial package names. The dependency direction must remain st
 | Attestation format packages | `none`, `packed`, `tpm`, `android-key`, legacy `android-safetynet`, `fido-u2f`, `apple`, `compound`                                          | WebAuthn attestation formats implemented as optional imports; root does not import them |
 | `extension`                 | Operation-aware extension handler contract, Level 2 compatibility handlers, Level 3 handlers, result types, and duplicate-rejecting registry | Root accepts explicit extension handlers or built-in Level 3 handlers                   |
 | `crypto`                    | Algorithm policy, signature verification, certificate, and JWS/JWT contracts                                                                 | Behind narrow contracts                                                                 |
+| `crypto/standard`           | Optional explicit-policy verifier for common WebAuthn algorithms using Go cryptography                                                       | Not imported by root                                                                    |
 | `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                                                      | Behind narrow contracts                                                                 |
 | `codec/cbor`                | Optional concrete CBOR and COSE_Key decoder                                                                                                  | Not imported by root; replaceable behind narrow codec contracts                         |
 | `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                                                         | Optional package; not imported by the root package                                      |
 | `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                                                      | Optional package; not imported by the root package                                      |
+| `storage/json`              | Versioned bounded encoding for trusted server-side ceremony state and credential records                                                     | Optional package; no storage I/O or client-side sealing                                 |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -92,6 +94,12 @@ Stored credential records should include at minimum:
 - AAGUID;
 - attestation type and trust result when retained;
 - backup/discoverable/passkey-related extension results when available.
+
+Raw COSE bytes and typed EC2/RSA/OKP material are stored together without an
+adapter-owned `any` key handle. `backupEligible` is immutable after registration;
+`backupState`, signature counters, and authorized UV initialization use explicit
+conditional updates. Optional `storage/json` reconstructs typed key material by
+decoding the stored raw COSE key rather than trusting serialized derivatives.
 
 ## Ceremony verification shape
 
@@ -194,6 +202,13 @@ The API cleanup adds no dependency. It removes dead grouped decoder and hasher
 API surface, keeps concrete codec dependencies optional behind narrower decoder
 contracts, adds typed byte comparison/append helpers, and makes attestation
 acceptance depend only on explicit trust policy.
+
+The pre-v1 Level 3 security cleanup adds no dependency. It enforces the 1023-byte
+credential ID limit, five-minute default expiry, BE/BS and RP-ID invariants,
+clone-risk update policy, and authorized `uvInitialized` transitions. Extension
+handlers validate inputs at start and verify outputs after core cryptographic
+checks; registries are immutable and outputs deterministic. Standard signature
+verification and storage JSON remain optional subpackages outside the root graph.
 
 ## Compatibility and passkey behavior
 

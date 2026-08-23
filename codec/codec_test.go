@@ -54,11 +54,11 @@ func TestCredentialPublicKeyPublicKeyMaterialDefensiveCopies(t *testing.T) {
 	x := []byte{0x01, 0x02}
 	modulus := []byte{0x03, 0x04}
 	okpX := []byte{0x07, 0x08}
-	key := codec.NewCredentialPublicKeyWithMaterial(
+	key := codec.NewCredentialPublicKey(
 		-7,
-		"public-key",
+
 		[]byte{0xa0},
-		nil,
+
 		codec.CredentialPublicKeyMaterial{
 			EC2: &codec.EC2PublicKeyMaterial{
 				Curve: codec.EC2CurveP256,
@@ -73,8 +73,8 @@ func TestCredentialPublicKeyPublicKeyMaterialDefensiveCopies(t *testing.T) {
 				Curve: codec.OKPCurveEd25519,
 				X:     okpX,
 			},
-		},
-	)
+		})
+
 	x[0] = 0xff
 	modulus[0] = 0xff
 	okpX[0] = 0xff
@@ -106,7 +106,7 @@ func (fakeDecoders) DecodeAttestationObject(raw protocol.AttestationObject) (cod
 }
 
 func (fakeDecoders) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicKey, error) {
-	return codec.NewCredentialPublicKey(protocol.COSEAlgorithmIdentifier(-7), "public-key", raw), nil
+	return codec.NewCredentialPublicKey(protocol.COSEAlgorithmIdentifier(-7), raw, codec.CredentialPublicKeyMaterial{}), nil
 }
 
 func (fakeDecoders) DecodeExtensionMap([]byte) (codec.ExtensionMap, error) {

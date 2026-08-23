@@ -3,13 +3,9 @@ package webauthn
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
-	"maps"
-	"math"
 	"slices"
 	"time"
 
@@ -48,196 +44,22 @@ var (
 	ErrRejectedAttestationPolicy = errors.New("webauthn: attestation rejected by policy")
 	// ErrExtensionPolicy reports an extension policy rejection.
 	ErrExtensionPolicy = errors.New("webauthn: extension policy failure")
-	// ErrCeremonyExpired reports registration state past its expiry.
+	// ErrCeremonyExpired reports ceremony state at or past its expiry.
 	ErrCeremonyExpired = errors.New("webauthn: registration ceremony expired")
 	// ErrDuplicateCredential reports an application-provided uniqueness failure.
 	ErrDuplicateCredential = errors.New("webauthn: credential already registered")
+	// ErrInvalidBackupState reports a backup-state flag without backup eligibility.
+	ErrInvalidBackupState = errors.New("webauthn: invalid credential backup state")
+	// ErrBackupEligibilityMismatch reports an authentication-time BE flag change.
+	ErrBackupEligibilityMismatch = errors.New("webauthn: credential backup eligibility mismatch")
+	// ErrCredentialRPIDMismatch reports use of a credential outside its stored RP ID.
+	ErrCredentialRPIDMismatch = errors.New("webauthn: credential rp id mismatch")
 )
 
-// ChallengeGenerator generates server-side registration challenges.
-type ChallengeGenerator interface {
-	GenerateChallenge(context.Context) (protocol.Challenge, error)
-}
-
-// ChallengeGeneratorFunc adapts a function into a ChallengeGenerator.
-type ChallengeGeneratorFunc func(context.Context) (protocol.Challenge, error)
-
-// GenerateChallenge calls f(ctx).
-func (f ChallengeGeneratorFunc) GenerateChallenge(ctx context.Context) (protocol.Challenge, error) {
-	return f(ctx)
-}
-
-// RandomChallengeGenerator generates challenges from a random reader.
-type RandomChallengeGenerator struct {
-	Reader io.Reader
-	Length int
-}
-
-// GenerateChallenge returns a fresh random challenge.
-func (g RandomChallengeGenerator) GenerateChallenge(ctx context.Context) (protocol.Challenge, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	select {
-	case <-ctx.Done():
-		return protocol.Challenge{}, ctx.Err()
-	default:
-	}
-
-	length := g.Length
-	if length == 0 {
-		length = protocol.RecommendedChallengeLength
-	}
-	reader := g.Reader
-	if reader == nil {
-		reader = rand.Reader
-	}
-
-	bytes := make([]byte, length)
-	if _, err := io.ReadFull(reader, bytes); err != nil {
-		return protocol.Challenge{}, err
-	}
-
-	return protocol.NewChallenge(bytes)
-}
-
-// RegistrationStartOptions configures registration option creation.
-type RegistrationStartOptions struct {
-	RP                     protocol.RPEntity
-	User                   protocol.UserEntity
-	OriginPolicy           OriginPolicy
-	Challenge              protocol.Challenge
-	ChallengeGenerator     ChallengeGenerator
-	PubKeyCredParams       []protocol.CredentialParameter
-	Timeout                time.Duration
-	ExcludeCredentials     []protocol.CredentialDescriptor
-	AuthenticatorSelection *protocol.AuthenticatorSelectionCriteria
-	Hints                  []protocol.PublicKeyCredentialHint
-	Attestation            protocol.AttestationConveyancePreference
-	AttestationFormats     []string
-	UserVerification       protocol.UserVerificationRequirement
-	Extensions             protocol.ExtensionInputs
-	Now                    func() time.Time
-}
-
-// RegistrationStartResult contains browser creation options and caller-stored
-// ceremony state.
-type RegistrationStartResult struct {
-	Options protocol.PublicKeyCredentialCreationOptions
-	State   RegistrationState
-}
-
-// RegistrationState is stored by callers between registration start and finish.
-type RegistrationState struct {
-	Challenge                 protocol.Challenge
-	RPID                      string
-	OriginPolicy              OriginPolicy
-	User                      protocol.UserEntity
-	RequestedUserVerification protocol.UserVerificationRequirement
-	RequestedExtensions       protocol.ExtensionInputs
-	AllowedAlgorithms         []protocol.COSEAlgorithmIdentifier
-	Attestation               protocol.AttestationConveyancePreference
-	ExpiresAt                 time.Time
-}
-
-// StartRegistration builds WebAuthn creation options and ceremony state.
-func StartRegistration(ctx context.Context, options RegistrationStartOptions) (RegistrationStartResult, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := options.RP.Validate(); err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-	if err := options.User.Validate(); err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-	if len(options.PubKeyCredParams) == 0 {
-		return RegistrationStartResult{}, fmt.Errorf("%w: public key credential parameters are required", ErrInvalidConfiguration)
-	}
-	for _, param := range options.PubKeyCredParams {
-		if err := param.Validate(); err != nil {
-			return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-		}
-	}
-
-	challenge := options.Challenge
-	if challenge.Len() == 0 {
-		generator := options.ChallengeGenerator
-		if generator == nil {
-			generator = RandomChallengeGenerator{}
-		}
-		generated, err := generator.GenerateChallenge(ctx)
-		if err != nil {
-			return RegistrationStartResult{}, err
-		}
-		challenge = generated
-	}
-
-	userVerification := registrationUserVerification(options)
-	if err := validateUserVerification(userVerification); err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-
-	attestationConveyance := options.Attestation
-	if attestationConveyance == "" {
-		attestationConveyance = protocol.AttestationNone
-	}
-	if !attestationConveyance.Known() {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, protocol.ValueError{Field: "attestation", Value: string(attestationConveyance)})
-	}
-
-	authenticatorSelection := options.AuthenticatorSelection.Clone()
-	if authenticatorSelection != nil && authenticatorSelection.UserVerification == "" {
-		authenticatorSelection.UserVerification = userVerification
-	}
-
-	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
-	if err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-
-	creationOptions := protocol.PublicKeyCredentialCreationOptions{
-		RP:                     options.RP,
-		User:                   options.User,
-		Challenge:              challenge,
-		PubKeyCredParams:       slices.Clone(options.PubKeyCredParams),
-		TimeoutMilliseconds:    timeoutMilliseconds,
-		ExcludeCredentials:     cloneCredentialDescriptors(options.ExcludeCredentials),
-		AuthenticatorSelection: authenticatorSelection,
-		Hints:                  slices.Clone(options.Hints),
-		Attestation:            attestationConveyance,
-		AttestationFormats:     slices.Clone(options.AttestationFormats),
-		Extensions:             maps.Clone(options.Extensions),
-	}
-	if err := creationOptions.Validate(); err != nil {
-		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-	}
-
-	state := RegistrationState{
-		Challenge:                 challenge,
-		RPID:                      options.RP.ID,
-		OriginPolicy:              options.OriginPolicy.clone(),
-		User:                      options.User,
-		RequestedUserVerification: userVerification,
-		RequestedExtensions:       maps.Clone(options.Extensions),
-		AllowedAlgorithms:         algorithmsFromParameters(options.PubKeyCredParams),
-		Attestation:               attestationConveyance,
-		ExpiresAt:                 expiresAt,
-	}
-
-	return RegistrationStartResult{Options: creationOptions, State: state}, nil
-}
-
-func (o RegistrationStartOptions) now() time.Time {
-	if o.Now != nil {
-		return o.Now()
-	}
-
-	return time.Now()
-}
+const (
+	// DefaultCeremonyTimeout is used when callers leave Timeout at its zero value.
+	DefaultCeremonyTimeout = 5 * time.Minute
+)
 
 // RegistrationResponse is the structured, transport-neutral browser
 // registration response input.
@@ -278,7 +100,7 @@ type RegistrationFinishOptions struct {
 	Now                         func() time.Time
 }
 
-// CredentialRecord is the persistence-ready credential material returned after
+// CredentialRecord is storage-neutral credential material returned after
 // registration verification.
 type CredentialRecord struct {
 	ID                      protocol.CredentialID
@@ -290,6 +112,7 @@ type CredentialRecord struct {
 	Transports              []protocol.AuthenticatorTransport
 	BackupEligible          bool
 	BackupState             bool
+	UVInitialized           bool
 	AuthenticatorAttachment protocol.AuthenticatorAttachment
 	AttestationType         attestation.Type
 }
@@ -359,17 +182,6 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 		return RegistrationResult{}, ErrMalformedResponse
 	}
 
-	extensionResults, err := verifyRegistrationExtensions(ctx, registrationExtensionInputs{
-		state:                   options.State,
-		policy:                  options.ExtensionPolicy,
-		registry:                options.ExtensionRegistry,
-		clientExtensionResults:  options.Response.ClientExtensionResults,
-		authenticatorExtensions: authenticatorExtensions,
-	})
-	if err != nil {
-		return RegistrationResult{}, err
-	}
-
 	attestationResult, trustResult, err := verifyRegistrationAttestation(ctx, registrationAttestationInputs{
 		trustPolicy:         options.AttestationTrustPolicy,
 		registry:            options.AttestationRegistry,
@@ -381,18 +193,29 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	if err != nil {
 		return RegistrationResult{}, err
 	}
+	extensionResults, err := verifyRegistrationExtensions(ctx, registrationExtensionInputs{
+		state:                   options.State,
+		policy:                  options.ExtensionPolicy,
+		registry:                options.ExtensionRegistry,
+		clientExtensionResults:  options.Response.ClientExtensionResults,
+		authenticatorExtensions: authenticatorExtensions,
+	})
+	if err != nil {
+		return RegistrationResult{}, err
+	}
 
 	result := RegistrationResult{
 		Credential: CredentialRecord{
 			ID:                      attested.CredentialID,
 			PublicKey:               credentialPublicKey,
-			UserHandle:              options.State.User.ID,
+			UserHandle:              options.State.UserHandle,
 			RPID:                    options.State.RPID,
 			AAGUID:                  attested.AAGUID,
 			SignCount:               parsedAuthData.SignCount,
 			Transports:              slices.Clone(options.Response.Transports),
 			BackupEligible:          parsedAuthData.Flags.BackupEligible(),
 			BackupState:             parsedAuthData.Flags.BackupState(),
+			UVInitialized:           parsedAuthData.Flags.UserVerified(),
 			AuthenticatorAttachment: options.Response.AuthenticatorAttachment,
 			AttestationType:         attestationResult.Type,
 		},
@@ -434,7 +257,10 @@ func validateRegistrationState(state RegistrationState, now time.Time) error {
 	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
-	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
+	if state.UserHandle.Len() == 0 {
+		return fmt.Errorf("%w: user handle is required", ErrInvalidCeremonyState)
+	}
+	if !state.ExpiresAt.IsZero() && !now.Before(state.ExpiresAt) {
 		return ErrCeremonyExpired
 	}
 	if len(state.AllowedAlgorithms) == 0 {
@@ -496,6 +322,9 @@ func verifyRegistrationAuthenticatorData(state RegistrationState, raw protocol.A
 	}
 	if state.RequestedUserVerification == protocol.UserVerificationRequired && !parsed.Flags.UserVerified() {
 		return protocol.ParsedAuthenticatorData{}, ErrUserVerificationRequired
+	}
+	if parsed.Flags.BackupState() && !parsed.Flags.BackupEligible() {
+		return protocol.ParsedAuthenticatorData{}, ErrInvalidBackupState
 	}
 	if !parsed.Flags.HasAttestedCredentialData() {
 		return protocol.ParsedAuthenticatorData{}, fmt.Errorf("%w: %w", ErrMalformedResponse, protocol.ErrAttestedCredentialDataMissing)
@@ -586,208 +415,4 @@ func verifyRegistrationAttestation(ctx context.Context, inputs registrationAttes
 	}
 
 	return result, trustResult, nil
-}
-
-type registrationExtensionInputs struct {
-	state                   RegistrationState
-	policy                  RegistrationExtensionPolicy
-	registry                *extension.Registry
-	clientExtensionResults  map[string]any
-	authenticatorExtensions codec.ExtensionMap
-}
-
-func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtensionInputs) ([]extension.Result, error) {
-	return verifyExtensions(ctx, extensionVerificationInputs{
-		operation:               extension.OperationRegistration,
-		requestedExtensions:     inputs.state.RequestedExtensions,
-		policy:                  extensionOutputPolicy{rejectUnrequested: inputs.policy.RejectUnrequested, rejectUnknown: inputs.policy.RejectUnknown},
-		registry:                inputs.registry,
-		clientExtensionResults:  inputs.clientExtensionResults,
-		authenticatorExtensions: inputs.authenticatorExtensions,
-	})
-}
-
-func lookupExtensionHandler(registry *extension.Registry, id string) (extension.Handler, bool) {
-	if registry == nil {
-		return nil, false
-	}
-
-	return registry.Lookup(id)
-}
-
-type extensionOutputPolicy struct {
-	rejectUnrequested bool
-	rejectUnknown     bool
-}
-
-type extensionVerificationInputs struct {
-	operation               extension.Operation
-	requestedExtensions     protocol.ExtensionInputs
-	policy                  extensionOutputPolicy
-	registry                *extension.Registry
-	clientExtensionResults  map[string]any
-	authenticatorExtensions codec.ExtensionMap
-	clientInputTransform    func(string, any) any
-}
-
-func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) ([]extension.Result, error) {
-	ids := map[string]struct{}{}
-	for id := range inputs.requestedExtensions {
-		ids[id] = struct{}{}
-	}
-	for id := range inputs.clientExtensionResults {
-		ids[id] = struct{}{}
-	}
-	for id := range inputs.authenticatorExtensions {
-		ids[id] = struct{}{}
-	}
-
-	results := make([]extension.Result, 0, len(ids))
-	for id := range ids {
-		clientInput, requested := inputs.requestedExtensions[id]
-		if inputs.clientInputTransform != nil {
-			clientInput = inputs.clientInputTransform(id, clientInput)
-		}
-		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
-		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
-
-		handler, known := lookupExtensionHandler(inputs.registry, id)
-		if !known && inputs.policy.rejectUnknown {
-			return nil, ErrExtensionPolicy
-		}
-
-		hasOutput := hasClientOutput || hasAuthenticatorOutput
-		if !requested && hasOutput {
-			if inputs.policy.rejectUnrequested {
-				return nil, ErrExtensionPolicy
-			}
-			results = append(results, rawExtensionResult(id, rawExtensionInputs{
-				requested:              requested,
-				clientInput:            clientInput,
-				clientOutput:           clientOutput,
-				hasClientOutput:        hasClientOutput,
-				authenticatorOutput:    authenticatorOutput,
-				hasAuthenticatorOutput: hasAuthenticatorOutput,
-				warning:                "unrequested extension output ignored",
-			}))
-			continue
-		}
-
-		if !known {
-			results = append(results, rawExtensionResult(id, rawExtensionInputs{
-				requested:              requested,
-				clientInput:            clientInput,
-				clientOutput:           clientOutput,
-				hasClientOutput:        hasClientOutput,
-				authenticatorOutput:    authenticatorOutput,
-				hasAuthenticatorOutput: hasAuthenticatorOutput,
-				warning:                "unknown extension preserved",
-			}))
-			continue
-		}
-
-		result, err := handler.HandleExtension(ctx, extension.Request{
-			Operation:           inputs.operation,
-			ID:                  id,
-			Requested:           requested,
-			ClientInput:         clientInput,
-			ClientOutput:        clientOutput,
-			AuthenticatorOutput: authenticatorOutput,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-type rawExtensionInputs struct {
-	requested              bool
-	clientInput            any
-	clientOutput           any
-	hasClientOutput        bool
-	authenticatorOutput    any
-	hasAuthenticatorOutput bool
-	warning                string
-}
-
-func rawExtensionResult(id string, input rawExtensionInputs) extension.Result {
-	outputs := map[string]any{"requested": input.requested}
-	if input.clientInput != nil {
-		outputs["clientInput"] = input.clientInput
-	}
-	if input.hasClientOutput {
-		outputs["clientOutput"] = input.clientOutput
-	}
-	if input.hasAuthenticatorOutput {
-		outputs["authenticatorOutput"] = input.authenticatorOutput
-	}
-
-	return extension.Result{
-		ID:       id,
-		Accepted: false,
-		Outputs:  outputs,
-		Warnings: []string{input.warning},
-	}
-}
-
-func registrationUserVerification(options RegistrationStartOptions) protocol.UserVerificationRequirement {
-	if options.UserVerification != "" {
-		return options.UserVerification
-	}
-	if options.AuthenticatorSelection != nil && options.AuthenticatorSelection.UserVerification != "" {
-		return options.AuthenticatorSelection.UserVerification
-	}
-
-	return protocol.UserVerificationPreferred
-}
-
-func validateUserVerification(value protocol.UserVerificationRequirement) error {
-	if value == "" {
-		return nil
-	}
-	if !value.Known() {
-		return protocol.ValueError{Field: "user verification", Value: string(value)}
-	}
-
-	return nil
-}
-
-func algorithmsFromParameters(parameters []protocol.CredentialParameter) []protocol.COSEAlgorithmIdentifier {
-	algorithms := make([]protocol.COSEAlgorithmIdentifier, len(parameters))
-	for i, parameter := range parameters {
-		algorithms[i] = parameter.Algorithm
-	}
-
-	return algorithms
-}
-
-func timeoutState(timeout time.Duration, now time.Time) (uint32, time.Time, error) {
-	if timeout <= 0 {
-		return 0, time.Time{}, nil
-	}
-
-	milliseconds := timeout.Milliseconds()
-	if milliseconds == 0 {
-		milliseconds = 1
-	}
-	if milliseconds > math.MaxUint32 {
-		return 0, time.Time{}, errors.New("timeout exceeds uint32 milliseconds")
-	}
-
-	return uint32(milliseconds), now.Add(timeout), nil
-}
-
-func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {
-	if descriptors == nil {
-		return nil
-	}
-
-	out := make([]protocol.CredentialDescriptor, len(descriptors))
-	for i, descriptor := range descriptors {
-		out[i] = descriptor.Clone()
-	}
-	return out
 }

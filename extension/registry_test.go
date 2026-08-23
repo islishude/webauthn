@@ -35,14 +35,9 @@ func TestRegistryRejectsDuplicateAndEmptyIDs(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v, want ErrDuplicateID", err)
 	}
 
-	registry, err := extension.NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
-	}
-
-	err = registry.Register(fakeHandler{id: ""})
+	_, err = extension.NewRegistry(fakeHandler{id: ""})
 	if !errors.Is(err, extension.ErrInvalidID) {
-		t.Fatalf("Register() error = %v, want ErrInvalidID", err)
+		t.Fatalf("NewRegistry() error = %v, want ErrInvalidID", err)
 	}
 }
 
@@ -54,7 +49,11 @@ func (h fakeHandler) ID() string {
 	return h.id
 }
 
-func (h fakeHandler) HandleExtension(context.Context, extension.Request) (extension.Result, error) {
+func (h fakeHandler) ValidateInput(request extension.InputRequest) (any, error) {
+	return request.Input, nil
+}
+
+func (h fakeHandler) VerifyOutput(context.Context, extension.OutputRequest) (extension.Result, error) {
 	return extension.Result{ID: h.id, Accepted: true}, nil
 }
 

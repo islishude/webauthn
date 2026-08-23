@@ -79,7 +79,11 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err := validateAndroidKeyExtension(extension.Value, request.ClientDataHash); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := attcrypto.VerifySignature(ctx, v.signatureVerifier, statement.algorithm, leaf.PublicKey, attcrypto.SignedData(request.AuthenticatorData, request.ClientDataHash), statement.signature, ErrInvalidSignature, ErrInvalidSignature); err != nil {
+	leafMaterial, ok := x509util.PublicKeyMaterial(leaf.PublicKey)
+	if !ok {
+		return attestation.VerificationResult{}, ErrUnsupportedKey
+	}
+	if err := attcrypto.VerifySignature(ctx, v.signatureVerifier, statement.algorithm, leafMaterial, nil, attcrypto.SignedData(request.AuthenticatorData, request.ClientDataHash), statement.signature, ErrInvalidSignature, ErrInvalidSignature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 

@@ -4,11 +4,15 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	attnone "github.com/islishude/webauthn/attestation/none"
 	"github.com/islishude/webauthn/attestation/packed"
-	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/crypto/standard"
 	"github.com/islishude/webauthn/protocol"
 )
 
-func selectedAttestationFormats(signatureVerifier webcrypto.SignatureVerifier) (*attestation.Registry, error) {
+func selectedAttestationFormats() (*attestation.Registry, error) {
+	signatureVerifier, err := standard.NewVerifier(protocol.AlgorithmEdDSA, protocol.AlgorithmES256, protocol.AlgorithmRS256)
+	if err != nil {
+		return nil, err
+	}
 	return attestation.NewRegistry(
 		attnone.New(),
 		packed.New(signatureVerifier),

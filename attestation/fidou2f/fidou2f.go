@@ -11,6 +11,8 @@ import (
 
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
+	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -93,7 +95,11 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		parsedAuthData.AttestedCredentialData.CredentialID,
 		publicKeyU2F,
 	)
-	if err := v.verifySignature(ctx, certificatePublicKey, verificationData, statement.signature); err != nil {
+	certificateMaterial, ok := x509util.PublicKeyMaterial(certificatePublicKey)
+	if !ok {
+		return attestation.VerificationResult{}, ErrUnsupportedKey
+	}
+	if err := v.verifySignature(ctx, certificateMaterial, verificationData, statement.signature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -124,8 +130,8 @@ func u2fVerificationData(rpIDHash []byte, clientDataHash []byte, credentialID pr
 	return out
 }
 
-func (v Verifier) verifySignature(ctx context.Context, publicKey *ecdsa.PublicKey, signed []byte, signature []byte) error {
-	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithmES256, publicKey, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
+func (v Verifier) verifySignature(ctx context.Context, publicKey codec.CredentialPublicKeyMaterial, signed []byte, signature []byte) error {
+	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithmES256, publicKey, nil, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
 }
 
 func isP256(publicKey *ecdsa.PublicKey) bool {

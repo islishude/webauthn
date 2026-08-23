@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -17,9 +18,12 @@ type AlgorithmPolicy interface {
 // SignatureInput is the WebAuthn signature verification request.
 type SignatureInput struct {
 	Algorithm protocol.COSEAlgorithmIdentifier
-	PublicKey any
-	Signed    []byte
-	Signature protocol.Signature
+	PublicKey codec.CredentialPublicKeyMaterial
+	// RawCredentialPublicKey is present for credential signatures and allows a
+	// custom verifier to decode algorithms not represented by PublicKey.
+	RawCredentialPublicKey []byte
+	Signed                 []byte
+	Signature              protocol.Signature
 }
 
 // SignatureVerifier verifies WebAuthn signatures through an injected dependency.

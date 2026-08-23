@@ -19,6 +19,7 @@ import (
 
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
+	"github.com/islishude/webauthn/attestation/internal/x509util"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
@@ -161,7 +162,7 @@ func TestVerifierRejectsPublicAreaFailures(t *testing.T) {
 		{
 			name: "missing credential material",
 			mutate: func(codec.AttestationStatement) codec.CredentialPublicKey {
-				return codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0})
+				return codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{})
 			},
 			wantErr: ErrUnsupportedKey,
 		},
@@ -170,7 +171,7 @@ func TestVerifierRejectsPublicAreaFailures(t *testing.T) {
 			mutate: func(codec.AttestationStatement) codec.CredentialPublicKey {
 				material := fixture.credentialPublicKey.PublicKeyMaterial()
 				material.EC2.X[0] ^= 0xff
-				return codec.NewCredentialPublicKeyWithMaterial(-7, "credential-key", []byte{0xa0}, nil, material)
+				return codec.NewCredentialPublicKey(-7, []byte{0xa0}, material)
 			},
 			wantErr: ErrPublicKeyMismatch,
 		},
@@ -343,7 +344,7 @@ func newEC2Fixture(t *testing.T) fixture {
 		aaguid:              base.aaguid,
 		authenticatorData:   base.authenticatorData,
 		clientDataHash:      base.clientDataHash,
-		credentialPublicKey: codec.NewCredentialPublicKeyWithMaterial(-7, "credential-key", []byte{0xa0}, nil, material),
+		credentialPublicKey: codec.NewCredentialPublicKey(-7, []byte{0xa0}, material),
 		certificate:         certificate,
 		publicAreaName:      base.publicAreaName,
 		extraData:           base.extraData,
@@ -372,7 +373,7 @@ func newRSAFixture(t *testing.T) fixture {
 		aaguid:              base.aaguid,
 		authenticatorData:   base.authenticatorData,
 		clientDataHash:      base.clientDataHash,
-		credentialPublicKey: codec.NewCredentialPublicKeyWithMaterial(-257, "credential-key", []byte{0xa0}, nil, material),
+		credentialPublicKey: codec.NewCredentialPublicKey(-257, []byte{0xa0}, material),
 		certificate:         certificate,
 		publicAreaName:      base.publicAreaName,
 		extraData:           base.extraData,
@@ -728,8 +729,11 @@ func (v signatureVerifier) VerifySignature(_ context.Context, input webcrypto.Si
 	if v.wantAlgorithm != 0 && input.Algorithm != v.wantAlgorithm {
 		v.t.Fatalf("Algorithm = %d, want %d", input.Algorithm, v.wantAlgorithm)
 	}
-	if v.wantPublicKey != nil && !reflect.DeepEqual(input.PublicKey, v.wantPublicKey) {
-		v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, v.wantPublicKey)
+	if v.wantPublicKey != nil {
+		want, ok := x509util.PublicKeyMaterial(v.wantPublicKey)
+		if !ok || !reflect.DeepEqual(input.PublicKey, want) {
+			v.t.Fatalf("PublicKey = %#v, want %#v", input.PublicKey, want)
+		}
 	}
 	if v.wantSigned != nil && !bytes.Equal(input.Signed, v.wantSigned) {
 		v.t.Fatalf("Signed = %x, want %x", input.Signed, v.wantSigned)

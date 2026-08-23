@@ -28,35 +28,34 @@ type ExtensionMap map[string]any
 // CredentialPublicKey is adapter-owned decoded COSE public-key material.
 type CredentialPublicKey struct {
 	Algorithm protocol.COSEAlgorithmIdentifier
-	Key       any
 	raw       []byte
-	u2fRaw    []byte
 	material  CredentialPublicKeyMaterial
 }
 
-// NewCredentialPublicKey stores decoded key material and a defensive copy of
-// the raw COSE key bytes.
-func NewCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, key any, raw []byte) CredentialPublicKey {
-	return NewCredentialPublicKeyWithMaterial(algorithm, key, raw, nil, CredentialPublicKeyMaterial{})
-}
-
-// NewCredentialPublicKeyWithU2F stores decoded key material, the raw COSE key
-// bytes, and an optional raw U2F public key representation.
-func NewCredentialPublicKeyWithU2F(algorithm protocol.COSEAlgorithmIdentifier, key any, raw []byte, u2fRaw []byte) CredentialPublicKey {
-	return NewCredentialPublicKeyWithMaterial(algorithm, key, raw, u2fRaw, CredentialPublicKeyMaterial{})
-}
-
-// NewCredentialPublicKeyWithMaterial stores decoded key material, raw COSE key
-// bytes, an optional raw U2F public key representation, and public key material
-// needed by attestation format verifiers.
-func NewCredentialPublicKeyWithMaterial(algorithm protocol.COSEAlgorithmIdentifier, key any, raw []byte, u2fRaw []byte, material CredentialPublicKeyMaterial) CredentialPublicKey {
+// NewCredentialPublicKey stores a defensive copy of the raw COSE key and typed
+// public key material. Adapter-specific decoded key handles are deliberately not
+// retained in the public API.
+func NewCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, raw []byte, material CredentialPublicKeyMaterial) CredentialPublicKey {
 	return CredentialPublicKey{
 		Algorithm: algorithm,
-		Key:       key,
 		raw:       slices.Clone(raw),
-		u2fRaw:    slices.Clone(u2fRaw),
 		material:  material.clone(),
 	}
+}
+
+// NewCredentialPublicKeyWithU2F stores a raw U2F uncompressed P-256 key as
+// typed EC2 material. Malformed input produces empty material so verification
+// fails closed.
+func NewCredentialPublicKeyWithU2F(algorithm protocol.COSEAlgorithmIdentifier, raw []byte, u2fRaw []byte) CredentialPublicKey {
+	var material CredentialPublicKeyMaterial
+	if len(u2fRaw) == 65 && u2fRaw[0] == 0x04 {
+		material.EC2 = &EC2PublicKeyMaterial{
+			Curve: EC2CurveP256,
+			X:     slices.Clone(u2fRaw[1:33]),
+			Y:     slices.Clone(u2fRaw[33:]),
+		}
+	}
+	return NewCredentialPublicKey(algorithm, raw, material)
 }
 
 // Raw returns a defensive copy of the source COSE key bytes when available.
@@ -67,7 +66,16 @@ func (k CredentialPublicKey) Raw() []byte {
 // U2FPublicKey returns the raw U2F public key representation 0x04 || x || y
 // when the selected codec can derive it from the COSE key.
 func (k CredentialPublicKey) U2FPublicKey() []byte {
-	return slices.Clone(k.u2fRaw)
+	material := k.material.EC2
+	if k.Algorithm != protocol.AlgorithmES256 || material == nil || material.Curve != EC2CurveP256 || len(material.X) != 32 || len(material.Y) != 32 {
+		return nil
+	}
+
+	out := make([]byte, 1, 65)
+	out[0] = 0x04
+	out = append(out, material.X...)
+	out = append(out, material.Y...)
+	return out
 }
 
 // PublicKeyMaterial returns codec-derived public key material for attestation

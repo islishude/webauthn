@@ -9,6 +9,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	"github.com/islishude/webauthn/attestation/internal/x509util"
+	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -73,7 +74,7 @@ func (v Verifier) verifySelf(ctx context.Context, request attestation.Verificati
 	if statement.algorithm != request.CredentialPublicKey.Algorithm {
 		return attestation.VerificationResult{}, ErrAlgorithmMismatch
 	}
-	if err := v.verifySignature(ctx, statement.algorithm, request.CredentialPublicKey.Key, signed, statement.signature); err != nil {
+	if err := v.verifySignature(ctx, statement.algorithm, request.CredentialPublicKey.PublicKeyMaterial(), request.CredentialPublicKey.Raw(), signed, statement.signature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -101,7 +102,11 @@ func (v Verifier) verifyX5C(ctx context.Context, request attestation.Verificatio
 	if err := validatePackedCertificate(leaf, parsedAuthData.AttestedCredentialData.AAGUID); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := v.verifySignature(ctx, statement.algorithm, leaf.PublicKey, signed, statement.signature); err != nil {
+	leafMaterial, ok := x509util.PublicKeyMaterial(leaf.PublicKey)
+	if !ok {
+		return attestation.VerificationResult{}, ErrCertificateRequirements
+	}
+	if err := v.verifySignature(ctx, statement.algorithm, leafMaterial, nil, signed, statement.signature); err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -112,8 +117,8 @@ func (v Verifier) verifyX5C(ctx context.Context, request attestation.Verificatio
 	}, nil
 }
 
-func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey any, signed []byte, signature []byte) error {
-	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithm, publicKey, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
+func (v Verifier) verifySignature(ctx context.Context, algorithm protocol.COSEAlgorithmIdentifier, publicKey codec.CredentialPublicKeyMaterial, rawCredentialPublicKey []byte, signed []byte, signature []byte) error {
+	return attcrypto.VerifySignature(ctx, v.signatureVerifier, algorithm, publicKey, rawCredentialPublicKey, signed, signature, ErrInvalidStatement, ErrInvalidSignature)
 }
 
 var _ attestation.Verifier = Verifier{}

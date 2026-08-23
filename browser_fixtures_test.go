@@ -80,7 +80,6 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 		},
 		AuthenticatorSelection: &fixture.Registration.AuthenticatorSelection,
 		Attestation:            protocol.AttestationNone,
-		UserVerification:       fixture.Registration.UserVerification,
 	})
 	if err != nil {
 		t.Fatalf("StartRegistration() error = %v", err)

@@ -150,7 +150,7 @@ func TestVerifierRejectsCertificatePublicKeyMismatch(t *testing.T) {
 	}{
 		{
 			name:    "missing material",
-			key:     codec.NewCredentialPublicKey(-7, "credential-key", []byte{0xa0}),
+			key:     codec.NewCredentialPublicKey(-7, []byte{0xa0}, codec.CredentialPublicKeyMaterial{}),
 			wantErr: ErrUnsupportedKey,
 		},
 		{
@@ -158,7 +158,7 @@ func TestVerifierRejectsCertificatePublicKeyMismatch(t *testing.T) {
 			key: func() codec.CredentialPublicKey {
 				material := fixture.credentialPublicKey.PublicKeyMaterial()
 				material.EC2.X[0] ^= 0xff
-				return codec.NewCredentialPublicKeyWithMaterial(-7, "credential-key", []byte{0xa0}, nil, material)
+				return codec.NewCredentialPublicKey(-7, []byte{0xa0}, material)
 			}(),
 			wantErr: ErrPublicKeyMismatch,
 		},
@@ -261,7 +261,7 @@ func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privat
 	return fixture{
 		authenticatorData:   authenticatorData,
 		clientDataHash:      clientDataHash,
-		credentialPublicKey: codec.NewCredentialPublicKeyWithMaterial(algorithm, "credential-key", []byte{0xa0}, nil, material),
+		credentialPublicKey: codec.NewCredentialPublicKey(algorithm, []byte{0xa0}, material),
 		rawChain:            rawChain,
 		statement:           statement,
 	}

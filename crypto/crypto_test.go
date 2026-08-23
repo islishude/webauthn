@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -27,7 +28,7 @@ func TestCryptoContractsAcceptTestDouble(t *testing.T) {
 
 	err = adapter.VerifySignature(context.Background(), webcrypto.SignatureInput{
 		Algorithm: protocol.COSEAlgorithmIdentifier(-7),
-		PublicKey: "public-key",
+		PublicKey: codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{Curve: codec.EC2CurveP256}},
 		Signed:    []byte("auth-data-and-client-hash"),
 		Signature: signature,
 	})

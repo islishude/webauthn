@@ -59,7 +59,6 @@ func (a *app) registerOptions(response http.ResponseWriter, request *http.Reques
 		AuthenticatorSelection: selection,
 		Hints:                  hints,
 		Attestation:            protocol.AttestationNone,
-		UserVerification:       selection.UserVerification,
 	})
 	if err != nil {
 		writeGenericError(response, http.StatusBadRequest)

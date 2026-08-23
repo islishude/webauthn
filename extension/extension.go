@@ -28,8 +28,16 @@ const (
 	OperationAuthentication Operation = "authentication"
 )
 
-// Request contains extension input and output values routed to a handler.
-type Request struct {
+// InputRequest contains one extension input at ceremony start.
+type InputRequest struct {
+	Operation Operation
+	ID        string
+	Input     any
+}
+
+// OutputRequest contains extension input and output values routed to a handler
+// after core ceremony verification succeeds.
+type OutputRequest struct {
 	Operation           Operation
 	ID                  string
 	Requested           bool
@@ -47,10 +55,11 @@ type Result struct {
 	Warnings   []string
 }
 
-// Handler validates and interprets one exact extension identifier.
+// Handler validates input and interprets output for one exact extension identifier.
 type Handler interface {
 	ID() string
-	HandleExtension(context.Context, Request) (Result, error)
+	ValidateInput(InputRequest) (any, error)
+	VerifyOutput(context.Context, OutputRequest) (Result, error)
 }
 
 // Registry is a case-sensitive extension handler registry.
@@ -62,35 +71,17 @@ type Registry struct {
 func NewRegistry(handlers ...Handler) (*Registry, error) {
 	registry := &Registry{handlers: make(map[string]Handler, len(handlers))}
 	for _, handler := range handlers {
-		if err := registry.Register(handler); err != nil {
-			return nil, err
+		if handler == nil || handler.ID() == "" {
+			return nil, ErrInvalidID
 		}
+		id := handler.ID()
+		if _, exists := registry.handlers[id]; exists {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateID, id)
+		}
+		registry.handlers[id] = handler
 	}
 
 	return registry, nil
-}
-
-// Register adds a handler. Duplicate identifiers fail by default.
-func (r *Registry) Register(handler Handler) error {
-	if handler == nil {
-		return ErrInvalidID
-	}
-
-	id := handler.ID()
-	if id == "" {
-		return ErrInvalidID
-	}
-
-	if r.handlers == nil {
-		r.handlers = make(map[string]Handler)
-	}
-
-	if _, exists := r.handlers[id]; exists {
-		return fmt.Errorf("%w: %s", ErrDuplicateID, id)
-	}
-
-	r.handlers[id] = handler
-	return nil
 }
 
 // Lookup returns the handler for id.

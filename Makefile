@@ -68,7 +68,7 @@ import-graph-check:
 	@deps="$$(GOWORK=off $(GO) list -deps .)"; \
 	for dep in $$deps; do \
 		case "$$dep" in \
-			net/http|github.com/islishude/webauthn/attestation/*|github.com/islishude/webauthn/transport*|github.com/islishude/webauthn/browser*|github.com/islishude/webauthn/http*) \
+			net/http|github.com/islishude/webauthn/attestation/*|github.com/islishude/webauthn/transport*|github.com/islishude/webauthn/browser*|github.com/islishude/webauthn/crypto/standard*|github.com/islishude/webauthn/storage*|github.com/islishude/webauthn/http*) \
 				echo "import-graph-check: forbidden root dependency $$dep"; \
 				exit 1; \
 				;; \

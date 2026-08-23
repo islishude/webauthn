@@ -34,17 +34,19 @@ var (
 
 // AuthenticationStartOptions configures assertion option creation.
 type AuthenticationStartOptions struct {
-	RPID               string
-	OriginPolicy       OriginPolicy
-	Challenge          protocol.Challenge
-	ChallengeGenerator ChallengeGenerator
-	Timeout            time.Duration
-	AllowCredentials   []protocol.CredentialDescriptor
-	UserVerification   protocol.UserVerificationRequirement
-	Hints              []protocol.PublicKeyCredentialHint
-	Extensions         protocol.ExtensionInputs
-	ExpectedUserHandle protocol.UserHandle
-	Now                func() time.Time
+	RPID                 string
+	OriginPolicy         OriginPolicy
+	Challenge            protocol.Challenge
+	ChallengeGenerator   ChallengeGenerator
+	Timeout              time.Duration
+	AllowCredentials     []protocol.CredentialDescriptor
+	UserVerification     protocol.UserVerificationRequirement
+	Hints                []protocol.PublicKeyCredentialHint
+	Extensions           protocol.ExtensionInputs
+	ExtensionRegistry    *extension.Registry
+	ExtensionInputPolicy ExtensionInputPolicy
+	ExpectedUserHandle   protocol.UserHandle
+	Now                  func() time.Time
 }
 
 // AuthenticationStartResult contains browser request options and caller-stored
@@ -104,6 +106,23 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if err := validateUserVerification(userVerification); err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	preparedExtensions, err := prepareExtensionInputs(extension.OperationAuthentication, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, func(id string, value any) any {
+		if id == extension.IDPRF {
+			return attachAllowedCredentialIDsToPRFInput(value, options.AllowCredentials)
+		}
+		return value
+	})
+	if err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
+	optionExtensions, err := cloneExtensionInputs(preparedExtensions)
+	if err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
+	stateExtensions, err := cloneExtensionInputs(preparedExtensions)
+	if err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 
 	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
 	if err != nil {
@@ -117,7 +136,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		AllowCredentials:    cloneCredentialDescriptors(options.AllowCredentials),
 		UserVerification:    userVerification,
 		Hints:               slices.Clone(options.Hints),
-		Extensions:          maps.Clone(options.Extensions),
+		Extensions:          optionExtensions,
 	}
 	if err := requestOptions.Validate(); err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
@@ -128,7 +147,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		RPID:                      options.RPID,
 		OriginPolicy:              options.OriginPolicy.clone(),
 		RequestedUserVerification: userVerification,
-		RequestedExtensions:       maps.Clone(options.Extensions),
+		RequestedExtensions:       stateExtensions,
 		AllowCredentials:          cloneCredentialDescriptors(options.AllowCredentials),
 		ExpectedUserHandle:        options.ExpectedUserHandle,
 		ExpiresAt:                 expiresAt,
@@ -167,7 +186,8 @@ type AuthenticationExtensionPolicy struct {
 
 // CounterPolicy controls how sign counter clone-risk signals affect results.
 type CounterPolicy struct {
-	RejectCloneRisk bool
+	RejectCloneRisk   bool
+	UpdateOnCloneRisk bool
 }
 
 // CounterStatus classifies sign counter comparison.
@@ -198,26 +218,35 @@ type AuthenticationFinishOptions struct {
 	ExtensionRegistry   *extension.Registry
 	ExtensionPolicy     AuthenticationExtensionPolicy
 	CounterPolicy       CounterPolicy
-	Now                 func() time.Time
+	// UVInitializationAuthorized confirms that an additional authentication
+	// factor authorizes changing UVInitialized from false to true.
+	UVInitializationAuthorized bool
+	Now                        func() time.Time
 }
 
-// CredentialUpdate is the persistence-ready credential update after
-// authentication.
+// CredentialUpdate is a conditional storage update after authentication.
 type CredentialUpdate struct {
-	ID             protocol.CredentialID
-	SignCount      uint32
-	BackupEligible bool
-	BackupState    bool
+	ID                   protocol.CredentialID
+	PreviousSignCount    uint32
+	SignCount            uint32
+	SignCountChanged     bool
+	BackupState          bool
+	BackupStateChanged   bool
+	UVInitialized        bool
+	UVInitializedChanged bool
 }
 
 // AuthenticationResult is the verified authentication ceremony output.
 type AuthenticationResult struct {
-	Credential      CredentialRecord
-	AuthenticatedAs protocol.UserHandle
-	Counter         CounterResult
-	Update          CredentialUpdate
-	Extensions      []extension.Result
-	Warnings        []string
+	Credential              CredentialRecord
+	AuthenticatedAs         protocol.UserHandle
+	Counter                 CounterResult
+	Update                  CredentialUpdate
+	Extensions              []extension.Result
+	Warnings                []string
+	UserPresent             bool
+	UserVerified            bool
+	UVInitializationPending bool
 }
 
 // FinishAuthentication verifies a WebAuthn authentication assertion.
@@ -254,6 +283,12 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	if err != nil {
 		return AuthenticationResult{}, err
 	}
+	if options.AlgorithmPolicy != nil && !options.AlgorithmPolicy.AcceptsAlgorithm(options.Credential.PublicKey.Algorithm) {
+		return AuthenticationResult{}, ErrUnsupportedAlgorithm
+	}
+	if err := verifyAuthenticationSignature(ctx, options.SignatureVerifier, options.Credential, options.Response, clientDataHash); err != nil {
+		return AuthenticationResult{}, err
+	}
 	extensionResults, err := verifyAuthenticationExtensions(ctx, authenticationExtensionInputs{
 		state:                   options.State,
 		policy:                  options.ExtensionPolicy,
@@ -265,22 +300,25 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		return AuthenticationResult{}, err
 	}
 
-	if options.AlgorithmPolicy != nil && !options.AlgorithmPolicy.AcceptsAlgorithm(options.Credential.PublicKey.Algorithm) {
-		return AuthenticationResult{}, ErrUnsupportedAlgorithm
-	}
-	if err := verifyAuthenticationSignature(ctx, options.SignatureVerifier, options.Credential, options.Response, clientDataHash); err != nil {
-		return AuthenticationResult{}, err
-	}
-
 	counter := compareCounters(options.Credential.SignCount, parsedAuthData.SignCount)
 	if counter.CloneRisk && options.CounterPolicy.RejectCloneRisk {
 		return AuthenticationResult{}, ErrCloneRisk
 	}
 
 	credential := options.Credential
-	credential.SignCount = parsedAuthData.SignCount
-	credential.BackupEligible = parsedAuthData.Flags.BackupEligible()
-	credential.BackupState = parsedAuthData.Flags.BackupState()
+	nextSignCount := options.Credential.SignCount
+	if counter.Status == CounterStatusIncremented || (counter.CloneRisk && options.CounterPolicy.UpdateOnCloneRisk) {
+		nextSignCount = parsedAuthData.SignCount
+	}
+	nextBackupState := parsedAuthData.Flags.BackupState()
+	nextUVInitialized := options.Credential.UVInitialized
+	uvInitializationPending := !nextUVInitialized && parsedAuthData.Flags.UserVerified() && !options.UVInitializationAuthorized
+	if !nextUVInitialized && parsedAuthData.Flags.UserVerified() && options.UVInitializationAuthorized {
+		nextUVInitialized = true
+	}
+	credential.SignCount = nextSignCount
+	credential.BackupState = nextBackupState
+	credential.UVInitialized = nextUVInitialized
 	if options.Response.AuthenticatorAttachment != "" {
 		credential.AuthenticatorAttachment = options.Response.AuthenticatorAttachment
 	}
@@ -290,13 +328,20 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		AuthenticatedAs: credential.UserHandle,
 		Counter:         counter,
 		Update: CredentialUpdate{
-			ID:             credential.ID,
-			SignCount:      parsedAuthData.SignCount,
-			BackupEligible: parsedAuthData.Flags.BackupEligible(),
-			BackupState:    parsedAuthData.Flags.BackupState(),
+			ID:                   credential.ID,
+			PreviousSignCount:    options.Credential.SignCount,
+			SignCount:            nextSignCount,
+			SignCountChanged:     nextSignCount != options.Credential.SignCount,
+			BackupState:          nextBackupState,
+			BackupStateChanged:   nextBackupState != options.Credential.BackupState,
+			UVInitialized:        nextUVInitialized,
+			UVInitializedChanged: nextUVInitialized != options.Credential.UVInitialized,
 		},
-		Extensions: extensionResults,
-		Warnings:   authenticationWarnings(counter),
+		Extensions:              extensionResults,
+		Warnings:                authenticationWarnings(counter),
+		UserPresent:             parsedAuthData.Flags.UserPresent(),
+		UserVerified:            parsedAuthData.Flags.UserVerified(),
+		UVInitializationPending: uvInitializationPending,
 	}, nil
 }
 
@@ -315,6 +360,9 @@ func validateAuthenticationDependencies(options AuthenticationFinishOptions) err
 	if options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
 		return ErrCredentialNotAllowed
 	}
+	if options.CounterPolicy.RejectCloneRisk && options.CounterPolicy.UpdateOnCloneRisk {
+		return fmt.Errorf("%w: clone-risk counter policy cannot reject and update", ErrInvalidConfiguration)
+	}
 
 	return nil
 }
@@ -326,7 +374,7 @@ func validateAuthenticationState(state AuthenticationState, now time.Time) error
 	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
-	if !state.ExpiresAt.IsZero() && now.After(state.ExpiresAt) {
+	if !state.ExpiresAt.IsZero() && !now.Before(state.ExpiresAt) {
 		return ErrCeremonyExpired
 	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
@@ -348,6 +396,9 @@ func validateAuthenticationResponseShape(response AuthenticationResponse) error 
 }
 
 func verifyAuthenticationCredentialBinding(state AuthenticationState, response AuthenticationResponse, credential CredentialRecord) error {
+	if credential.RPID == "" || credential.RPID != state.RPID {
+		return ErrCredentialRPIDMismatch
+	}
 	if !credential.ID.EqualRawID(response.RawID) {
 		return ErrCredentialNotAllowed
 	}
@@ -428,6 +479,12 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 	}
 	if state.RequestedUserVerification == protocol.UserVerificationRequired && !parsed.Flags.UserVerified() {
 		return protocol.ParsedAuthenticatorData{}, ErrUserVerificationRequired
+	}
+	if parsed.Flags.BackupState() && !parsed.Flags.BackupEligible() {
+		return protocol.ParsedAuthenticatorData{}, ErrInvalidBackupState
+	}
+	if parsed.Flags.BackupEligible() != credential.BackupEligible {
+		return protocol.ParsedAuthenticatorData{}, ErrBackupEligibilityMismatch
 	}
 	if credential.PublicKey.Algorithm == 0 {
 		return protocol.ParsedAuthenticatorData{}, ErrUnsupportedAlgorithm
@@ -521,10 +578,11 @@ func verifyAuthenticationSignature(ctx context.Context, verifier webcrypto.Signa
 	signed := response.AuthenticatorData.AppendTo(make([]byte, 0, response.AuthenticatorData.Len()+len(clientDataHash)))
 	signed = append(signed, clientDataHash...)
 	if err := verifier.VerifySignature(ctx, webcrypto.SignatureInput{
-		Algorithm: credential.PublicKey.Algorithm,
-		PublicKey: credential.PublicKey.Key,
-		Signed:    signed,
-		Signature: response.Signature,
+		Algorithm:              credential.PublicKey.Algorithm,
+		PublicKey:              credential.PublicKey.PublicKeyMaterial(),
+		RawCredentialPublicKey: credential.PublicKey.Raw(),
+		Signed:                 signed,
+		Signature:              response.Signature,
 	}); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
 	}

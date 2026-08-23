@@ -44,6 +44,18 @@ func TestByteValueLengthValidation(t *testing.T) {
 
 	_, err = protocol.NewCredentialID(nil)
 	assertByteLengthError(t, err)
+
+	if _, err = protocol.NewCredentialID(bytes.Repeat([]byte{0x01}, protocol.MaxCredentialIDLength)); err != nil {
+		t.Fatalf("NewCredentialID(max) error = %v", err)
+	}
+	_, err = protocol.NewCredentialID(bytes.Repeat([]byte{0x01}, protocol.MaxCredentialIDLength+1))
+	assertByteLengthError(t, err)
+
+	if _, err = protocol.NewRawID(bytes.Repeat([]byte{0x01}, protocol.MaxCredentialIDLength)); err != nil {
+		t.Fatalf("NewRawID(max) error = %v", err)
+	}
+	_, err = protocol.NewRawID(bytes.Repeat([]byte{0x01}, protocol.MaxCredentialIDLength+1))
+	assertByteLengthError(t, err)
 }
 
 func TestChallengeEqualUsesExactBytes(t *testing.T) {

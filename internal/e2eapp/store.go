@@ -174,17 +174,24 @@ func (s *store) credentialsForUser(handle protocol.UserHandle) []webauthn.Creden
 	return out
 }
 
-func (s *store) updateCredential(update webauthn.CredentialUpdate) {
+func (s *store) updateCredential(update webauthn.CredentialUpdate) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, ok := s.credentialsByID[credentialKey(update.ID.Bytes())]
-	if !ok {
-		return
+	if !ok || record.Credential.SignCount != update.PreviousSignCount {
+		return false
 	}
-	record.Credential.SignCount = update.SignCount
-	record.Credential.BackupEligible = update.BackupEligible
-	record.Credential.BackupState = update.BackupState
+	if update.SignCountChanged {
+		record.Credential.SignCount = update.SignCount
+	}
+	if update.BackupStateChanged {
+		record.Credential.BackupState = update.BackupState
+	}
+	if update.UVInitializedChanged {
+		record.Credential.UVInitialized = update.UVInitialized
+	}
 	record.UpdatedAt = time.Now()
+	return true
 }
 
 func (s *store) createSession(handle protocol.UserHandle) (string, error) {

@@ -28,7 +28,7 @@ The root package supports the relying-party ceremony flow:
 2. Verify registration responses.
 3. Create authentication options.
 4. Verify authentication assertions.
-5. Return persistence-ready credential and counter state.
+5. Return verified credential state plus explicit conditional updates.
 
 Implemented areas:
 
@@ -41,6 +41,8 @@ Implemented areas:
 | Extensions          | WebAuthn Level 3 `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf` handling; deprecated `uvm` remains opt-in.   |
 | Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.    |
 | HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                              |
+| Signature verifier  | Optional standard-library verifier for common EC, RSA PKCS#1/PSS, and Ed25519 algorithms.                                  |
+| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and credential records.                        |
 | Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                           |
 | Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.          |
 
@@ -79,6 +81,7 @@ The package graph is designed so applications only import what they need:
 - `codec/cbor`: optional concrete CBOR and COSE_Key decoder;
 - `crypto`: algorithm policy, signature, certificate-chain, and JWS/JWT verifier
   contracts;
+- `crypto/standard`: optional common-algorithm verifier using Go cryptography;
 - `attestation`: format verifier registry and trust policy contracts;
 - `attestation/none`: optional `none` verifier;
 - `attestation/packed`: optional `packed` self and x5c verifier;
@@ -93,10 +96,12 @@ The package graph is designed so applications only import what they need:
   handlers, and Level 3 registry helpers;
 - `browser`: optional browser JSON DTO conversion helpers;
 - `transport/http`: optional standard-library HTTP JSON helpers;
+- `storage/json`: optional versioned server-side state/credential encoding;
 - `tools/checklicenses`: local dependency manifest checker.
 
 The root package import graph must not include `net/http`, `browser`,
-`transport/http`, or optional attestation format packages.
+`transport/http`, `crypto/standard`, `storage/json`, or optional attestation
+format packages.
 
 ## Examples
 
@@ -105,7 +110,8 @@ Public examples are compiled by `make example-build` and by CI:
 - `examples/manual` shows framework-neutral registration and authentication
   wiring with caller-owned ceremony state and credential storage.
 - `examples/http` shows how to use the optional `transport/http` JSON helpers
-  with `net/http`.
+  with `net/http`, per-session one-time state, expiry, atomic credential
+  insertion, and conditional credential updates.
 - `examples/passkey` shows discoverable credential authentication, including
   lookup by returned user handle and credential ID before verification.
 - `examples/attestation` shows explicit attestation format selection and a
@@ -129,7 +135,11 @@ Safe behavior is the default shape:
 - cross-origin `topOrigin` checks are explicit `OriginPolicy` inputs;
 - user presence is required;
 - user verification is enforced according to ceremony policy;
+- invalid backup-state flags and authentication-time backup-eligibility changes
+  are rejected;
 - signature counter rollback is surfaced as clone risk;
+- clone-risk counters are preserved unless explicit policy authorizes updating;
+- zero-value ceremony timeouts expire after five minutes;
 - unsupported algorithms and formats are rejected;
 - attestation acceptance requires caller-supplied trust policy such as
   `attestation.AcceptNone()` for consumer passkey `none` attestation;

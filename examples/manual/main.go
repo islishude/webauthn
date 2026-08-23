@@ -9,7 +9,7 @@ import (
 	attnone "github.com/islishude/webauthn/attestation/none"
 	"github.com/islishude/webauthn/browser"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
-	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/crypto/standard"
 	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -20,11 +20,15 @@ type server struct {
 	credentials          map[string]webauthn.CredentialRecord
 	attestations         *attestation.Registry
 	extensions           *extension.Registry
-	signatures           webcrypto.SignatureVerifier
+	signatures           *standard.Verifier
 }
 
-func newServer(signatureVerifier webcrypto.SignatureVerifier) (*server, error) {
+func newServer() (*server, error) {
 	attestations, err := attestation.NewRegistry(attnone.New())
+	if err != nil {
+		return nil, err
+	}
+	signatures, err := standard.NewVerifier(protocol.AlgorithmEdDSA, protocol.AlgorithmES256, protocol.AlgorithmRS256)
 	if err != nil {
 		return nil, err
 	}
@@ -39,19 +43,19 @@ func newServer(signatureVerifier webcrypto.SignatureVerifier) (*server, error) {
 		credentials:          make(map[string]webauthn.CredentialRecord),
 		attestations:         attestations,
 		extensions:           extensions,
-		signatures:           signatureVerifier,
+		signatures:           signatures,
 	}, nil
 }
 
 func (s *server) beginRegistration(ctx context.Context, sessionID string, user protocol.UserEntity) (browser.CredentialCreationOptionsJSON, error) {
 	start, err := webauthn.StartRegistration(ctx, webauthn.RegistrationStartOptions{
-		RP:               protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:             user,
-		OriginPolicy:     webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		PubKeyCredParams: protocol.RecommendedLevel3CredentialParameters(),
-		Attestation:      protocol.AttestationNone,
-		UserVerification: protocol.UserVerificationPreferred,
-		Extensions:       protocol.ExtensionInputs{extension.IDCredProps: true},
+		RP:                protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:              user,
+		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams:  protocol.RecommendedLevel3CredentialParameters(),
+		Attestation:       protocol.AttestationNone,
+		Extensions:        protocol.ExtensionInputs{extension.IDCredProps: true},
+		ExtensionRegistry: s.extensions,
 	})
 	if err != nil {
 		return browser.CredentialCreationOptionsJSON{}, err
@@ -130,6 +134,7 @@ func (s *server) finishAuthentication(ctx context.Context, sessionID string, bod
 		Response:          response,
 		Credential:        credential,
 		SignatureVerifier: s.signatures,
+		AlgorithmPolicy:   s.signatures,
 		ExtensionRegistry: s.extensions,
 	})
 	if err != nil {

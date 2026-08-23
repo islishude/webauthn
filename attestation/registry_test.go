@@ -35,14 +35,9 @@ func TestRegistryRejectsDuplicateAndEmptyFormats(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v, want ErrDuplicateFormat", err)
 	}
 
-	registry, err := attestation.NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
-	}
-
-	err = registry.Register(fakeVerifier{format: ""})
+	_, err = attestation.NewRegistry(fakeVerifier{format: ""})
 	if !errors.Is(err, attestation.ErrInvalidFormat) {
-		t.Fatalf("Register() error = %v, want ErrInvalidFormat", err)
+		t.Fatalf("NewRegistry() error = %v, want ErrInvalidFormat", err)
 	}
 }
 
