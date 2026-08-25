@@ -12,11 +12,11 @@ Current status: implementation is complete. The repository has
 transport-neutral registration and authentication APIs, optional attestation
 format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
-with deprecated `uvm` retained, an opt-in Editor's Draft
-`remoteClientDataJSON` handler, optional browser JSON and standard-library HTTP
-helpers, compile-checked examples, W3C and real-browser conformance tests, fuzz
-smoke targets, import graph checks, dependency license checks, and release
-documentation.
+with deprecated `uvm` retained, a separately opt-in non-normative
+`remoteClientDataJSON` preview handler, optional browser JSON and
+standard-library HTTP helpers, compile-checked examples, W3C and real-browser
+conformance tests, fuzz smoke targets, import graph checks, dependency license
+checks, and release documentation.
 
 The release checklist is tracked in `docs/release.md`.
 
@@ -32,19 +32,19 @@ The root package supports the relying-party ceremony flow:
 
 Implemented areas:
 
-| Area                | Status                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Registration        | Transport-neutral start and finish APIs, including conditional-mediation state binding.                                         |
-| Authentication      | Username-first and discoverable credential/passkey flows.                                                                       |
-| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` packages.      |
-| Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules.          |
-| Extensions          | REC `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf`; deprecated `uvm` and ED `remoteClientDataJSON` remain opt-in. |
-| Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.         |
-| HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                   |
-| Signature verifier  | Optional standard-library verifier for common EC, RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters. |
-| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and credential records.                             |
-| Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                                |
-| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.               |
+| Area                | Status                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Registration        | Transport-neutral start and finish APIs, including conditional-mediation state binding.                                                             |
+| Authentication      | Username-first and discoverable credential/passkey flows.                                                                                           |
+| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` packages.                          |
+| Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules.                              |
+| Extensions          | Recommendation `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf`; deprecated `uvm` and non-default `remoteClientDataJSON` remain opt-in. |
+| Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.                             |
+| HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                                       |
+| Signature verifier  | Optional standard-library verifier for common EC, RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters.                     |
+| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and credential records.                                                 |
+| Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                                                    |
+| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.                                   |
 
 ## Design Principles
 
@@ -68,9 +68,10 @@ No implementation logic or tests may be copied, translated, adapted, or derived
 from public WebAuthn/passkey libraries. Stable protocol behavior is based on the
 [25 August 2026 WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/).
 W3C records no substantive change from the 26 May 2026 Candidate Recommendation.
-The [30 July 2026 Editor's Draft](https://w3c.github.io/webauthn/) is used only
-for explicitly marked opt-in preview features. MDN is used only for
-browser-facing context and terminology.
+All Level 3 conformance claims and default behavior follow this Recommendation
+exclusively. The separate `remoteClientDataJSON` preview handler is excluded
+from the default Level 3 registries and from the conformance baseline. MDN is
+used only for browser-facing context and terminology.
 
 ## Package Layout
 
