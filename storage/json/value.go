@@ -196,8 +196,9 @@ func decodeValueAt(value encodedValue, depth int) (any, error) {
 	case valueString:
 		return *value.String, nil
 	case valueBytes:
-		decoded, err := base64.RawURLEncoding.DecodeString(*value.Bytes)
-		if err != nil {
+		encoding := base64.RawURLEncoding.Strict()
+		decoded, err := encoding.DecodeString(*value.Bytes)
+		if err != nil || encoding.EncodeToString(decoded) != *value.Bytes {
 			return nil, fmt.Errorf("%w: invalid extension bytes", ErrInvalidEnvelope)
 		}
 		return decoded, nil

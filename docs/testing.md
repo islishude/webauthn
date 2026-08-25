@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-08-23.
+Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-08-25.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -8,9 +8,12 @@ This document defines the test approach for the planned WebAuthn/passkey server-
 
 Tests may be derived from W3C specification requirements, independently generated fixtures, browser outputs collected for this project, and public conformance data when the license and source are documented.
 
-Selected byte-for-byte vectors from the 26 May 2026 Candidate Recommendation
-live under `testdata/w3c/webauthn-level3`. Their source URL, section, test-only
-sensitivity, and W3C permissive document license are recorded with the data.
+Selected byte-for-byte vectors originally copied from the 26 May 2026 Candidate
+Recommendation live under `testdata/w3c/webauthn-level3`. W3C states that the
+25 August 2026 Recommendation has no substantive changes, and the fixtures are
+recorded as verified against that Recommendation while retaining their original
+source provenance. Their source URL, section, test-only sensitivity, and W3C
+permissive document license are recorded with the data.
 
 Do not copy tests from public WebAuthn/passkey libraries. Do not translate another library's test cases into this repository.
 
@@ -72,6 +75,8 @@ Required coverage:
 
 - valid `webauthn.create` and `webauthn.get` values;
 - challenge mismatch;
+- non-canonical base64url challenge rejection even when it decodes to the
+  expected bytes;
 - origin mismatch;
 - `topOrigin` acceptance and rejection;
 - unknown JSON keys;
@@ -87,6 +92,8 @@ Required coverage:
 - successful registration with `none` attestation;
 - RP ID hash mismatch;
 - missing UP flag;
+- missing UP accepted only for registration state bound to conditional
+  mediation, with ordinary registration still rejecting it;
 - missing UV flag when required;
 - unsupported credential public key algorithm;
 - unsupported attestation format;
@@ -282,7 +289,7 @@ Plan 08 added tests and checks for:
 
 Plan 09 added tests and checks for:
 
-- optional `browser` DTO conversion for creation/request options, credential descriptors, registration responses, authentication responses, malformed JSON, invalid base64url, invalid protocol values, oversized user handles, known largeBlob byte fields, and unknown extension preservation;
+- optional `browser` DTO conversion for creation/request options, credential descriptors, registration responses, authentication responses, malformed JSON, invalid or non-canonical base64url, invalid protocol values, oversized user handles, known largeBlob byte fields, and unknown extension preservation;
 - optional `transport/http` JSON helpers for creation/request option writing, registration/authentication response reading, body-size rejection, malformed JSON handling, and generic error responses that do not echo sensitive error text;
 - compile-checked public examples under `examples/manual`, `examples/http`, `examples/passkey`, and `examples/attestation`;
 - README reference checks that keep public Go usage in compile-checked examples.
@@ -348,12 +355,22 @@ The 2026-08-23 Level 3 conformance refresh added:
   grammar boundaries, and unknown authenticator-attachment normalization;
 - CTAP2 canonical CBOR rejection, exact attestation-object maps, required-only
   COSE parameters, Ed448 typed-key routing, and storage revalidation;
-- byte-for-byte CR vectors for none, cross-origin, top-origin, the 1023-byte
+- byte-for-byte Recommendation-verified vectors for none, cross-origin,
+  top-origin, the 1023-byte
   credential-ID boundary, Ed448, Apple anonymous attestation, and PRF;
 - packed enterprise/firmware/subject rules, TPM SAN profiles, Android
   hardware-enforced policy, and Apple nonce ASN.1 rejection paths;
 - Playwright 1.62.1 Credentials lifecycle and in-memory credential storage-state
   E2E while retaining every existing Chromium CDP fault-injection test.
+
+The 2026-08-25 Recommendation refresh added:
+
+- exact canonical unpadded base64url validation for client challenges, browser
+  DTO binary values, PRF credential keys, and trusted storage envelopes;
+- conditional registration mediation state, its storage round trip, the
+  no-UP acceptance case, and the unchanged ordinary-registration rejection;
+- normative baseline and fixture verification metadata for the final Level 3
+  Recommendation.
 
 ## Fuzzing targets
 
@@ -401,23 +418,23 @@ Real hardware authenticator fixtures, direct/enterprise attestation browser capt
 
 The matrix below maps W3C WebAuthn Level 3 relying-party operation groups to repository tests. The rows are grouped by observable server-side behavior rather than quoting the specification step text.
 
-| W3C relying-party operation area                                                                                        | Coverage                                                                                                                                                                                                                |
-| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Registration response type and shape validation                                                                         | `TestRegistrationFinishRejectsInvalidInputs`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                                           |
-| Registration collected client data type, challenge, origin, cross-origin, top-origin, and reserved token binding checks | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationTopOriginPolicy`, `TestRegistrationIgnoresReservedTokenBinding`, `TestParseCollectedClientData`, `FuzzParseCollectedClientData`                          |
-| Registration attestation object decoding and authenticator data parsing                                                 | `TestDecoderDecodesAttestationObject`, `TestDecoderDecodesCompoundAttestationObject`, `TestParseAuthenticatorDataWithAttestedCredentialData`, `FuzzDecodeAttestationObject`, `FuzzParseAuthenticatorData`               |
-| Registration RP ID hash, UP, UV, backup flags, credential ID, and algorithm checks                                      | `TestRegistrationFinishRejectsInvalidInputs`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                                           |
-| Registration extension input and output handling                                                                        | Start-input, ordering, callback-order, unknown-policy tests plus `extension` handler tests                                                                                                                              |
-| Registration attestation format and trust policy dispatch                                                               | Attestation format package tests, `TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation`, `TestRegistrationBuiltInAttestationTrustPolicies`                                                                  |
-| Registration credential uniqueness and record construction                                                              | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationWithNoneAttestation`, storage JSON round trip                                                                                                            |
-| Authentication allow-credentials and credential/user-handle ownership checks                                            | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationUsernameFirst`, `TestAuthenticationDiscoverable`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                          |
-| Authentication collected client data type, challenge, origin, cross-origin, and reserved token binding checks           | `TestAuthenticationRejectsInvalidInputs`, `FuzzParseCollectedClientData`                                                                                                                                                |
-| Authentication RP ID hash and AppID extension behavior                                                                  | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`                                                                      |
-| Authentication UP, UV, extension output, and signature verification                                                     | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationLevel2UVMExtension`, `TestAuthenticationLevel2LargeBlobExtension`, `TestAuthenticationLevel3PRFExtension`, `TestBrowserVirtualAuthenticatorFixturesVerify` |
-| Authentication backup, UV, counter, and clone-risk behavior                                                             | `TestAuthenticationCounterPolicy`, `TestAuthenticationUVInitializationPolicy`, invalid-input matrix                                                                                                                     |
-| Parser, transport, and storage boundary robustness                                                                      | Protocol/codec/browser fuzz targets plus all three `storage/json` fuzz targets                                                                                                                                          |
-| Root modularity and dependency hygiene                                                                                  | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`, `make example-build`, `make readme-check`                                                                        |
-| Protocol byte safety and allocation-sensitive comparisons                                                               | `TestCredentialIDTypedEqualityDoesNotUseDefensiveCopies`, `TestUserHandleTypedEqualityDoesNotUseDefensiveCopies`, `TestAppendToAppendsWithoutExposingStoredBytes`                                                       |
+| W3C relying-party operation area                                                                                                  | Coverage                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Registration response type and shape validation                                                                                   | `TestRegistrationFinishRejectsInvalidInputs`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                                                                                       |
+| Registration collected client data type, canonical challenge, origin, cross-origin, top-origin, and reserved token binding checks | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationTopOriginPolicy`, `TestRegistrationIgnoresReservedTokenBinding`, `TestParseCollectedClientData`, `TestCollectedClientDataChallengeBytesRejectsNonCanonicalBase64URL`, `FuzzParseCollectedClientData` |
+| Registration attestation object decoding and authenticator data parsing                                                           | `TestDecoderDecodesAttestationObject`, `TestDecoderDecodesCompoundAttestationObject`, `TestParseAuthenticatorDataWithAttestedCredentialData`, `FuzzDecodeAttestationObject`, `FuzzParseAuthenticatorData`                                                           |
+| Registration RP ID hash, mediation-aware UP, UV, backup flags, credential ID, and algorithm checks                                | `TestRegistrationFinishRejectsInvalidInputs`, `TestConditionalRegistrationDoesNotRequireUserPresence`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                              |
+| Registration extension input and output handling                                                                                  | Start-input, ordering, callback-order, unknown-policy tests plus `extension` handler tests                                                                                                                                                                          |
+| Registration attestation format and trust policy dispatch                                                                         | Attestation format package tests, `TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation`, `TestRegistrationBuiltInAttestationTrustPolicies`                                                                                                              |
+| Registration credential uniqueness and record construction                                                                        | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationWithNoneAttestation`, storage JSON round trip                                                                                                                                                        |
+| Authentication allow-credentials and credential/user-handle ownership checks                                                      | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationUsernameFirst`, `TestAuthenticationDiscoverable`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                      |
+| Authentication collected client data type, challenge, origin, cross-origin, and reserved token binding checks                     | `TestAuthenticationRejectsInvalidInputs`, `FuzzParseCollectedClientData`                                                                                                                                                                                            |
+| Authentication RP ID hash and AppID extension behavior                                                                            | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`                                                                                                                  |
+| Authentication UP, UV, extension output, and signature verification                                                               | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationLevel2UVMExtension`, `TestAuthenticationLevel2LargeBlobExtension`, `TestAuthenticationLevel3PRFExtension`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                             |
+| Authentication backup, UV, counter, and clone-risk behavior                                                                       | `TestAuthenticationCounterPolicy`, `TestAuthenticationUVInitializationPolicy`, invalid-input matrix                                                                                                                                                                 |
+| Parser, transport, and storage boundary robustness                                                                                | Protocol/codec/browser fuzz targets plus all three `storage/json` fuzz targets                                                                                                                                                                                      |
+| Root modularity and dependency hygiene                                                                                            | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`, `make example-build`, `make readme-check`                                                                                                                    |
+| Protocol byte safety and allocation-sensitive comparisons                                                                         | `TestCredentialIDTypedEqualityDoesNotUseDefensiveCopies`, `TestUserHandleTypedEqualityDoesNotUseDefensiveCopies`, `TestAppendToAppendsWithoutExposingStoredBytes`                                                                                                   |
 
 ## Continuous integration expectations
 

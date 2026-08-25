@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-23.
+Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-25.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -8,11 +8,14 @@ This document describes the target design for a Go server-side WebAuthn/passkey 
 
 ## Source basis
 
-The stable normative protocol baseline is the W3C Web Authentication Level 3
-Candidate Recommendation dated 26 May 2026. The 30 July 2026 Editor's Draft is
-used only for explicitly marked opt-in preview behavior, currently
-`remoteClientDataJSON`. MDN Web Authentication API documentation is used for
-browser-facing explanations, secure-context context, and passkey terminology.
+The stable normative protocol baseline is the
+[W3C Web Authentication Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/)
+dated 25 August 2026. W3C states that it contains no substantive
+changes from the 26 May 2026 Candidate Recommendation. The 30 July 2026
+Editor's Draft is used only for explicitly marked opt-in preview behavior,
+currently `remoteClientDataJSON`. MDN Web Authentication API documentation is
+used for browser-facing explanations, secure-context context, and passkey
+terminology.
 
 No implementation code from public WebAuthn/passkey libraries may be used or consulted.
 
@@ -32,7 +35,7 @@ Fourth, it must aim at complete WebAuthn Level 3 relying-party support. The stab
 
 The core library is ceremony-oriented.
 
-Registration is split into two application-visible phases. The first phase builds `PublicKeyCredentialCreationOptions` and returns opaque or structured ceremony state that the application stores temporarily. The second phase accepts the stored ceremony state and the browser credential response, verifies the response, and returns a credential record plus attestation and extension outcomes.
+Registration is split into two application-visible phases. The first phase builds `PublicKeyCredentialCreationOptions` and returns opaque or structured ceremony state that the application stores temporarily. The state records conditional creation mediation when the caller opts into it, while the caller remains responsible for setting the outer browser `CredentialCreationOptions.mediation` value. The second phase accepts the stored ceremony state and the browser credential response, verifies the response, and returns a credential record plus attestation and extension outcomes.
 
 Authentication is split similarly. The first phase builds `PublicKeyCredentialRequestOptions` and returns ceremony state. The second phase accepts stored state, persisted credential material, and the browser assertion response, then returns verification status, user identity information, counter update information, and extension outcomes.
 
@@ -42,20 +45,20 @@ The library should not own the account model. User lookup, session creation, acc
 
 Plan 02 fixed the initial package names. The dependency direction must remain stable.
 
-| Area                        | Responsibility                                                                                                 | Root dependency direction                                                               |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Root package                | Module documentation plus registration and authentication ceremony entry points                                | Does not import optional packages or `net/http`                                         |
-| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values        | No attestation format dependencies                                                      |
-| `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract        | Root accepts explicit format verifiers and trust policy                                 |
-| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, legacy `android-safetynet`, `fido-u2f`, `apple`, `compound`            | WebAuthn attestation formats implemented as optional imports; root does not import them |
-| `extension`                 | Operation-aware CR handlers, deprecated compatibility handlers, and standalone Editor's Draft preview handlers | Root accepts explicit handlers; preview handlers are absent from default registries     |
-| `crypto`                    | Algorithm policy, signature verification, certificate, and JWS/JWT contracts                                   | Behind narrow contracts                                                                 |
-| `crypto/standard`           | Optional explicit-policy verifier for common WebAuthn algorithms using Go cryptography                         | Not imported by root                                                                    |
-| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                        | Behind narrow contracts                                                                 |
-| `codec/cbor`                | Optional concrete CTAP2-canonical CBOR and required-parameter-only COSE_Key decoder                            | Not imported by root; replaceable behind narrow codec contracts                         |
-| `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                           | Optional package; not imported by the root package                                      |
-| `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                        | Optional package; not imported by the root package                                      |
-| `storage/json`              | Versioned bounded encoding for trusted server-side ceremony state and credential records                       | Optional package; no storage I/O or client-side sealing                                 |
+| Area                        | Responsibility                                                                                                             | Root dependency direction                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Root package                | Module documentation plus registration and authentication ceremony entry points                                            | Does not import optional packages or `net/http`                                         |
+| `protocol`                  | WebAuthn dictionaries, byte-safe values, collected client data, authenticator data, descriptors, values                    | No attestation format dependencies                                                      |
+| `attestation`               | Format verifier contract, result types, duplicate-rejecting registry, and minimal trust policy contract                    | Root accepts explicit format verifiers and trust policy                                 |
+| Attestation format packages | `none`, `packed`, `tpm`, `android-key`, legacy `android-safetynet`, `fido-u2f`, `apple`, `compound`                        | WebAuthn attestation formats implemented as optional imports; root does not import them |
+| `extension`                 | Operation-aware Recommendation handlers, deprecated compatibility handlers, and standalone Editor's Draft preview handlers | Root accepts explicit handlers; preview handlers are absent from default registries     |
+| `crypto`                    | Algorithm policy, signature verification, certificate, and JWS/JWT contracts                                               | Behind narrow contracts                                                                 |
+| `crypto/standard`           | Optional explicit-policy verifier for common WebAuthn algorithms using Go cryptography                                     | Not imported by root                                                                    |
+| `codec`                     | CBOR attestation object, COSE key, and extension map decoding contracts                                                    | Behind narrow contracts                                                                 |
+| `codec/cbor`                | Optional concrete CTAP2-canonical CBOR and required-parameter-only COSE_Key decoder                                        | Not imported by root; replaceable behind narrow codec contracts                         |
+| `browser`                   | Browser JSON DTOs and unpadded base64url request/response conversion                                                       | Optional package; not imported by the root package                                      |
+| `transport/http`            | Standard-library JSON read/write helpers for browser WebAuthn transport                                                    | Optional package; not imported by the root package                                      |
+| `storage/json`              | Versioned bounded encoding for trusted server-side ceremony state and credential records                                   | Optional package; no storage I/O or client-side sealing                                 |
 
 ## Boundary between WebAuthn parsing and general codecs
 
@@ -85,7 +88,7 @@ requirements to those lower-level operations and validate protocol bindings.
 
 Protocol byte values are represented internally as bytes, not as transport-specific strings. This applies to challenges, credential IDs, user handles, raw IDs, authenticator data, signatures, attestation objects, and client data JSON.
 
-Browser-facing JSON often uses base64url string encodings for binary fields. That is transport behavior and belongs in optional JSON/browser helper packages or explicit marshal/unmarshal wrappers, not in the core ceremony logic.
+Browser-facing JSON often uses base64url string encodings for binary fields. That is transport behavior and belongs in optional JSON/browser helper packages or explicit marshal/unmarshal wrappers, not in the core ceremony logic. Decoding uses the Go standard library and rejects padding, whitespace, non-zero trailing bits, and any other spelling that is not the canonical unpadded encoding required by WebAuthn.
 
 Public `Bytes()` methods remain defensive-copy accessors. Internal ceremony and
 attestation verification code should use typed equality and `AppendTo` helpers
@@ -222,10 +225,12 @@ handlers validate inputs at start and verify outputs after core cryptographic
 checks; registries are immutable and outputs deterministic. Standard signature
 verification and storage JSON remain optional subpackages outside the root graph.
 
-The 26 May 2026 conformance refresh adds no Go dependency. It preserves
+The 2026 Recommendation conformance refresh adds no Go dependency. It preserves
 optional-member presence for `topOrigin`, validates identifier grammar and
 CTAP2 canonical CBOR/COSE, completes packed/TPM/Android/Apple certificate
-requirements, and adds selected byte-for-byte W3C vectors. Playwright is a
+requirements, enforces canonical base64url challenge and transport values,
+binds conditional registration mediation into ceremony state, and adds selected
+byte-for-byte W3C vectors. Playwright is a
 test-only dependency pinned to 1.62.1; its Credentials API augments rather than
 replaces Chromium CDP virtual-authenticator coverage. Playwright remains outside
 the Go module and public API, and is distributed under Apache-2.0.

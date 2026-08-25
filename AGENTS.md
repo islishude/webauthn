@@ -29,9 +29,9 @@ or design documents disagree, resolve the drift in the same change.
 2. Do not copy or translate their tests. Derive tests from the specification,
    independently authored or generated fixtures, browser outputs collected for
    this project, or documented public conformance data with compatible licenses.
-3. Use the 26 May 2026 W3C Web Authentication Level 3 Candidate Recommendation
-   as the stable normative source. Keep Editor's Draft behavior explicitly
-   marked and opt-in. MDN may provide browser context, not protocol authority.
+3. Use the 25 August 2026 W3C Web Authentication Level 3 Recommendation as the
+   stable normative source. Keep Editor's Draft behavior explicitly marked and
+   opt-in. MDN may provide browser context, not protocol authority.
 4. Do not implement general-purpose cryptography, CBOR, COSE, ASN.1, JWS/JWT,
    X.509, JSON, base64url, or similar foundations. Use the Go standard library,
    an explicit dependency, or an injected narrow interface.

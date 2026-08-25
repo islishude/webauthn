@@ -1,8 +1,8 @@
 # API boundaries
 
-Status: 26 May 2026 Level 3 CR ceremony APIs, strict protocol decoding, opt-in
-Editor's Draft extension handling, attestation trust policy, optional
-browser/HTTP adapters, and examples implemented, revised 2026-08-23.
+Status: 25 August 2026 Level 3 Recommendation ceremony APIs, strict protocol
+decoding, opt-in Editor's Draft extension handling, attestation trust policy,
+optional browser/HTTP adapters, and examples implemented, revised 2026-08-25.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -58,12 +58,16 @@ The root package must not import optional attestation format packages, `browser`
 `OriginPolicy`, challenge configuration, credential parameters, exclude
 descriptors, authenticator selection, hints, attestation conveyance,
 attestation format preferences, requested extensions, an extension registry and
-input policy, and timeout. Registration user verification comes only from
+input policy, timeout, and an optional `ConditionalMediation` binding.
+Registration user verification comes only from
 `AuthenticatorSelection`; the zero value is `preferred`. `Now` may be injected
 for deterministic timeout state. A zero timeout means five minutes.
 
 It returns creation options and caller-stored ceremony state. The core does not
-persist ceremony state.
+persist ceremony state. `ConditionalMediation` does not wrap the returned public
+key options: the caller must first check the client's `conditionalCreate`
+capability and set `CredentialCreationOptions.mediation` to `"conditional"` in
+the browser call.
 
 ### Registration finish
 
@@ -79,6 +83,9 @@ authenticator attachment, and warnings.
 If `AttestationTrustPolicy` is nil, no attestation is accepted after format
 verification. Callers that accept consumer passkey `none` attestation should use
 an explicit policy such as `attestation.AcceptNone()`.
+User presence remains required by default. It is not required only when the
+trusted registration state records conditional mediation, as specified by the
+Level 3 registration relying-party operation.
 
 ### Authentication start
 
@@ -121,7 +128,8 @@ The root package never infers origins from HTTP headers.
 
 Core protocol values are byte-oriented. The optional `browser` package converts
 between core values and JSON DTOs for projects that use unpadded base64url for
-browser `ArrayBuffer`-like fields.
+browser `ArrayBuffer`-like fields. Decoders accept only the canonical unpadded
+encoding, including zero trailing pad bits and no whitespace.
 
 Protocol `Bytes()` accessors return defensive copies. Ceremony code uses typed
 comparison and `AppendTo` helpers for values such as credential IDs, raw IDs,
@@ -224,7 +232,9 @@ The root defines storage-neutral records and conditional updates. Applications
 may map them into their own schema or use optional `storage/json` for strict,
 versioned serialization. That package performs no storage I/O, encryption,
 authentication, cookie sealing, or replay prevention and is only for trusted
-server-side storage.
+server-side storage. Registration state serialization preserves the
+conditional-mediation binding and treats its absent zero value as ordinary,
+UP-required registration.
 
 Storage backends, sessions, cookies, framework adapters, CLI tools, and
 conformance harness helpers remain outside the root API.

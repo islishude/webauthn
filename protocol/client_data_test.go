@@ -76,6 +76,30 @@ func TestParseCollectedClientDataRejectsMalformedInput(t *testing.T) {
 	}
 }
 
+func TestCollectedClientDataChallengeBytesRejectsNonCanonicalBase64URL(t *testing.T) {
+	t.Parallel()
+
+	challenge := bytes.Repeat([]byte{0xff}, 16)
+	canonical := base64.RawURLEncoding.EncodeToString(challenge)
+	nonCanonical := canonical[:len(canonical)-1] + "x"
+	decoded, err := base64.RawURLEncoding.DecodeString(nonCanonical)
+	if err != nil || !bytes.Equal(decoded, challenge) {
+		t.Fatalf("test input %q does not decode to the expected challenge", nonCanonical)
+	}
+	raw, err := protocol.NewClientDataJSON([]byte(`{"type":"webauthn.create","challenge":"` + nonCanonical + `","origin":"https://example.com"}`))
+	if err != nil {
+		t.Fatalf("NewClientDataJSON() error = %v", err)
+	}
+
+	clientData, err := protocol.ParseCollectedClientData(raw)
+	if err != nil {
+		t.Fatalf("ParseCollectedClientData() error = %v", err)
+	}
+	if _, err := clientData.ChallengeBytes(); err == nil {
+		t.Fatal("ChallengeBytes() accepted non-canonical base64url")
+	}
+}
+
 func TestParseCollectedClientDataStripsBOMForParsing(t *testing.T) {
 	t.Parallel()
 

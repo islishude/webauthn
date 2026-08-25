@@ -80,9 +80,13 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 // ChallengeBytes decodes the collected client data challenge using unpadded
 // base64url, as used by browser WebAuthn client data.
 func (d CollectedClientData) ChallengeBytes() ([]byte, error) {
-	challenge, err := base64.RawURLEncoding.DecodeString(d.Challenge)
+	encoding := base64.RawURLEncoding.Strict()
+	challenge, err := encoding.DecodeString(d.Challenge)
 	if err != nil {
 		return nil, err
+	}
+	if encoding.EncodeToString(challenge) != d.Challenge {
+		return nil, ErrMalformedClientData
 	}
 
 	return slices.Clone(challenge), nil

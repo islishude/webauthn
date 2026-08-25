@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-23.
+Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-25.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -14,7 +14,10 @@ The library does not protect the application from insecure account recovery, com
 
 Challenges must be generated in a trusted server-side environment, stored temporarily by the relying party, and compared exactly during verification. The default generator should use sufficient entropy and should target at least 32 random bytes unless a caller deliberately overrides it. Inputs shorter than the WebAuthn minimum should be rejected by default.
 
-Challenge mismatch is a hard protocol failure. The library must not offer a permissive mode that accepts mismatches.
+Challenge mismatch is a hard protocol failure. Client data must contain the
+exact canonical unpadded base64url encoding, not merely another string that
+decodes to the same bytes. The library must not offer a permissive mode that
+accepts mismatches.
 
 ## Origin and RP ID policy
 
@@ -31,7 +34,13 @@ or ID.
 
 ## User presence and user verification
 
-User presence is required for both registration and authentication. User verification must be enforced according to the configured ceremony policy. If user verification is required and the UV flag is not set, verification fails.
+User presence is required for authentication and for ordinary registration. The
+Level 3 conditional-registration exception is honored only when trusted
+ceremony state records that the caller used `mediation: "conditional"`; its
+zero value keeps the fail-closed UP requirement. The caller must separately
+check the client's `conditionalCreate` capability and set the browser option.
+User verification must be enforced according to the configured ceremony policy.
+If user verification is required and the UV flag is not set, verification fails.
 
 If user verification is preferred or discouraged, the result should be surfaced so the application can record or risk-score the ceremony.
 
@@ -151,7 +160,7 @@ Malformed data should fail closed. The parser and verifier must test:
 - unsupported algorithms;
 - invalid signatures;
 - invalid or missing required client data fields;
-- invalid base64url challenge values at the transport boundary.
+- invalid or non-canonical base64url challenge and transport values.
 
 ## Time and replay
 
@@ -181,7 +190,7 @@ Before stable release, defaults should be:
 - explicit allowed origins;
 - explicit allowed top origins for cross-origin ceremonies;
 - explicit RP ID;
-- user presence required;
+- user presence required except for explicitly bound conditional registration;
 - user verification enforced when policy says required;
 - `none` attestation accepted only when explicit trust policy allows it;
 - non-`none` attestation accepted only when caller trust policy accepts it;

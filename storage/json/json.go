@@ -59,6 +59,7 @@ type registrationStateDTO struct {
 	Challenge                 string                  `json:"challenge"`
 	RPID                      string                  `json:"rpId"`
 	OriginPolicy              originPolicyDTO         `json:"originPolicy"`
+	ConditionalMediation      bool                    `json:"conditionalMediation,omitempty"`
 	UserHandle                string                  `json:"userHandle"`
 	RequestedUserVerification string                  `json:"requestedUserVerification"`
 	RequestedExtensions       map[string]encodedValue `json:"requestedExtensions,omitempty"`
@@ -116,6 +117,7 @@ func MarshalRegistrationState(state webauthn.RegistrationState) ([]byte, error) 
 		Challenge:                 encodeBytes(state.Challenge.Bytes()),
 		RPID:                      state.RPID,
 		OriginPolicy:              originPolicyToDTO(state.OriginPolicy),
+		ConditionalMediation:      state.ConditionalMediation,
 		UserHandle:                encodeBytes(state.UserHandle.Bytes()),
 		RequestedUserVerification: string(state.RequestedUserVerification),
 		RequestedExtensions:       extensions,
@@ -157,6 +159,7 @@ func UnmarshalRegistrationState(data []byte) (webauthn.RegistrationState, error)
 		Challenge:                 challenge,
 		RPID:                      payload.RPID,
 		OriginPolicy:              originPolicyFromDTO(payload.OriginPolicy),
+		ConditionalMediation:      payload.ConditionalMediation,
 		UserHandle:                userHandle,
 		RequestedUserVerification: protocol.UserVerificationRequirement(payload.RequestedUserVerification),
 		RequestedExtensions:       protocol.ExtensionInputs(extensions),
@@ -526,8 +529,9 @@ func encodeBytes(raw []byte) string {
 }
 
 func decodeBytes(field string, encoded string, min int, max int) ([]byte, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || len(raw) < min || (max > 0 && len(raw) > max) {
+	encoding := base64.RawURLEncoding.Strict()
+	raw, err := encoding.DecodeString(encoded)
+	if err != nil || encoding.EncodeToString(raw) != encoded || len(raw) < min || (max > 0 && len(raw) > max) {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidEnvelope, field)
 	}
 	return raw, nil

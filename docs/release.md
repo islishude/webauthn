@@ -1,6 +1,6 @@
 # Release checklist
 
-Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-23.
+Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-25.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
@@ -16,6 +16,16 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
 ## Release notes
+
+2026-08-25: Updated the stable baseline to the final WebAuthn Level 3
+Recommendation. W3C records no substantive protocol change from the 26 May
+Candidate Recommendation. The audit nevertheless closed two existing gaps:
+client challenges and browser/storage/PRF transport values now require exact
+canonical unpadded base64url, and registration ceremony state now binds
+conditional creation mediation so only that flow may omit UP. The storage JSON
+envelope remains version 1; the new boolean field is omitted for ordinary
+registration, so its absent zero value preserves the previous fail-closed
+behavior. No dependency changed.
 
 2026-08-23: Aligned the implementation with the 26 May 2026 WebAuthn Level 3
 Candidate Recommendation and kept the 30 July Editor's Draft
@@ -51,6 +61,10 @@ added.
 
 ## Pre-v1 migration notes
 
+- Set `RegistrationStartOptions.ConditionalMediation` only when the browser call
+  uses `mediation: "conditional"`; persist the returned state so the finish
+  verifier can apply the Level 3 UP exception. The zero value remains ordinary
+  UP-required registration.
 - Move registration UV configuration to
   `AuthenticatorSelectionCriteria.UserVerification`; the duplicate start option
   field was removed.

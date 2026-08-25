@@ -61,9 +61,15 @@ func (g RandomChallengeGenerator) GenerateChallenge(ctx context.Context) (protoc
 
 // RegistrationStartOptions configures registration option creation.
 type RegistrationStartOptions struct {
-	RP                     protocol.RPEntity
-	User                   protocol.UserEntity
-	OriginPolicy           OriginPolicy
+	RP           protocol.RPEntity
+	User         protocol.UserEntity
+	OriginPolicy OriginPolicy
+	// ConditionalMediation records that the caller will invoke credential
+	// creation with mediation set to "conditional". The caller remains
+	// responsible for checking the client's conditionalCreate capability and
+	// setting the browser API option. The zero value keeps user presence
+	// required.
+	ConditionalMediation   bool
 	Challenge              protocol.Challenge
 	ChallengeGenerator     ChallengeGenerator
 	PubKeyCredParams       []protocol.CredentialParameter
@@ -93,9 +99,12 @@ type RegistrationStartResult struct {
 
 // RegistrationState is stored by callers between registration start and finish.
 type RegistrationState struct {
-	Challenge                 protocol.Challenge
-	RPID                      string
-	OriginPolicy              OriginPolicy
+	Challenge    protocol.Challenge
+	RPID         string
+	OriginPolicy OriginPolicy
+	// ConditionalMediation binds the Level 3 registration user-presence
+	// exception to trusted caller-stored ceremony state.
+	ConditionalMediation      bool
 	UserHandle                protocol.UserHandle
 	RequestedUserVerification protocol.UserVerificationRequirement
 	RequestedExtensions       protocol.ExtensionInputs
@@ -196,6 +205,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		Challenge:                 challenge,
 		RPID:                      options.RP.ID,
 		OriginPolicy:              options.OriginPolicy.clone(),
+		ConditionalMediation:      options.ConditionalMediation,
 		UserHandle:                options.User.ID,
 		RequestedUserVerification: userVerification,
 		RequestedExtensions:       stateExtensions,

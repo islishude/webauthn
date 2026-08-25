@@ -6,6 +6,11 @@ Candidate Recommendation, 26 May 2026.
 
 Source: <https://www.w3.org/TR/2026/CR-webauthn-3-20260526/#sctn-test-vectors>
 
+The original source provenance above is retained. W3C states that the
+[25 August 2026 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#sctn-test-vectors)
+contains no substantive changes from that Candidate Recommendation; these
+fixtures were verified against the final publication.
+
 The fixtures are copied from the specification under the
 [W3C permissive document license](https://www.w3.org/copyright/document-license-2023/).
 They contain deterministic test-only keys and credentials and no production

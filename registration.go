@@ -310,7 +310,7 @@ func verifyRegistrationAuthenticatorData(state RegistrationState, raw protocol.A
 	if !bytes.Equal(parsed.RPIDHash, expectedRPIDHash[:]) {
 		return protocol.ParsedAuthenticatorData{}, ErrRPIDHashMismatch
 	}
-	if !parsed.Flags.UserPresent() {
+	if !state.ConditionalMediation && !parsed.Flags.UserPresent() {
 		return protocol.ParsedAuthenticatorData{}, ErrUserPresenceRequired
 	}
 	if state.RequestedUserVerification == protocol.UserVerificationRequired && !parsed.Flags.UserVerified() {

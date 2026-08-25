@@ -266,6 +266,16 @@ func TestResponseDecodersRejectInvalidInputs(t *testing.T) {
 			err:  browser.ErrInvalidBase64URL,
 		},
 		{
+			name: "non-canonical base64url",
+			data: []byte(`{"type":"public-key","rawId":"_x","response":{"clientDataJSON":"e30","attestationObject":"oA"}}`),
+			err:  browser.ErrInvalidBase64URL,
+		},
+		{
+			name: "base64url with whitespace",
+			data: []byte(`{"type":"public-key","rawId":"_w\n","response":{"clientDataJSON":"e30","attestationObject":"oA"}}`),
+			err:  browser.ErrInvalidBase64URL,
+		},
+		{
 			name: "empty raw id",
 			data: []byte(`{"type":"public-key","rawId":"","response":{"clientDataJSON":"e30","attestationObject":"oA"}}`),
 			err:  browser.ErrInvalidProtocolValue,

@@ -75,6 +75,19 @@ func TestRegistrationCapturesUVInitialization(t *testing.T) {
 	}
 }
 
+func TestConditionalRegistrationDoesNotRequireUserPresence(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.State.ConditionalMediation = true
+	options.Response.AttestationObject = fixture.attestationObject(t, "none", "example.com", registrationFlagAT, nil, map[string]any{})
+
+	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
+		t.Fatalf("FinishRegistration() error = %v", err)
+	}
+}
+
 func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	t.Parallel()
 
@@ -85,9 +98,10 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 
 	result, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
-		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:         protocol.UserEntity{ID: userID, Name: "user@example.com", DisplayName: "Example User"},
-		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		RP:                   protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:                 protocol.UserEntity{ID: userID, Name: "user@example.com", DisplayName: "Example User"},
+		OriginPolicy:         webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		ConditionalMediation: true,
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
 		},
@@ -116,6 +130,9 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	}
 	if !result.State.ExpiresAt.Equal(now.Add(1500 * time.Millisecond)) {
 		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(1500*time.Millisecond))
+	}
+	if !result.State.ConditionalMediation {
+		t.Fatal("ConditionalMediation = false, want true")
 	}
 }
 

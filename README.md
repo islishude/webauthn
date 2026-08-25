@@ -10,7 +10,7 @@ the application to persist in its own storage.
 
 Current status: implementation is complete. The repository has
 transport-neutral registration and authentication APIs, optional attestation
-format packages, a 26 May 2026 WebAuthn Level 3 Candidate Recommendation
+format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
 with deprecated `uvm` retained, an opt-in Editor's Draft
 `remoteClientDataJSON` handler, optional browser JSON and standard-library HTTP
@@ -34,11 +34,11 @@ Implemented areas:
 
 | Area                | Status                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Registration        | Transport-neutral start and finish APIs.                                                                                        |
+| Registration        | Transport-neutral start and finish APIs, including conditional-mediation state binding.                                         |
 | Authentication      | Username-first and discoverable credential/passkey flows.                                                                       |
 | Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` packages.      |
 | Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules.          |
-| Extensions          | CR `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf`; deprecated `uvm` and ED `remoteClientDataJSON` remain opt-in.  |
+| Extensions          | REC `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf`; deprecated `uvm` and ED `remoteClientDataJSON` remain opt-in. |
 | Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.         |
 | HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                   |
 | Signature verifier  | Optional standard-library verifier for common EC, RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters. |
@@ -66,7 +66,8 @@ The library is built around a few constraints that are enforced by tests and CI:
 
 No implementation logic or tests may be copied, translated, adapted, or derived
 from public WebAuthn/passkey libraries. Stable protocol behavior is based on the
-[26 May 2026 WebAuthn Level 3 Candidate Recommendation](https://www.w3.org/TR/2026/CR-webauthn-3-20260526/).
+[25 August 2026 WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/).
+W3C records no substantive change from the 26 May 2026 Candidate Recommendation.
 The [30 July 2026 Editor's Draft](https://w3c.github.io/webauthn/) is used only
 for explicitly marked opt-in preview features. MDN is used only for
 browser-facing context and terminology.
@@ -132,11 +133,13 @@ and provide their own session and CSRF protections.
 
 Safe behavior is the default shape:
 
-- challenges are server-generated and compared exactly;
+- challenges are server-generated and compared against their exact canonical
+  unpadded base64url encoding;
 - origins and RP IDs are explicit policy inputs;
 - cross-origin `topOrigin` checks are explicit `OriginPolicy` inputs;
 - a present `topOrigin` cannot be collapsed into an absent value;
-- user presence is required;
+- user presence is required except for ceremony state explicitly bound to
+  conditional registration mediation;
 - user verification is enforced according to ceremony policy;
 - invalid backup-state flags and authentication-time backup-eligibility changes
   are rejected;

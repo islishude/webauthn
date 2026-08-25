@@ -3,6 +3,7 @@ package storagejson_test
 import (
 	"bytes"
 	"crypto/elliptic"
+	"encoding/base64"
 	stdjson "encoding/json"
 	"errors"
 	"reflect"
@@ -31,10 +32,31 @@ func TestRegistrationStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalRegistrationState() error = %v", err)
 	}
-	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) {
+	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ConditionalMediation || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
+}
+
+func TestOrdinaryRegistrationStateOmitsConditionalMediation(t *testing.T) {
+	t.Parallel()
+
+	state := registrationStateFixture(t)
+	state.ConditionalMediation = false
+	encoded, err := storagejson.MarshalRegistrationState(state)
+	if err != nil {
+		t.Fatalf("MarshalRegistrationState() error = %v", err)
+	}
+	if bytes.Contains(encoded, []byte(`"conditionalMediation"`)) {
+		t.Fatalf("ordinary registration state contains conditionalMediation: %s", encoded)
+	}
+	decoded, err := storagejson.UnmarshalRegistrationState(encoded)
+	if err != nil {
+		t.Fatalf("UnmarshalRegistrationState() error = %v", err)
+	}
+	if decoded.ConditionalMediation {
+		t.Fatal("ConditionalMediation = true, want false")
+	}
 }
 
 func TestAuthenticationStateRoundTrip(t *testing.T) {
@@ -119,6 +141,18 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 			wantErr: storagejson.ErrInvalidEnvelope,
 		},
 		{
+			name:    "non-canonical challenge base64url",
+			data:    replaceNestedString(t, registration, "registrationState", "challenge", nonCanonicalBase64URL(t, bytes.Repeat([]byte{0x01}, protocol.RecommendedChallengeLength))),
+			decode:  decodeRegistration,
+			wantErr: storagejson.ErrInvalidEnvelope,
+		},
+		{
+			name:    "non-canonical extension bytes base64url",
+			data:    bytes.Replace(registration, []byte(`"bytes":"AP8"`), []byte(`"bytes":"AP9"`), 1),
+			decode:  decodeRegistration,
+			wantErr: storagejson.ErrInvalidEnvelope,
+		},
+		{
 			name:    "damaged cose key",
 			data:    replaceNestedString(t, credential, "credentialRecord", "publicKeyCose", "oA"),
 			decode:  decodeCredential,
@@ -199,6 +233,7 @@ func registrationStateFixture(t testing.TB) webauthn.RegistrationState {
 		Challenge:                 mustChallenge(t),
 		RPID:                      "example.com",
 		OriginPolicy:              webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}, AllowedTopOrigins: []string{"https://top.example"}},
+		ConditionalMediation:      true,
 		UserHandle:                mustUserHandle(t),
 		RequestedUserVerification: protocol.UserVerificationRequired,
 		RequestedExtensions:       extensionTree(),
@@ -206,6 +241,24 @@ func registrationStateFixture(t testing.TB) webauthn.RegistrationState {
 		Attestation:               protocol.AttestationNone,
 		ExpiresAt:                 time.Date(2026, 8, 23, 12, 5, 0, 123, time.UTC),
 	}
+}
+
+func nonCanonicalBase64URL(t *testing.T, raw []byte) string {
+	t.Helper()
+	canonical := base64.RawURLEncoding.EncodeToString(raw)
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	for _, replacement := range alphabet {
+		candidate := canonical[:len(canonical)-1] + string(replacement)
+		if candidate == canonical {
+			continue
+		}
+		decoded, err := base64.RawURLEncoding.DecodeString(candidate)
+		if err == nil && bytes.Equal(decoded, raw) {
+			return candidate
+		}
+	}
+	t.Fatal("failed to construct non-canonical base64url input")
+	return ""
 }
 
 func authenticationStateFixture(t testing.TB) webauthn.AuthenticationState {

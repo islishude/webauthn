@@ -1,15 +1,16 @@
 # Protocol map
 
 Status: WebAuthn Level 3 protocol, attestation, extension, adapter, and example
-slices implemented, revised 2026-08-23.
+slices implemented, revised 2026-08-25.
 
 This file maps WebAuthn Level 3 relying-party protocol surfaces to library
 components. It is a completeness checklist, not implementation code.
 
 ## Normative baseline
 
-Stable normative source: W3C Web Authentication Level 3 Candidate
-Recommendation, 26 May 2026.
+Stable normative source: [W3C Web Authentication Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/),
+25 August 2026. W3C records no substantive change from the 26 May 2026
+Candidate Recommendation.
 
 Preview source: the 30 July 2026 Editor's Draft. Preview-only behavior is
 explicitly opt-in and is not included in default Level 3 registries.
@@ -26,6 +27,7 @@ behavior.
 | ------------------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PublicKeyCredentialCreationOptions` | Protocol model and registration options builder   | Required RP, user, challenge, and credential parameters; supports timeout, exclude list, authenticator selection, hints, attestation, attestation formats, extensions. |
 | `PublicKeyCredentialRequestOptions`  | Protocol model and authentication options builder | Required challenge; supports timeout, RP ID, allow credentials, user verification, hints, and extensions.                                                              |
+| Conditional creation mediation       | Registration state and verifier                   | Caller sets the outer browser mediation option; stored conditional state is the only case in which registration does not require UP.                                   |
 | `PublicKeyCredentialRpEntity`        | Protocol model                                    | Enforce RP ID and display-name validation separately from HTTP origin discovery.                                                                                       |
 | `PublicKeyCredentialUserEntity`      | Protocol model                                    | Preserve user handle as bytes; allow the required `displayName` member to contain the specified empty-string value.                                                    |
 | `PublicKeyCredentialDescriptor`      | Protocol model                                    | Store and replay transport hints including `hybrid` and `smart-card`; unknown transports must not break parsing before validation boundaries.                          |
@@ -34,15 +36,15 @@ behavior.
 
 ## Client data
 
-| Protocol surface                   | Component             | Required behavior                                                                                                                  |
-| ---------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `CollectedClientData.type`         | Ceremony verification | Must match `webauthn.create` for registration and `webauthn.get` for authentication.                                               |
-| `CollectedClientData.challenge`    | Ceremony verification | Must equal the base64url encoding of the server-generated challenge.                                                               |
-| `CollectedClientData.origin`       | Origin policy         | Must match configured allowed origins. No HTTP request inference in core.                                                          |
-| `CollectedClientData.crossOrigin`  | Origin policy         | Must be accepted or rejected by explicit RP policy.                                                                                |
-| `CollectedClientData.topOrigin`    | Origin policy         | Presence is tracked separately; if present it must be a non-empty string, require `crossOrigin`, and match configured top origins. |
-| `CollectedClientData.tokenBinding` | Reserved client data  | Parsed for preservation but ignored for relying-party verification in Level 3.                                                     |
-| Unknown client data keys           | Client data parser    | Must be tolerated. Future extension fields must not break parsing.                                                                 |
+| Protocol surface                   | Component             | Required behavior                                                                                                                             |
+| ---------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CollectedClientData.type`         | Ceremony verification | Must match `webauthn.create` for registration and `webauthn.get` for authentication.                                                          |
+| `CollectedClientData.challenge`    | Ceremony verification | Must exactly equal the canonical unpadded base64url encoding of the server-generated challenge; equivalent alternate spellings are malformed. |
+| `CollectedClientData.origin`       | Origin policy         | Must match configured allowed origins. No HTTP request inference in core.                                                                     |
+| `CollectedClientData.crossOrigin`  | Origin policy         | Must be accepted or rejected by explicit RP policy.                                                                                           |
+| `CollectedClientData.topOrigin`    | Origin policy         | Presence is tracked separately; if present it must be a non-empty string, require `crossOrigin`, and match configured top origins.            |
+| `CollectedClientData.tokenBinding` | Reserved client data  | Parsed for preservation but ignored for relying-party verification in Level 3.                                                                |
+| Unknown client data keys           | Client data parser    | Must be tolerated. Future extension fields must not break parsing.                                                                            |
 
 ## Authenticator data
 
@@ -66,7 +68,7 @@ The registration verifier covers these WebAuthn Level 3 operation groups:
 3. type, challenge, origin, `topOrigin`, reserved `tokenBinding`, and cross-origin verification;
 4. client data hash calculation;
 5. attestation object decoding, including `compound` statement normalization;
-6. RP ID hash, user presence, user verification, and credential algorithm checks;
+6. RP ID hash, mediation-aware user presence, user verification, and credential algorithm checks;
 7. attestation statement format dispatch and trust policy;
 8. extension result validation after attestation acceptance;
 9. BE/BS and UV initialization capture;

@@ -138,6 +138,27 @@ func TestPRFHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("reject non-canonical evalByCredential", func(t *testing.T) {
+		t.Parallel()
+
+		credential := "_x"
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			Operation: extension.OperationAuthentication,
+			ID:        extension.IDPRF,
+			Requested: true,
+			ClientInput: extension.PRFInput{
+				EvalByCredential: map[string]extension.PRFValues{
+					credential: {First: []byte("salt")},
+				},
+				AllowCredentials: []string{credential},
+			},
+		})
+
+		if !errors.Is(err, extension.ErrInvalidRequest) {
+			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
 	t.Run("reject short result", func(t *testing.T) {
 		t.Parallel()
 

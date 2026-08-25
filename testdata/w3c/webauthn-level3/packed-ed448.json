@@ -1,6 +1,8 @@
 {
   "source": "W3C Web Authentication Level 3 Candidate Recommendation, 26 May 2026, section 16.12",
   "sourceURL": "https://www.w3.org/TR/2026/CR-webauthn-3-20260526/#sctn-test-vectors-packed-ed448",
+  "verifiedAgainst": "W3C Web Authentication Level 3 Recommendation, 25 August 2026",
+  "verifiedAgainstURL": "https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#sctn-test-vectors-packed-ed448",
   "license": "W3C permissive document license",
   "rpId": "example.org",
   "origin": "https://example.org",

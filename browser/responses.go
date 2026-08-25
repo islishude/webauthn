@@ -274,9 +274,13 @@ func optionalBytesFromBase64URL(field string, encoded *string) ([]byte, error) {
 }
 
 func decodeBase64URL(field string, encoded string) ([]byte, error) {
-	bytes, err := base64.RawURLEncoding.DecodeString(encoded)
+	encoding := base64.RawURLEncoding.Strict()
+	bytes, err := encoding.DecodeString(encoded)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrInvalidBase64URL, field, err)
+	}
+	if encoding.EncodeToString(bytes) != encoded {
+		return nil, fmt.Errorf("%w: %s: non-canonical encoding", ErrInvalidBase64URL, field)
 	}
 
 	return bytes, nil

@@ -92,11 +92,13 @@ func (PRFHandler) ValidateInput(request InputRequest) (any, error) {
 		if len(input.AllowCredentials) == 0 {
 			return nil, invalidRequest("prf evalByCredential requires allowCredentials")
 		}
+		encoding := base64.RawURLEncoding.Strict()
 		for id := range input.EvalByCredential {
 			if id == "" || !slices.Contains(input.AllowCredentials, id) {
 				return nil, invalidRequest("prf evalByCredential credential is not allowed")
 			}
-			if _, err := base64.RawURLEncoding.DecodeString(id); err != nil {
+			decoded, err := encoding.DecodeString(id)
+			if err != nil || encoding.EncodeToString(decoded) != id {
 				return nil, invalidRequest("prf evalByCredential credential must be base64url")
 			}
 		}
