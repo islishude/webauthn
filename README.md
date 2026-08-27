@@ -67,7 +67,6 @@ The library is built around a few constraints that are enforced by tests and CI:
 No implementation logic or tests may be copied, translated, adapted, or derived
 from public WebAuthn/passkey libraries. Stable protocol behavior is based on the
 [25 August 2026 WebAuthn Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/).
-W3C records no substantive change from the 26 May 2026 Candidate Recommendation.
 All Level 3 conformance claims and default behavior follow this Recommendation
 exclusively. The separate `remoteClientDataJSON` preview handler is excluded
 from the default Level 3 registries and from the conformance baseline. MDN is
