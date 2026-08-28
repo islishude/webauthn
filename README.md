@@ -14,9 +14,9 @@ format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
 with deprecated `uvm` retained, a separately opt-in non-normative
 `remoteClientDataJSON` preview handler, optional browser JSON and
-standard-library HTTP helpers, compile-checked examples, W3C and real-browser
-conformance tests, fuzz smoke targets, import graph checks, dependency license
-checks, and release documentation.
+standard-library HTTP helpers, compile-checked examples, a complete 45-case W3C
+Level 3 vector inventory, real-browser conformance tests, fuzz smoke targets,
+import graph checks, dependency license checks, and release documentation.
 
 The release checklist is tracked in `docs/release.md`.
 

@@ -1,0 +1,239 @@
+{
+  "source": "W3C Web Authentication Level 3 Recommendation, 25 August 2026",
+  "sourceURL": "https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#sctn-test-vectors",
+  "license": "W3C permissive document license",
+  "expectedCount": 45,
+  "categoryCounts": {
+    "ceremony-registration": 15,
+    "ceremony-authentication": 15,
+    "prf-web-api": 12,
+    "prf-ctap": 3
+  },
+  "cases": [
+    {
+      "id": "16.2-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.2-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.3-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.3-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.4-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.4-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.5-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.5-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.6-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.6-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.7-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.7-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.8-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.8-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.9-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.9-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.10-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.10-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.11-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.11-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.12-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.12-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.13-registration",
+      "category": "ceremony-registration",
+      "expectation": "reject-nonconformant-tpm-der"
+    },
+    {
+      "id": "16.13-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.14-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.14-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.15-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.15-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.16-registration",
+      "category": "ceremony-registration",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.16-authentication",
+      "category": "ceremony-authentication",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-01-registration-enabled-true",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-02-registration-enabled-false",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-03-authentication-empty",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-04-registration-eval-enabled-true",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-05-registration-eval-enabled-false",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-06-registration-eval-results",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-07-authentication-eval-empty",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-08-authentication-eval-results",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-09-authentication-mapped-credential",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-10-authentication-other-credential-empty",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-11-authentication-other-credential-results",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.1-12-authentication-equal-inputs",
+      "category": "prf-web-api",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.2-01-pin2-single",
+      "category": "prf-ctap",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.2-02-pin2-two",
+      "category": "prf-ctap",
+      "expectation": "accept"
+    },
+    {
+      "id": "16.17.1.2-03-pin1-single",
+      "category": "prf-ctap",
+      "expectation": "accept"
+    }
+  ]
+}

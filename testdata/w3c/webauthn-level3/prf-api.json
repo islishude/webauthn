@@ -1,0 +1,218 @@
+{
+  "source": "W3C Web Authentication Level 3 Recommendation, 25 August 2026",
+  "sourceURL": "https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#test-vectors-extensions-prf-webauthn",
+  "license": "W3C permissive document license",
+  "sensitivity": "Deterministic test-only keys and credentials; no production account or authenticator material.",
+  "notes": "Cases with an unspecified ArrayBuffer value validate presence, length, and cardinality; only the equal-input example publishes exact output bytes.",
+  "cases": [
+    {
+      "id": "16.17.1.1-01-registration-enabled-true",
+      "operation": "registration",
+      "input": {},
+      "output": {
+        "enabledPresent": true,
+        "resultsPresent": false,
+        "enabled": true
+      }
+    },
+    {
+      "id": "16.17.1.1-02-registration-enabled-false",
+      "operation": "registration",
+      "input": {},
+      "output": {
+        "enabledPresent": true,
+        "resultsPresent": false,
+        "enabled": false
+      }
+    },
+    {
+      "id": "16.17.1.1-03-authentication-empty",
+      "operation": "authentication",
+      "input": {},
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": false
+      }
+    },
+    {
+      "id": "16.17.1.1-04-registration-eval-enabled-true",
+      "operation": "registration",
+      "input": {
+        "eval": {
+          "first": "01020304"
+        }
+      },
+      "output": {
+        "enabledPresent": true,
+        "resultsPresent": false,
+        "enabled": true
+      }
+    },
+    {
+      "id": "16.17.1.1-05-registration-eval-enabled-false",
+      "operation": "registration",
+      "input": {
+        "eval": {
+          "first": "01020304"
+        }
+      },
+      "output": {
+        "enabledPresent": true,
+        "resultsPresent": false,
+        "enabled": false
+      }
+    },
+    {
+      "id": "16.17.1.1-06-registration-eval-results",
+      "operation": "registration",
+      "input": {
+        "eval": {
+          "first": "01020304"
+        }
+      },
+      "output": {
+        "enabledPresent": true,
+        "resultsPresent": true,
+        "enabled": true,
+        "results": {
+          "firstPresent": true,
+          "secondPresent": false
+        }
+      }
+    },
+    {
+      "id": "16.17.1.1-07-authentication-eval-empty",
+      "operation": "authentication",
+      "input": {
+        "eval": {
+          "first": "01020304"
+        }
+      },
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": false
+      }
+    },
+    {
+      "id": "16.17.1.1-08-authentication-eval-results",
+      "operation": "authentication",
+      "input": {
+        "eval": {
+          "first": "01020304"
+        }
+      },
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": true,
+        "results": {
+          "firstPresent": true,
+          "secondPresent": false
+        }
+      }
+    },
+    {
+      "id": "16.17.1.1-09-authentication-mapped-credential",
+      "operation": "authentication",
+      "input": {
+        "eval": {
+          "first": "01020304",
+          "second": "05060708"
+        },
+        "evalByCredential": {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            "first": "090a0b0c"
+          }
+        }
+      },
+      "allowCredentials": [
+        "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE",
+        "dzNjLW90aGVyLWNyZWRlbnRpYWw"
+      ],
+      "selectedCredential": "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE",
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": true,
+        "results": {
+          "firstPresent": true,
+          "secondPresent": false
+        }
+      }
+    },
+    {
+      "id": "16.17.1.1-10-authentication-other-credential-empty",
+      "operation": "authentication",
+      "input": {
+        "eval": {
+          "first": "01020304",
+          "second": "05060708"
+        },
+        "evalByCredential": {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            "first": "090a0b0c"
+          }
+        }
+      },
+      "allowCredentials": [
+        "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE",
+        "dzNjLW90aGVyLWNyZWRlbnRpYWw"
+      ],
+      "selectedCredential": "dzNjLW90aGVyLWNyZWRlbnRpYWw",
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": false
+      }
+    },
+    {
+      "id": "16.17.1.1-11-authentication-other-credential-results",
+      "operation": "authentication",
+      "input": {
+        "eval": {
+          "first": "01020304",
+          "second": "05060708"
+        },
+        "evalByCredential": {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            "first": "090a0b0c"
+          }
+        }
+      },
+      "allowCredentials": [
+        "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE",
+        "dzNjLW90aGVyLWNyZWRlbnRpYWw"
+      ],
+      "selectedCredential": "dzNjLW90aGVyLWNyZWRlbnRpYWw",
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": true,
+        "results": {
+          "firstPresent": true,
+          "secondPresent": true
+        }
+      }
+    },
+    {
+      "id": "16.17.1.1-12-authentication-equal-inputs",
+      "operation": "authentication",
+      "input": {
+        "evalByCredential": {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            "first": "090a0b0c",
+            "second": "090a0b0c"
+          }
+        }
+      },
+      "allowCredentials": ["e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE"],
+      "selectedCredential": "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE",
+      "output": {
+        "enabledPresent": false,
+        "resultsPresent": true,
+        "results": {
+          "firstPresent": true,
+          "secondPresent": true,
+          "firstHex": "c4172e982e9097c39a6c0cb720cb375b92e3fcad154a63e43a93f1096b1e1973",
+          "secondHex": "c4172e982e9097c39a6c0cb720cb375b92e3fcad154a63e43a93f1096b1e1973"
+        }
+      }
+    }
+  ]
+}

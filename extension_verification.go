@@ -119,6 +119,7 @@ type extensionOutputPolicy struct {
 
 type extensionVerificationInputs struct {
 	operation               extension.Operation
+	selectedCredentialID    protocol.CredentialID
 	requestedExtensions     protocol.ExtensionInputs
 	policy                  extensionOutputPolicy
 	registry                *extension.Registry
@@ -207,6 +208,7 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 			Operation:                  inputs.operation,
 			ID:                         id,
 			Requested:                  requested,
+			SelectedCredentialID:       inputs.selectedCredentialID,
 			ClientInput:                clientInput,
 			ClientOutput:               clientOutput,
 			ClientOutputPresent:        hasClientOutput,

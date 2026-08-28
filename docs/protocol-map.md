@@ -1,7 +1,7 @@
 # Protocol map
 
 Status: WebAuthn Level 3 protocol, attestation, extension, adapter, and example
-slices implemented, revised 2026-08-25.
+slices implemented, revised 2026-08-28.
 
 This file maps WebAuthn Level 3 relying-party protocol surfaces to library
 components. It is a completeness checklist, not implementation code.
@@ -89,7 +89,8 @@ The authentication verifier covers these WebAuthn Level 3 operation groups:
 6. RP ID hash verification, including AppID extension behavior;
 7. user presence and user verification checks;
 8. signature verification over authenticator data plus SHA-256 of client data;
-9. extension result validation after signature success, including PRF binding;
+9. extension result validation after signature success, including PRF binding
+   to the credential that produced the assertion;
 10. backup eligibility, UV initialization, and clone-risk update policy.
 
 The library supports username-first and discoverable-credential flows. In
@@ -98,31 +99,31 @@ associated with the credential.
 
 ## Attestation statement formats
 
-| Format identifier   | Package                        | Modular dependency notes                                                            | Status   |
-| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | -------- |
-| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                       | Complete |
-| `packed`            | `attestation/packed`           | Exact subject encodings, AAGUID/firmware fields, and enterprise-only serial policy  | Complete |
-| `tpm`               | `attestation/tpm`              | TPM bindings plus critical SAN attribute type and manufacturer/model/version checks | Complete |
-| `android-key`       | `attestation/androidkey`       | Union default plus explicit hardware/TEE-only authorization-list policy             | Complete |
-| `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`; legacy format | Complete |
-| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters            | Complete |
-| `apple`             | `attestation/apple`            | DER sequence/explicit nonce and credential-certificate public-key binding           | Complete |
-| `compound`          | `attestation/compound`         | Dispatches normalized sub-statements through caller-selected verifiers              | Complete |
+| Format identifier   | Package                        | Modular dependency notes                                                                  | Status   |
+| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- | -------- |
+| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                             | Complete |
+| `packed`            | `attestation/packed`           | Exact subject encodings, AAGUID/firmware fields, and enterprise-only serial policy        | Complete |
+| `tpm`               | `attestation/tpm`              | TPM bindings, strict `TPMT_SIGNATURE`, and critical SAN manufacturer/model/version checks | Complete |
+| `android-key`       | `attestation/androidkey`       | Union default plus explicit hardware/TEE-only authorization-list policy                   | Complete |
+| `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`; legacy format       | Complete |
+| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters                  | Complete |
+| `apple`             | `attestation/apple`            | DER sequence/explicit nonce and credential-certificate public-key binding                 | Complete |
+| `compound`          | `attestation/compound`         | Dispatches normalized sub-statements through caller-selected verifiers                    | Complete |
 
 The root package must not import these packages automatically. Trust acceptance
 remains caller policy after format verification succeeds.
 
 ## Extensions
 
-| Extension identifier   | Applicability                   | Behavior                                                                                                     | Status                |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------- |
-| `appid`                | Authentication                  | Allows RP ID hash verification against AppID when request, policy, and client output agree.                  | Complete              |
-| `appidExclude`         | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                          | Complete              |
-| `credProps`            | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                 | Complete              |
-| `largeBlob`            | Registration and authentication | Represents inputs/outputs and leaves application data storage policy to caller.                              | Complete              |
-| `prf`                  | Registration and authentication | Validates PRF input/output, output lengths, and authentication `evalByCredential` allow-list binding.        | Complete              |
-| `remoteClientDataJSON` | Registration and authentication | Editor's Draft client-only extension; validates ceremony/challenge and exact serialized client-data binding. | Preview, opt-in       |
-| `uvm`                  | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.              | Deprecated, supported |
+| Extension identifier   | Applicability                   | Behavior                                                                                                               | Status                |
+| ---------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `appid`                | Authentication                  | Allows RP ID hash verification against AppID when request, policy, and client output agree.                            | Complete              |
+| `appidExclude`         | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                                    | Complete              |
+| `credProps`            | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                           | Complete              |
+| `largeBlob`            | Registration and authentication | Represents inputs/outputs and leaves application data storage policy to caller.                                        | Complete              |
+| `prf`                  | Registration and authentication | Validates PRF input/output and binds `evalByCredential` results to the selected credential, not merely the allow list. | Complete              |
+| `remoteClientDataJSON` | Registration and authentication | Editor's Draft client-only extension; validates ceremony/challenge and exact serialized client-data binding.           | Preview, opt-in       |
+| `uvm`                  | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.                        | Deprecated, supported |
 
 `extension.NewLevel3Registry` excludes `uvm` by default.
 `extension.NewLevel3RegistryWithDeprecated` includes it for callers that still
@@ -131,6 +132,16 @@ need to parse existing outputs.
 `extension.RemoteClientDataJSONHandler` is not included in either default
 registry. A caller opting into it must also configure the remote origin in
 `OriginPolicy`; no origin inference or wildcard is introduced.
+
+## Recommendation test-vector accounting
+
+The local manifest accounts for all 45 section 16 cases: 30 registration and
+authentication cases, 12 PRF Web Authentication API output cases, and 3
+test-only CTAP2 `hmac-secret` calculations. CTAP calculation tests do not add a
+client, authenticator, or device communication surface. The non-normative TPM
+registration vector's DER signature is retained as an expected rejection; a
+test-only `TPMT_SIGNATURE` wrapper proves the normative path without broadening
+production acceptance.
 
 ## Security and privacy policy surfaces
 

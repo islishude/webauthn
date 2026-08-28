@@ -1,6 +1,6 @@
 # Release checklist
 
-Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-25.
+Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-28.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
@@ -16,6 +16,17 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
 ## Release notes
+
+2026-08-28: Completed the frozen Recommendation section 16 inventory with 45
+unique cases: 30 ceremony, 12 PRF Web Authentication API, and 3 test-only CTAP2
+calculations. Authentication extension output now carries the selected
+credential ID, and PRF `evalByCredential` results are checked only against that
+credential before falling back to `eval`. The non-normative TPM vector's raw DER
+signature remains rejected in favor of normative `TPMT_SIGNATURE`; a test-only
+derived wrapper validates the intended flow. Added test-only
+`github.com/cloudflare/circl v1.6.5` for real Ed448 vector verification. No
+storage format, browser wire format, root import boundary, or production
+CTAP/Ed448 implementation changed.
 
 2026-08-25: Updated the stable baseline to the final WebAuthn Level 3
 Recommendation. W3C records no substantive protocol change from the 26 May
@@ -71,6 +82,12 @@ added.
 - Pass the selected immutable extension registry to start options whenever
   extension inputs are non-empty. Custom handlers now implement `ValidateInput`
   and `VerifyOutput`; post-construction `Register` mutation was removed.
+- Authentication `extension.OutputRequest` now includes
+  `SelectedCredentialID`. Root ceremony callers receive this automatically;
+  callers that invoke `PRFHandler.VerifyOutput` directly with
+  `evalByCredential` results must supply the credential that produced the
+  assertion. Missing context fails closed when credential-specific selection
+  could change the expected output.
 - Construct credential keys from raw COSE plus typed material. Signature inputs
   no longer carry adapter-owned `any` key handles.
 - Persist credential updates conditionally using `PreviousSignCount` and the

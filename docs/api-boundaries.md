@@ -2,7 +2,7 @@
 
 Status: 25 August 2026 Level 3 Recommendation ceremony APIs, strict protocol
 decoding, opt-in Editor's Draft extension handling, attestation trust policy,
-optional browser/HTTP adapters, and examples implemented, revised 2026-08-25.
+optional browser/HTTP adapters, and examples implemented, revised 2026-08-28.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -210,6 +210,11 @@ them.
 `extension.OutputRequest.ClientOutputPresent` and
 `AuthenticatorOutputPresent` distinguish an absent extension member from an
 explicit null value, so built-in handlers can reject malformed null outputs.
+For authentication, `extension.OutputRequest.SelectedCredentialID` contains the
+credential that passed the core credential/user binding checks; it is zero for
+registration. The PRF handler uses this trusted context to select an exact
+`evalByCredential` entry before falling back to `eval`, and never accepts a
+result merely because it matches some other requested input.
 
 `extension.NewLevel3Registry` includes `appid`, `appidExclude`, `credProps`,
 `largeBlob`, and `prf`. `extension.NewLevel3RegistryWithDeprecated` also

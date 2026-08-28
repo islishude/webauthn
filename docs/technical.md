@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-25.
+Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-28.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -114,7 +114,9 @@ conditional updates. Optional `storage/json` reconstructs typed key material by
 decoding the stored raw COSE key rather than trusting serialized derivatives.
 COSE algorithm identifiers remain extensible but are bounded to Web IDL `long`.
 Ed448 (`-53`) is represented as typed OKP material and requires a caller
-signature adapter because `crypto/standard` does not implement Ed448.
+signature adapter because `crypto/standard` does not implement Ed448. The W3C
+Ed448 vector uses CIRCL only from external test code to exercise that adapter
+with a real signature; CIRCL is not imported by production packages.
 
 ## Ceremony verification shape
 
@@ -188,13 +190,13 @@ Dependencies must be minimal and compartmentalized. The root package should not 
 
 The implementation should prefer standard library support for SHA-256, X.509 parsing, ASN.1 parsing, ECDSA/RSA verification, and base64url handling where it is sufficient. CBOR, COSE, and JWS/JWT require explicit dependency decisions before implementation.
 
-Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.2` and `github.com/ldclabs/cose v1.3.4` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
+Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.3` and `github.com/ldclabs/cose v1.4.0` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
 
 Plan 05's initial `attestation/packed` slice adds no dependency. It uses Go standard library X.509 parsing for packed attestation certificate shape checks and delegates attestation signature verification through `crypto.SignatureVerifier`. X.509 trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 
 Plan 05's initial `attestation/fidou2f` slice also adds no dependency. It uses `codec.CredentialPublicKey.U2FPublicKey` to obtain the U2F raw public key form from the selected codec, uses Go standard library X.509 parsing for the single attestation certificate, and delegates ES256 signature verification through `crypto.SignatureVerifier`.
 
-Plan 05's initial `attestation/tpm` slice adds no dependency. It uses `codec.CredentialPublicKey.PublicKeyMaterial` to bind TPM public-area EC2 or RSA material to the credential public key, parses only the WebAuthn-required TPM public-area, certInfo, certify-info, and signature structures, uses Go standard library ASN.1/X.509 parsing for AIK certificate requirements, and delegates attestation signature verification through `crypto.SignatureVerifier`. Trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
+Plan 05's initial `attestation/tpm` slice adds no dependency. It uses `codec.CredentialPublicKey.PublicKeyMaterial` to bind TPM public-area EC2 or RSA material to the credential public key, parses only the WebAuthn-required TPM public-area, certInfo, certify-info, and `TPMT_SIGNATURE` structures, uses Go standard library ASN.1/X.509 parsing for AIK certificate requirements, and delegates attestation signature verification through `crypto.SignatureVerifier`. Trust-chain acceptance remains caller policy through `attestation.TrustPolicy`; raw DER signatures are not accepted as TPM statements.
 
 Plan 05's initial `attestation/androidkey` slice adds no dependency. It uses `codec.CredentialPublicKey.PublicKeyMaterial` to bind the Android Key certificate public key to the credential public key, parses only the WebAuthn-required Android Key attestation extension fields with Go standard library ASN.1/X.509 support, and delegates attestation signature verification through `crypto.SignatureVerifier`. Trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 
@@ -234,6 +236,14 @@ byte-for-byte W3C vectors. Playwright is a
 test-only dependency pinned to 1.62.1; its Credentials API augments rather than
 replaces Chromium CDP virtual-authenticator coverage. Playwright remains outside
 the Go module and public API, and is distributed under Apache-2.0.
+
+The 2026-08-28 vector completion records all 45 Recommendation section 16 cases:
+30 ceremony cases, 12 Web Authentication API PRF cases, and 3 test-only CTAP2
+calculation cases. Authentication extension dispatch now supplies the selected
+credential ID so `evalByCredential` is bound to the credential that actually
+produced the assertion. `github.com/cloudflare/circl v1.6.5` is a test-only
+Ed448 verifier; it does not change `crypto/standard`, the root import graph, or
+the client/authenticator scope of the library.
 
 ## Compatibility and passkey behavior
 

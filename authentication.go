@@ -302,6 +302,7 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	}
 	extensionResults, err := verifyAuthenticationExtensions(ctx, authenticationExtensionInputs{
 		state:                   options.State,
+		selectedCredentialID:    options.Credential.ID,
 		policy:                  options.ExtensionPolicy,
 		registry:                options.ExtensionRegistry,
 		clientExtensionResults:  options.Response.ClientExtensionResults,
@@ -521,6 +522,7 @@ func decodeAuthenticationExtensions(decoder codec.ExtensionMapDecoder, parsed pr
 
 type authenticationExtensionInputs struct {
 	state                   AuthenticationState
+	selectedCredentialID    protocol.CredentialID
 	policy                  AuthenticationExtensionPolicy
 	registry                *extension.Registry
 	clientExtensionResults  map[string]any
@@ -534,6 +536,7 @@ func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationEx
 	}
 	return verifyExtensions(ctx, extensionVerificationInputs{
 		operation:               extension.OperationAuthentication,
+		selectedCredentialID:    inputs.selectedCredentialID,
 		requestedExtensions:     inputs.state.RequestedExtensions,
 		policy:                  extensionOutputPolicy{rejectUnrequested: inputs.policy.RejectUnrequested, rejectUnknown: inputs.policy.RejectUnknown},
 		registry:                inputs.registry,

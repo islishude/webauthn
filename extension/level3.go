@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"slices"
+
+	"github.com/islishude/webauthn/protocol"
 )
 
 const (
@@ -131,7 +133,7 @@ func (handler PRFHandler) VerifyOutput(_ context.Context, request OutputRequest)
 	if !hasClientOutput(request) {
 		return Result{ID: IDPRF, Outputs: map[string]any{IDPRF: output}}, nil
 	}
-	if err := parsePRFOutput(request.Operation, input, request.ClientOutput, &output); err != nil {
+	if err := parsePRFOutput(request.Operation, input, request.SelectedCredentialID, request.ClientOutput, &output); err != nil {
 		return Result{}, err
 	}
 
@@ -201,14 +203,14 @@ type prfOutputPresence struct {
 	results bool
 }
 
-func parsePRFOutput(operation Operation, input PRFInput, value any, output *PRFResult) error {
+func parsePRFOutput(operation Operation, input PRFInput, selectedCredentialID protocol.CredentialID, value any, output *PRFResult) error {
 	var presence prfOutputPresence
 	if typed, ok := value.(PRFResult); ok {
 		typed = clonePRFResult(typed)
 		output.Enabled = typed.Enabled
 		output.Results = typed.Results
 		presence = prfOutputPresence{enabled: typed.Enabled != nil, results: typed.Results != nil}
-		return validatePRFOutput(operation, input, presence, output)
+		return validatePRFOutput(operation, input, selectedCredentialID, presence, output)
 	}
 	fields, ok := objectFields(value)
 	if !ok {
@@ -231,10 +233,10 @@ func parsePRFOutput(operation Operation, input PRFInput, value any, output *PRFR
 		presence.results = true
 	}
 
-	return validatePRFOutput(operation, input, presence, output)
+	return validatePRFOutput(operation, input, selectedCredentialID, presence, output)
 }
 
-func validatePRFOutput(operation Operation, input PRFInput, presence prfOutputPresence, output *PRFResult) error {
+func validatePRFOutput(operation Operation, input PRFInput, selectedCredentialID protocol.CredentialID, presence prfOutputPresence, output *PRFResult) error {
 	if err := validatePRFResult(output.Results); err != nil {
 		return err
 	}
@@ -253,23 +255,33 @@ func validatePRFOutput(operation Operation, input PRFInput, presence prfOutputPr
 		if presence.enabled {
 			return invalidRequest("prf enabled is registration-only")
 		}
-		if presence.results && !prfResultsMatchAnyInput(input, *output.Results) {
-			return invalidRequest("prf results do not match authentication inputs")
+		if presence.results {
+			selectedInput, ok := selectedPRFInput(input, selectedCredentialID)
+			if !ok || !prfResultMatchesInput(selectedInput, *output.Results) {
+				return invalidRequest("prf results do not match selected credential input")
+			}
 		}
 	}
 	return nil
 }
 
-func prfResultsMatchAnyInput(input PRFInput, results PRFValues) bool {
-	if input.Eval != nil && prfResultMatchesInput(*input.Eval, results) {
-		return true
-	}
-	for _, values := range input.EvalByCredential {
-		if prfResultMatchesInput(values, results) {
-			return true
+func selectedPRFInput(input PRFInput, selectedCredentialID protocol.CredentialID) (PRFValues, bool) {
+	if len(input.EvalByCredential) != 0 {
+		if selectedCredentialID.Len() == 0 {
+			return PRFValues{}, false
+		}
+		encoded := base64.RawURLEncoding.EncodeToString(selectedCredentialID.AppendTo(nil))
+		if len(input.AllowCredentials) != 0 && !slices.Contains(input.AllowCredentials, encoded) {
+			return PRFValues{}, false
+		}
+		if values, ok := input.EvalByCredential[encoded]; ok {
+			return values, true
 		}
 	}
-	return false
+	if input.Eval == nil {
+		return PRFValues{}, false
+	}
+	return *input.Eval, true
 }
 
 func prfResultCardinalityMatches(input PRFValues, result PRFValues) bool {

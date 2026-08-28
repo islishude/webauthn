@@ -561,6 +561,26 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 	if !extensionResult.Accepted || output.Results == nil || len(output.EvalByCredential) != 1 {
 		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
 	}
+
+	options.State.RequestedExtensions = protocol.ExtensionInputs{
+		extension.IDPRF: extension.PRFInput{
+			Eval: &extension.PRFValues{First: []byte("fallback-1"), Second: []byte("fallback-2")},
+			EvalByCredential: map[string]extension.PRFValues{
+				credentialID: {First: []byte("selected")},
+			},
+		},
+	}
+	options.Response.ClientExtensionResults = map[string]any{
+		extension.IDPRF: map[string]any{
+			"results": map[string]any{
+				"first":  bytes.Repeat([]byte{0x05}, 32),
+				"second": bytes.Repeat([]byte{0x06}, 32),
+			},
+		},
+	}
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrExtensionPolicy) {
+		t.Fatalf("FinishAuthentication() mismatched selected-credential PRF error = %v, want ErrExtensionPolicy", err)
+	}
 }
 
 func TestAuthenticationIgnoresUnknownAuthenticatorAttachment(t *testing.T) {

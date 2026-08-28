@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-25.
+Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-28.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -99,6 +99,8 @@ Attestation conveyance is passed into format verification. Packed device serial
 extensions are accepted only for enterprise conveyance; TPM identity attributes,
 Android hardware-enforced authorization lists, and Apple nonce ASN.1 structure
 are validated before trust evaluation.
+TPM statement signatures remain fail-closed to the normative `TPMT_SIGNATURE`
+shape; a raw DER ECDSA signature is not accepted as a compatibility form.
 
 The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration rejects every attestation after format verification. Callers that accept consumer passkey `none` attestation must pass an explicit policy such as `attestation.AcceptNone()`. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
@@ -119,7 +121,10 @@ The AppID extension is accepted for RP ID hash fallback only when the request in
 The PRF extension validates requested inputs, output result lengths, and
 `evalByCredential` binding to the authentication allow-credentials list,
 operation-specific output members, result cardinality, and the equal-input
-equal-output invariant. PRF
+equal-output invariant. Authentication results are matched only against the
+actual selected credential's `evalByCredential` entry, or `eval` when that entry
+is absent. A missing selected-credential context fails closed when credential-
+specific inputs could affect the result. PRF
 outputs are extension results for caller policy and storage; they are not login
 success criteria by themselves.
 

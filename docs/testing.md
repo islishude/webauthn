@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-08-25.
+Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-08-28.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -8,12 +8,18 @@ This document defines the test approach for the planned WebAuthn/passkey server-
 
 Tests may be derived from W3C specification requirements, independently generated fixtures, browser outputs collected for this project, and public conformance data when the license and source are documented.
 
-Selected byte-for-byte vectors originally copied from the 26 May 2026 Candidate
-Recommendation live under `testdata/w3c/webauthn-level3`. W3C states that the
-25 August 2026 Recommendation has no substantive changes, and the fixtures are
-recorded as verified against that Recommendation while retaining their original
-source provenance. Their source URL, section, test-only sensitivity, and W3C
-permissive document license are recorded with the data.
+The complete 45-case inventory used from the 25 August 2026 Recommendation
+section 16 lives under `testdata/w3c/webauthn-level3`: 30 ceremony cases, 12 PRF
+Web Authentication API cases, and 3 CTAP2 `hmac-secret` calculation cases. The
+fixtures record their frozen source URL, section, test-only sensitivity, and W3C
+permissive document license. Tests read only committed local data and never
+fetch a specification or generator from the network.
+
+Section 16 is non-normative. Its TPM registration object contains a DER ECDSA
+signature where normative section 8.3 requires `TPMT_SIGNATURE`. Coverage
+therefore asserts strict rejection of the original bytes and separately derives
+a conforming in-memory wrapper for the registration/authentication flow. The
+derived case is not counted among the 45 published cases.
 
 Do not copy tests from public WebAuthn/passkey libraries. Do not translate another library's test cases into this repository.
 
@@ -28,6 +34,12 @@ make ci
 ```
 
 `make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests, import graph checks, dependency license checks, and module tidy verification without module-detection skips.
+
+A narrow, network-independent Recommendation vector check is:
+
+```sh
+go test . -run '^TestW3CLevel3' -count=1
+```
 
 Real browser e2e coverage is available through:
 
@@ -156,8 +168,8 @@ Format-specific coverage:
 - `none`: empty attestation statement and no trust path.
 - `packed`: x5c/basic, self attestation, exact subject encodings, AAGUID,
   firmware, enterprise serial policy, and algorithm mismatch.
-- `tpm`: TPM statement shape, public-key/name binding, critical SAN and exact
-  manufacturer/model/version attribute checks.
+- `tpm`: TPM statement shape, public-key/name binding, strict `TPMT_SIGNATURE`,
+  critical SAN and exact manufacturer/model/version attribute checks.
 - `android-key`: challenge binding, exact authorization-list values, union
   default, and hardware/TEE-only policy.
 - `android-safetynet`: legacy JWS response verification through dependency,
@@ -175,7 +187,8 @@ Required coverage:
 - `uvm` output parsing and absence behavior;
 - `credProps` output parsing for discoverable credential/passkey flows;
 - `largeBlob` option and output shape handling;
-- `prf` input/output handling and `evalByCredential` allow-list binding;
+- `prf` input/output handling and `evalByCredential` binding to both the allow
+  list and the credential that actually produced the assertion;
 - operation-specific PRF/largeBlob outputs, equal-input PRF results, and the
   single-credential largeBlob write rule;
 - opt-in Editor's Draft `remoteClientDataJSON` challenge and byte binding;
@@ -193,6 +206,8 @@ Required coverage:
 - algorithm allow-list enforcement;
 - ECDSA DER signature verification behavior;
 - RSA PKCS#1 v1.5 and RSA-PSS behavior for supported algorithms;
+- real Ed448 verification of the Recommendation vector through a CIRCL-backed
+  test adapter, without adding Ed448 to `crypto/standard`;
 - JWS/JWT verification handoff behavior for SafetyNet-like formats;
 - X.509 chain acceptance and rejection through trust policy.
 
@@ -372,6 +387,20 @@ The 2026-08-25 Recommendation refresh added:
 - normative baseline and fixture verification metadata for the final Level 3
   Recommendation.
 
+The 2026-08-28 vector completion added:
+
+- a 45-entry unique coverage manifest with category guards for 30 ceremony, 12
+  PRF Web API, and 3 CTAP2 calculation cases;
+- all published ceremony algorithms and attestation formats, official-root
+  certificate path checks, and real Ed448 verification through a test-only
+  CIRCL adapter;
+- strict rejection of the non-normative TPM DER-signature fixture plus a
+  conforming in-memory `TPMT_SIGNATURE` derivative;
+- selected-credential PRF binding, positive coverage for all 12 published PRF
+  output shapes, and cross-credential cardinality rejection;
+- test-only standard-library ECDH, HKDF, AES-CBC, and HMAC recomputation of every
+  published CTAP2 intermediate and result without adding a CTAP product API.
+
 ## Fuzzing targets
 
 Current fuzzing targets are:
@@ -435,6 +464,7 @@ The matrix below maps W3C WebAuthn Level 3 relying-party operation groups to rep
 | Parser, transport, and storage boundary robustness                                                                                | Protocol/codec/browser fuzz targets plus all three `storage/json` fuzz targets                                                                                                                                                                                      |
 | Root modularity and dependency hygiene                                                                                            | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`, `make example-build`, `make readme-check`                                                                                                                    |
 | Protocol byte safety and allocation-sensitive comparisons                                                                         | `TestCredentialIDTypedEqualityDoesNotUseDefensiveCopies`, `TestUserHandleTypedEqualityDoesNotUseDefensiveCopies`, `TestAppendToAppendsWithoutExposingStoredBytes`                                                                                                   |
+| Recommendation section 16 vector inventory                                                                                        | `TestW3CLevel3VectorInventory`, `TestW3CLevel3CeremonyVectors`, `TestW3CLevel3PRFWebAPIVectors`, `TestW3CLevel3PRFCTAPVectors`                                                                                                                                      |
 
 ## Continuous integration expectations
 

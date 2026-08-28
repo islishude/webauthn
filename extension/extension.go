@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/islishude/webauthn/internal/protocolidentifier"
+	"github.com/islishude/webauthn/protocol"
 )
 
 var (
@@ -40,9 +41,12 @@ type InputRequest struct {
 // OutputRequest contains extension input and output values routed to a handler
 // after core ceremony verification succeeds.
 type OutputRequest struct {
-	Operation                  Operation
-	ID                         string
-	Requested                  bool
+	Operation Operation
+	ID        string
+	Requested bool
+	// SelectedCredentialID identifies the credential that produced an
+	// authentication output. It is zero for registration outputs.
+	SelectedCredentialID       protocol.CredentialID
 	ClientInput                any
 	ClientOutput               any
 	ClientOutputPresent        bool

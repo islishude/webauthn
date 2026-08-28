@@ -1,0 +1,58 @@
+{
+  "source": "W3C Web Authentication Level 3 Recommendation, 25 August 2026",
+  "sourceURL": "https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#test-vectors-extensions-prf-ctap",
+  "license": "W3C permissive document license",
+  "sensitivity": "Deterministic test-only keys and credentials; no production account or authenticator material.",
+  "scope": "Test-only validation of client/authenticator calculations; not a library CTAP capability.",
+  "seed": "576562417574686e20505246207465737420766563746f7273",
+  "platformKeyAgreementPrivateKey": "0971bc7fb1be48270adcd3d9a5fc15d5fb0f335b3071ff36a54c007fa6c76514",
+  "authenticatorKeyAgreementPublicKeyX": "a30522c2de402b561965c3cf949a1cab020c6f6ea36fcf7e911ac1a0f1515300",
+  "authenticatorKeyAgreementPublicKeyY": "9961a929abdb2f42e6566771887d41484d889e735e3248518a53112d2b915f00",
+  "authenticatorCredRandom": "437e065e723a98b2f08f39d8baf7c53ecb3c363c5e5104bdaaf5d5ca2e028154",
+  "cases": [
+    {
+      "id": "16.17.1.2-01-pin2-single",
+      "name": "Single input case using PIN protocol 2",
+      "pinProtocol": 2,
+      "prfEvalFirst": "576562417574686e20505246207465737420766563746f727302",
+      "sharedSecret": "0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876",
+      "salt1": "527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3",
+      "saltEnc": "23dde5e3462daf36559b85c4ac5f9656aa9bfd81c1dc2bf8533c8b9f3882854786b4f500e25b4e3d81f7fc7c74236229",
+      "output1": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae",
+      "outputEnc": "3bfaa48f7952330d63e35ff8cd5bca48d2a12823828915749287256ab146272f9fb437bf65691243c3f504bd7ea6d5e6",
+      "prfResultsFirst": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae",
+      "saltIVDerivationByte": 7,
+      "outputIVDerivationByte": 9
+    },
+    {
+      "id": "16.17.1.2-02-pin2-two",
+      "name": "Two input case using PIN protocol 2",
+      "pinProtocol": 2,
+      "prfEvalFirst": "576562417574686e20505246207465737420766563746f727302",
+      "sharedSecret": "0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876",
+      "salt1": "527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3",
+      "saltEnc": "d9f4236403e0fe843a8e4e5be764d120904c198ad6e77b089876a3391961f183b0008b4ca66b91cd72aa35b6151ff981f6e5649f3c040e6615ad7dd8ae96ef23b229a5c97c3f0dcd8605eee166ce163a",
+      "output1": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae",
+      "outputEnc": "90ee52f739043bc17b3488a74306d7801debb5b61f18662c648a25b5b5678ede482cdaff99a537a44f064fcb10ce6e04dfd27619dc96a0daff8507e499296b1eecf0981f7c8518b277a7a3018f5ec6fb",
+      "prfResultsFirst": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae",
+      "prfEvalSecond": "576562417574686e20505246207465737420766563746f727303",
+      "salt2": "d68ac03329a10ee5e0ec834492bb9a96a0e547baf563bf78ccbe8789b22e776b",
+      "output2": "a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b",
+      "prfResultsSecond": "a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b",
+      "saltIVDerivationByte": 8,
+      "outputIVDerivationByte": 10
+    },
+    {
+      "id": "16.17.1.2-03-pin1-single",
+      "name": "Single input case using PIN protocol 1",
+      "pinProtocol": 1,
+      "prfEvalFirst": "576562417574686e20505246207465737420766563746f727302",
+      "sharedSecret": "23e5ed7157c25892b77732fb9c8a107e3518800db2af4142f9f4adfacb771d39",
+      "salt1": "527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3",
+      "saltEnc": "ab8c878bb05d04700f077ed91845ec9c503c925cb12b327ddbeb4243c397f913",
+      "output1": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae",
+      "outputEnc": "15d4e4f3f04109b492b575c1b38c28585b6719cf8d61304215108d939f37ccfb",
+      "prfResultsFirst": "3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/protocol"
 )
 
 func TestLevel3Registries(t *testing.T) {
@@ -219,6 +220,83 @@ func TestPRFHandler(t *testing.T) {
 		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	t.Run("bind results to selected credential", func(t *testing.T) {
+		t.Parallel()
+
+		mappedRaw := []byte("credential-1")
+		otherRaw := []byte("credential-2")
+		mapped := base64.RawURLEncoding.EncodeToString(mappedRaw)
+		other := base64.RawURLEncoding.EncodeToString(otherRaw)
+		mappedID, err := protocol.NewCredentialID(mappedRaw)
+		if err != nil {
+			t.Fatalf("NewCredentialID(mapped) error = %v", err)
+		}
+		otherID, err := protocol.NewCredentialID(otherRaw)
+		if err != nil {
+			t.Fatalf("NewCredentialID(other) error = %v", err)
+		}
+		input := extension.PRFInput{
+			Eval: &extension.PRFValues{First: []byte("fallback-1"), Second: []byte("fallback-2")},
+			EvalByCredential: map[string]extension.PRFValues{
+				mapped: {First: []byte("mapped")},
+			},
+			AllowCredentials: []string{mapped, other},
+		}
+		tests := []struct {
+			name     string
+			selected protocol.CredentialID
+			results  map[string]any
+			wantErr  bool
+		}{
+			{
+				name:     "mapped credential rejects fallback cardinality",
+				selected: mappedID,
+				results:  map[string]any{"first": first, "second": second},
+				wantErr:  true,
+			},
+			{
+				name:     "other credential rejects mapped cardinality",
+				selected: otherID,
+				results:  map[string]any{"first": first},
+				wantErr:  true,
+			},
+			{
+				name:    "missing selected credential fails closed",
+				results: map[string]any{"first": first},
+				wantErr: true,
+			},
+			{
+				name:     "mapped credential accepts mapped cardinality",
+				selected: mappedID,
+				results:  map[string]any{"first": first},
+			},
+			{
+				name:     "other credential accepts fallback cardinality",
+				selected: otherID,
+				results:  map[string]any{"first": first, "second": second},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+					Operation:            extension.OperationAuthentication,
+					ID:                   extension.IDPRF,
+					Requested:            true,
+					SelectedCredentialID: tt.selected,
+					ClientInput:          input,
+					ClientOutput:         map[string]any{"results": tt.results},
+				})
+				if tt.wantErr && !errors.Is(err, extension.ErrInvalidRequest) {
+					t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
+				}
+				if !tt.wantErr && err != nil {
+					t.Fatalf("VerifyOutput() error = %v", err)
+				}
+			})
 		}
 	})
 }
