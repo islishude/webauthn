@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/islishude/webauthn/internal/protocolidentifier"
 )
@@ -194,7 +195,7 @@ const (
 // Validate rejects values outside the Web IDL long range used by WebAuthn.
 func (a COSEAlgorithmIdentifier) Validate() error {
 	if a < minCOSEAlgorithmIdentifier || a > maxCOSEAlgorithmIdentifier {
-		return ValueError{Field: "COSE algorithm", Value: fmt.Sprint(a)}
+		return ValueError{Field: "COSE algorithm", Value: strconv.FormatInt(int64(a), 10)}
 	}
 	return nil
 }
