@@ -1,6 +1,7 @@
 package webauthnhttp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -76,11 +77,19 @@ func WriteJSON(response http.ResponseWriter, status int, value any) error {
 	if response == nil {
 		return fmt.Errorf("%w: response writer is nil", ErrWriteResponse)
 	}
+	var encoded bytes.Buffer
+	if err := json.NewEncoder(&encoded).Encode(value); err != nil {
+		return fmt.Errorf("%w: %w", ErrWriteResponse, err)
+	}
 	status = normalizeStatus(status)
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)
-	if err := json.NewEncoder(response).Encode(value); err != nil {
+	written, err := response.Write(encoded.Bytes())
+	if err != nil {
 		return fmt.Errorf("%w: %w", ErrWriteResponse, err)
+	}
+	if written != encoded.Len() {
+		return fmt.Errorf("%w: %w", ErrWriteResponse, io.ErrShortWrite)
 	}
 
 	return nil

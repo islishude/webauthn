@@ -109,8 +109,9 @@ Stored credential records should include at minimum:
 
 Raw COSE bytes and typed EC2/RSA/OKP material are stored together without an
 adapter-owned `any` key handle. `backupEligible` is immutable after registration;
-`backupState`, signature counters, and authorized UV initialization use explicit
-conditional updates. Optional `storage/json` reconstructs typed key material by
+`backupState`, signature counters, authorized UV initialization, and known
+authenticator-attachment changes use explicit conditional updates. Optional
+`storage/json` reconstructs typed key material by
 decoding the stored raw COSE key rather than trusting serialized derivatives.
 COSE algorithm identifiers remain extensible but are bounded to Web IDL `long`.
 Ed448 (`-53`) is represented as typed OKP material and requires a caller
@@ -134,8 +135,7 @@ Registration verification must include these categories:
 10. extension output policy;
 11. attestation format dispatch and cryptographic validity;
 12. attestation trust policy;
-13. credential uniqueness result surfaced to the caller;
-14. credential record construction.
+13. credential record construction for caller-owned atomic insertion.
 
 Authentication verification must include these categories:
 
@@ -226,6 +226,12 @@ clone-risk update policy, and authorized `uvInitialized` transitions. Extension
 handlers validate inputs at start and verify outputs after core cryptographic
 checks; registries are immutable and outputs deterministic. Standard signature
 verification and storage JSON remain optional subpackages outside the root graph.
+
+Finish-state validation is strict even for caller-owned persistence mappings:
+missing expiry and unresolved user-verification policy are invalid rather than
+zero-value escape hatches. Credential uniqueness is enforced only by the
+application's atomic insert or database constraint; the root API has no
+check-then-insert boolean.
 
 The 2026 Recommendation conformance refresh adds no Go dependency. It preserves
 optional-member presence for `topOrigin`, validates identifier grammar and

@@ -111,7 +111,8 @@ Required coverage:
 - unsupported attestation format;
 - invalid attestation statement;
 - untrusted attestation policy result;
-- duplicate credential ID path surfaced to caller;
+- missing expiry and unresolved user-verification ceremony state;
+- atomic duplicate credential insertion in application integration tests;
 - extension requested but absent;
 - unsolicited extension behavior under ignore and reject policies.
 
@@ -130,9 +131,13 @@ Required coverage:
 - missing UV flag when required;
 - signature failure;
 - unsupported algorithm;
+- missing expiry, unresolved user-verification policy, and malformed allow-list
+  descriptors in caller-stored state;
 - zero-counter behavior;
 - counter increment behavior;
 - counter rollback clone-risk behavior.
+- known authenticator-attachment persistence updates and unknown attachment
+  preservation.
 
 ### Browser e2e tests
 
@@ -193,7 +198,8 @@ Required coverage:
   single-credential largeBlob write rule;
 - opt-in Editor's Draft `remoteClientDataJSON` challenge and byte binding;
 - deprecated `uvm` result metadata;
-- unknown extension policy.
+- unknown extension policy and recursively copied composite values with
+  non-string comparable CBOR map keys.
 
 ### Dependency adapter tests
 
@@ -228,7 +234,8 @@ Plan 03 added tests for:
 - authenticator data parsing, flags, sign count, and attested credential data extraction;
 - registration rejection paths for challenge, origin, cross-origin, reserved
   token binding, RP ID hash, UP/UV, algorithm, format, attestation policy,
-  duplicate credential, and expiry failures;
+  and expiry failures; credential uniqueness is now covered at the atomic
+  application-insertion boundary;
 - extension absent, unsolicited ignored, and unsolicited rejected behavior;
 - optional CBOR/COSE decoder behavior, including duplicate map key rejection and COSE_Key raw-consumption boundaries;
 - optional `attestation/none` verifier behavior.
@@ -352,7 +359,7 @@ The pre-v1 Level 3 security cleanup added tests and checks for:
 - BS-without-BE rejection, immutable backup eligibility, credential RP-ID
   binding, UP/UV result surfacing, and explicitly authorized UV initialization;
 - clone-risk rejection, default counter preservation, explicit rollback update,
-  and conditional credential update fields;
+  and conditional counter, backup, UV, and authenticator-attachment fields;
 - known extension input validation at start, unknown input policy, absent unknown
   output behavior, deterministic output ordering, deep copies, and callback
   ordering after signature/attestation verification;
@@ -400,6 +407,17 @@ The 2026-08-28 vector completion added:
   output shapes, and cross-credential cardinality rejection;
 - test-only standard-library ECDH, HKDF, AES-CBC, and HMAC recomputation of every
   published CTAP2 intermediate and result without adding a CTAP product API.
+
+The 2026-08-28 fail-closed API remediation added:
+
+- rejection of missing ceremony expiry and unresolved user-verification policy
+  in both root finish paths;
+- removal of caller-computed registration uniqueness flags in favor of atomic
+  application insertion, including concurrent E2E-store coverage;
+- raw unknown extension preservation for bounded nested maps with comparable
+  non-string CBOR keys and policy-before-copy ordering;
+- conditional authenticator-attachment persistence, operation-neutral error
+  text, and HTTP serialization-before-commit behavior.
 
 ## Fuzzing targets
 
@@ -455,7 +473,7 @@ The matrix below maps W3C WebAuthn Level 3 relying-party operation groups to rep
 | Registration RP ID hash, mediation-aware UP, UV, backup flags, credential ID, and algorithm checks                                | `TestRegistrationFinishRejectsInvalidInputs`, `TestConditionalRegistrationDoesNotRequireUserPresence`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                              |
 | Registration extension input and output handling                                                                                  | Start-input, ordering, callback-order, unknown-policy tests plus `extension` handler tests                                                                                                                                                                          |
 | Registration attestation format and trust policy dispatch                                                                         | Attestation format package tests, `TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation`, `TestRegistrationBuiltInAttestationTrustPolicies`                                                                                                              |
-| Registration credential uniqueness and record construction                                                                        | `TestRegistrationFinishRejectsInvalidInputs`, `TestRegistrationWithNoneAttestation`, storage JSON round trip                                                                                                                                                        |
+| Registration credential construction and atomic application insertion                                                             | `TestRegistrationWithNoneAttestation`, `TestStoreInsertCredentialIsAtomic`, storage JSON round trip                                                                                                                                                                 |
 | Authentication allow-credentials and credential/user-handle ownership checks                                                      | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationUsernameFirst`, `TestAuthenticationDiscoverable`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                      |
 | Authentication collected client data type, challenge, origin, cross-origin, and reserved token binding checks                     | `TestAuthenticationRejectsInvalidInputs`, `FuzzParseCollectedClientData`                                                                                                                                                                                            |
 | Authentication RP ID hash and AppID extension behavior                                                                            | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`                                                                                                                  |

@@ -97,21 +97,23 @@ func (a *app) registerFinish(response http.ResponseWriter, request *http.Request
 		return
 	}
 	result, err := webauthn.FinishRegistration(request.Context(), webauthn.RegistrationFinishOptions{
-		State:                       state.State,
-		Response:                    credentialResponse,
-		AttestationObjectDecoder:    a.decoder,
-		CredentialPublicKeyDecoder:  a.decoder,
-		ExtensionMapDecoder:         a.decoder,
-		AttestationRegistry:         a.attesters,
-		AttestationTrustPolicy:      attestation.AcceptNone(),
-		ExtensionRegistry:           a.extensions,
-		CredentialAlreadyRegistered: a.store.credentialExists(credentialIDFromRawID(credentialResponse.RawID.Bytes())),
+		State:                      state.State,
+		Response:                   credentialResponse,
+		AttestationObjectDecoder:   a.decoder,
+		CredentialPublicKeyDecoder: a.decoder,
+		ExtensionMapDecoder:        a.decoder,
+		AttestationRegistry:        a.attesters,
+		AttestationTrustPolicy:     attestation.AcceptNone(),
+		ExtensionRegistry:          a.extensions,
 	})
 	if err != nil {
 		writeGenericError(response, http.StatusUnauthorized)
 		return
 	}
-	a.store.saveCredential(result.Credential)
+	if !a.store.insertCredential(result.Credential) {
+		writeGenericError(response, http.StatusConflict)
+		return
+	}
 	if err := a.setSession(response, result.Credential.UserHandle); err != nil {
 		writeGenericError(response, http.StatusInternalServerError)
 		return
@@ -120,9 +122,4 @@ func (a *app) registerFinish(response http.ResponseWriter, request *http.Request
 		"ok":   true,
 		"user": map[string]string{"email": input.Email},
 	})
-}
-
-func credentialIDFromRawID(bytes []byte) protocol.CredentialID {
-	id, _ := protocol.NewCredentialID(bytes)
-	return id
 }

@@ -137,7 +137,7 @@ func (h *handler) finishRegistration(response http.ResponseWriter, request *http
 		return
 	}
 	if !h.insertCredential(result.Credential) {
-		_ = webauthnhttp.WriteError(response, http.StatusConflict, webauthn.ErrDuplicateCredential)
+		_ = webauthnhttp.WriteError(response, http.StatusConflict, errors.New("credential already registered"))
 		return
 	}
 	_ = webauthnhttp.WriteJSON(response, http.StatusCreated, map[string]string{"status": "registered"})
@@ -314,6 +314,9 @@ func (h *handler) applyCredentialUpdate(update webauthn.CredentialUpdate) bool {
 	}
 	if update.UVInitializedChanged {
 		record.UVInitialized = update.UVInitialized
+	}
+	if update.AuthenticatorAttachmentChanged {
+		record.AuthenticatorAttachment = update.AuthenticatorAttachment
 	}
 	h.records[key] = record
 	return true

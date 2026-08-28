@@ -13,7 +13,7 @@ import (
 
 type passkeyStore interface {
 	LookupByUserHandleAndCredentialID(protocol.UserHandle, protocol.RawID) (webauthn.CredentialRecord, error)
-	UpdateCounter(webauthn.CredentialUpdate) error
+	UpdateCredential(webauthn.CredentialUpdate) error
 }
 
 func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
@@ -64,7 +64,7 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
-	if err := store.UpdateCounter(result.Update); err != nil {
+	if err := store.UpdateCredential(result.Update); err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
 

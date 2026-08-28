@@ -55,7 +55,7 @@ behavior.
 | `signCount`              | Counter policy                             | Return comparison and clone risk; preserve stored value unless explicit policy updates it.        |
 | Attested credential data | Registration parser                        | Required when AT flag is set in registration attestation data.                                    |
 | AAGUID                   | Registration result and attestation policy | Needed for trust policy and metadata lookup.                                                      |
-| Credential ID            | Registration result                        | Must be uniqueness-checked by the application or caller-provided result.                          |
+| Credential ID            | Registration result                        | Must be inserted under an application-owned atomic uniqueness constraint.                         |
 | Credential public key    | Codec and crypto adapter input             | Require CTAP2 canonical COSE with only required parameters; persist typed EC2/RSA/OKP material.   |
 | Extensions               | Extension framework                        | Decode through CBOR adapter and route by extension identifier.                                    |
 
@@ -72,7 +72,7 @@ The registration verifier covers these WebAuthn Level 3 operation groups:
 7. attestation statement format dispatch and trust policy;
 8. extension result validation after attestation acceptance;
 9. BE/BS and UV initialization capture;
-10. credential uniqueness and result construction.
+10. credential result construction for caller-owned atomic insertion.
 
 The library does not create accounts, persist credentials, or decide whether an
 already-registered credential belongs to another user.

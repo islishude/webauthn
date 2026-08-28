@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -117,6 +118,57 @@ func TestWriteErrorUsesGenericMessage(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), "Bad Request") {
 		t.Fatalf("WriteError body = %s", recorder.Body.String())
 	}
+}
+
+func TestWriteJSONDoesNotCommitSerializationFailures(t *testing.T) {
+	t.Parallel()
+
+	writer := &trackingResponseWriter{}
+	err := webauthnhttp.WriteJSON(writer, http.StatusOK, map[string]float64{"invalid": math.NaN()})
+	if !errors.Is(err, webauthnhttp.ErrWriteResponse) {
+		t.Fatalf("WriteJSON() error = %v, want ErrWriteResponse", err)
+	}
+	if writer.wroteHeader || writer.wroteBody || writer.Header().Get("Content-Type") != "" {
+		t.Fatalf("serialization failure committed response: %+v", writer)
+	}
+}
+
+func TestWriteJSONReportsShortWrites(t *testing.T) {
+	t.Parallel()
+
+	writer := &trackingResponseWriter{writeLimit: 1}
+	err := webauthnhttp.WriteJSON(writer, http.StatusCreated, map[string]bool{"ok": true})
+	if !errors.Is(err, webauthnhttp.ErrWriteResponse) || !writer.wroteHeader || !writer.wroteBody {
+		t.Fatalf("WriteJSON() error = %v writer = %+v", err, writer)
+	}
+}
+
+type trackingResponseWriter struct {
+	header      http.Header
+	status      int
+	wroteHeader bool
+	wroteBody   bool
+	writeLimit  int
+}
+
+func (w *trackingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *trackingResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.wroteHeader = true
+}
+
+func (w *trackingResponseWriter) Write(data []byte) (int, error) {
+	w.wroteBody = true
+	if w.writeLimit > 0 && w.writeLimit < len(data) {
+		return w.writeLimit, nil
+	}
+	return len(data), nil
 }
 
 func registrationResponseJSON() string {

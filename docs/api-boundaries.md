@@ -74,12 +74,14 @@ the browser call.
 `FinishRegistration(ctx, RegistrationFinishOptions)` accepts stored state,
 structured registration response input, selected attestation object decoder,
 credential public-key decoder, extension map decoder, attestation registry,
-trust policy, extension registry, extension policy, and caller-provided
-credential uniqueness result.
+trust policy, extension registry, and extension policy.
 
 It returns a credential record, attestation validity, trust result, ordered
 extension results, immutable backup eligibility, backup state, UV initialization,
 authenticator attachment, and warnings.
+The application must insert the returned credential under an atomic uniqueness
+constraint; the core does not perform a preflight storage check or own a
+persistence callback.
 If `AttestationTrustPolicy` is nil, no attestation is accepted after format
 verification. Callers that accept consumer passkey `none` attestation should use
 an explicit policy such as `attestation.AcceptNone()`.
@@ -109,6 +111,8 @@ It returns the authenticated user handle, UP/UV observations, counter comparison
 UV initialization status, conditional credential update fields, backup state,
 authenticator attachment, ordered extension results, and warnings. Backup
 eligibility is checked against registration state and never updated.
+Known authentication-time attachment changes are included in the conditional
+credential update together with an explicit changed flag.
 
 ## Origin boundary
 
@@ -229,7 +233,8 @@ finish requires byte-for-byte signed client-data equality and a true output.
 Unknown extension results are represented in raw form and processed in sorted ID
 order. `RejectUnknown` applies only when an unknown output exists; a requested
 extension with no output remains valid. Unrequested outputs can be rejected with
-`RejectUnrequested`.
+`RejectUnrequested`. Preserved raw values are recursively copied, including
+nested maps with non-string comparable CBOR keys, with bounded nesting.
 
 ## Storage boundary
 
@@ -240,6 +245,8 @@ authentication, cookie sealing, or replay prevention and is only for trusted
 server-side storage. Registration state serialization preserves the
 conditional-mediation binding and treats its absent zero value as ordinary,
 UP-required registration.
+Finish rejects a missing expiry or unresolved user-verification policy whether
+state was restored with `storage/json` or a caller-owned schema.
 
 Storage backends, sessions, cookies, framework adapters, CLI tools, and
 conformance harness helpers remain outside the root API.

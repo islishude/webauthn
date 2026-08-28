@@ -17,6 +17,15 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 ## Release notes
 
+2026-08-28: Hardened caller-owned state and persistence boundaries. Finish
+rejects missing expiry and unresolved user-verification policy; registration no
+longer accepts or returns a precomputed credential-uniqueness boolean, and the
+examples use atomic insertion instead. Unknown composite extension values retain
+bounded non-string comparable CBOR keys, known authenticator-attachment changes
+are included in conditional updates, HTTP responses are serialized before
+headers are committed, and shared ceremony errors use operation-neutral text.
+The storage JSON envelope remains version 1 and no dependency changed.
+
 2026-08-28: Completed the frozen Recommendation section 16 inventory with 45
 unique cases: 30 ceremony, 12 PRF Web Authentication API, and 3 test-only CTAP2
 calculations. Authentication extension output now carries the selected
@@ -88,12 +97,18 @@ added.
   `evalByCredential` results must supply the credential that produced the
   assertion. Missing context fails closed when credential-specific selection
   could change the expected output.
+- Remove `RegistrationFinishOptions.CredentialAlreadyRegistered`,
+  `RegistrationResult.DuplicateCredential`, and `ErrDuplicateCredential`.
+  Insert the verified credential under an application-owned atomic uniqueness
+  constraint and map conflicts to application transport errors.
 - Construct credential keys from raw COSE plus typed material. Signature inputs
   no longer carry adapter-owned `any` key handles.
 - Persist credential updates conditionally using `PreviousSignCount` and the
-  `*Changed` fields. `BackupEligible` is no longer an authentication update.
+  `*Changed` fields, including `AuthenticatorAttachmentChanged`.
+  `BackupEligible` is no longer an authentication update.
 - Treat zero timeout as five minutes and reject negative timeout, invalid backup
-  flags, RP-ID mismatch, and credential IDs longer than 1023 bytes.
+  flags, RP-ID mismatch, credential IDs longer than 1023 bytes, and caller-stored
+  state missing expiry or a resolved user-verification policy.
 - Use optional `storage/json` for versioned trusted server-side state encoding or
   map the storage-neutral root records into an application schema.
 

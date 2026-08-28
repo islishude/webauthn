@@ -18,8 +18,8 @@ import (
 
 var (
 	// ErrMalformedResponse reports an invalid or internally inconsistent
-	// registration response.
-	ErrMalformedResponse = errors.New("webauthn: malformed registration response")
+	// ceremony response.
+	ErrMalformedResponse = errors.New("webauthn: malformed response")
 	// ErrInvalidConfiguration reports missing or invalid caller configuration.
 	ErrInvalidConfiguration = errors.New("webauthn: invalid configuration")
 	// ErrInvalidCeremonyState reports missing or invalid caller-stored ceremony
@@ -46,9 +46,7 @@ var (
 	// ErrExtensionPolicy reports an extension policy rejection.
 	ErrExtensionPolicy = errors.New("webauthn: extension policy failure")
 	// ErrCeremonyExpired reports ceremony state at or past its expiry.
-	ErrCeremonyExpired = errors.New("webauthn: registration ceremony expired")
-	// ErrDuplicateCredential reports an application-provided uniqueness failure.
-	ErrDuplicateCredential = errors.New("webauthn: credential already registered")
+	ErrCeremonyExpired = errors.New("webauthn: ceremony expired")
 	// ErrInvalidBackupState reports a backup-state flag without backup eligibility.
 	ErrInvalidBackupState = errors.New("webauthn: invalid credential backup state")
 	// ErrBackupEligibilityMismatch reports an authentication-time BE flag change.
@@ -88,17 +86,16 @@ type RegistrationExtensionPolicy struct {
 
 // RegistrationFinishOptions configures registration response verification.
 type RegistrationFinishOptions struct {
-	State                       RegistrationState
-	Response                    RegistrationResponse
-	AttestationObjectDecoder    codec.AttestationObjectDecoder
-	CredentialPublicKeyDecoder  codec.COSEKeyDecoder
-	ExtensionMapDecoder         codec.ExtensionMapDecoder
-	AttestationRegistry         *attestation.Registry
-	AttestationTrustPolicy      attestation.TrustPolicy
-	ExtensionRegistry           *extension.Registry
-	ExtensionPolicy             RegistrationExtensionPolicy
-	CredentialAlreadyRegistered bool
-	Now                         func() time.Time
+	State                      RegistrationState
+	Response                   RegistrationResponse
+	AttestationObjectDecoder   codec.AttestationObjectDecoder
+	CredentialPublicKeyDecoder codec.COSEKeyDecoder
+	ExtensionMapDecoder        codec.ExtensionMapDecoder
+	AttestationRegistry        *attestation.Registry
+	AttestationTrustPolicy     attestation.TrustPolicy
+	ExtensionRegistry          *extension.Registry
+	ExtensionPolicy            RegistrationExtensionPolicy
+	Now                        func() time.Time
 }
 
 // CredentialRecord is storage-neutral credential material returned after
@@ -120,12 +117,11 @@ type CredentialRecord struct {
 
 // RegistrationResult is the verified registration ceremony output.
 type RegistrationResult struct {
-	Credential          CredentialRecord
-	Attestation         attestation.VerificationResult
-	AttestationTrust    AttestationTrustResult
-	Extensions          []extension.Result
-	Warnings            []string
-	DuplicateCredential bool
+	Credential       CredentialRecord
+	Attestation      attestation.VerificationResult
+	AttestationTrust AttestationTrustResult
+	Extensions       []extension.Result
+	Warnings         []string
 }
 
 // FinishRegistration verifies a WebAuthn registration response.
@@ -138,9 +134,6 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 	}
 	if err := validateRegistrationState(options.State, options.now()); err != nil {
 		return RegistrationResult{}, err
-	}
-	if options.CredentialAlreadyRegistered {
-		return RegistrationResult{DuplicateCredential: true}, ErrDuplicateCredential
 	}
 	if err := validateRegistrationResponseShape(options.Response); err != nil {
 		return RegistrationResult{}, err
@@ -268,8 +261,8 @@ func validateRegistrationState(state RegistrationState, now time.Time) error {
 	if state.UserHandle.Len() == 0 {
 		return fmt.Errorf("%w: user handle is required", ErrInvalidCeremonyState)
 	}
-	if !state.ExpiresAt.IsZero() && !now.Before(state.ExpiresAt) {
-		return ErrCeremonyExpired
+	if state.ExpiresAt.IsZero() {
+		return fmt.Errorf("%w: expiry is required", ErrInvalidCeremonyState)
 	}
 	if len(state.AllowedAlgorithms) == 0 {
 		return fmt.Errorf("%w: allowed algorithms are required", ErrInvalidCeremonyState)
@@ -284,6 +277,9 @@ func validateRegistrationState(state RegistrationState, now time.Time) error {
 	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
+	}
+	if !now.Before(state.ExpiresAt) {
+		return ErrCeremonyExpired
 	}
 
 	return nil

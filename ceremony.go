@@ -18,9 +18,6 @@ func registrationUserVerification(selection *protocol.AuthenticatorSelectionCrit
 }
 
 func validateUserVerification(value protocol.UserVerificationRequirement) error {
-	if value == "" {
-		return nil
-	}
 	if !value.Known() {
 		return protocol.ValueError{Field: "user verification", Value: string(value)}
 	}

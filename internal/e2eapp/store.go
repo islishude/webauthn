@@ -135,22 +135,19 @@ func (s *store) consumeAuthenticationState(id string) (authenticationState, bool
 	return state, ok
 }
 
-func (s *store) credentialExists(id protocol.CredentialID) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.credentialsByID[credentialKey(id.Bytes())]
-	return ok
-}
-
-func (s *store) saveCredential(record webauthn.CredentialRecord) {
+func (s *store) insertCredential(record webauthn.CredentialRecord) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	key := credentialKey(record.ID.Bytes())
+	if _, exists := s.credentialsByID[key]; exists {
+		return false
+	}
 	credential := &credentialRecord{Credential: record, CreatedAt: now, UpdatedAt: now}
 	s.credentialsByID[key] = credential
 	userKey := handleKey(record.UserHandle)
 	s.credentialsByUserHandle[userKey] = append(s.credentialsByUserHandle[userKey], credential)
+	return true
 }
 
 func (s *store) credentialByID(id []byte) (webauthn.CredentialRecord, bool) {
@@ -189,6 +186,9 @@ func (s *store) updateCredential(update webauthn.CredentialUpdate) bool {
 	}
 	if update.UVInitializedChanged {
 		record.Credential.UVInitialized = update.UVInitialized
+	}
+	if update.AuthenticatorAttachmentChanged {
+		record.Credential.AuthenticatorAttachment = update.AuthenticatorAttachment
 	}
 	record.UpdatedAt = time.Now()
 	return true

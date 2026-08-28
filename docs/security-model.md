@@ -63,7 +63,11 @@ In username-first flows, the caller already identified an account and passes sto
 
 In discoverable-credential flows, the assertion must include a user handle and the application must map that handle and credential ID to an account. The library should provide the checks and result shape but should not own the account database.
 
-Credential ID uniqueness at registration is an application-level persistence decision. The verifier should surface the credential ID and provide a place for the caller to pass or record uniqueness checks.
+Credential ID uniqueness at registration is an application-level persistence
+decision. After verification, the application must insert the returned
+credential using an atomic uniqueness constraint. A preflight lookup followed by
+a separate insert is not sufficient, and the core does not accept or return a
+caller-computed uniqueness boolean.
 
 ## Signature verification
 
@@ -114,7 +118,12 @@ surfaced as not accepted, while unknown-output rejection applies only when an
 output actually exists. Output handlers run only after core cryptographic and
 attestation trust checks succeed.
 
-Extension outputs must not be elevated into security facts unless the extension handler has validated them and the relying-party policy accepts them. Unknown and unrequested extension outputs are preserved as untrusted raw results by default; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed behavior.
+Extension outputs must not be elevated into security facts unless the extension
+handler has validated them and the relying-party policy accepts them. Unknown
+and unrequested extension outputs are preserved as recursively copied, untrusted
+raw results by default, including nested maps with non-string comparable CBOR
+keys; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed
+behavior. Rejection policy is applied before raw-value copying.
 
 The AppID extension is accepted for RP ID hash fallback only when the request included the same `appid` input, the caller configured the same AppID in policy, and the client output reports that AppID was used.
 
@@ -169,8 +178,9 @@ Malformed data should fail closed. The parser and verifier must test:
 
 ## Time and replay
 
-Ceremony state includes a five-minute expiry by default. Finish rejects at the
-exact deadline. Callers must still atomically consume state once; optional
+Ceremony state includes a five-minute expiry by default. Finish rejects missing
+expiry or unresolved user-verification policy as invalid state and rejects at
+the exact deadline. Callers must still atomically consume state once; optional
 `storage/json` serializes trusted server-side state but does not enforce replay
 prevention or make it safe for client-side cookies.
 
@@ -183,7 +193,13 @@ fixed clock.
 
 The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
 
-The optional `transport/http` package only reads bounded JSON request bodies and writes JSON responses. It does not infer trusted origins from request headers, does not create sessions or cookies, and does not persist ceremony state or credentials. Its `WriteError` helper emits generic status text rather than raw error strings, so credential IDs, challenges, user handles, signatures, client data JSON, attestation objects, and assertion bytes are not reflected by default.
+The optional `transport/http` package only reads bounded JSON request bodies and
+writes JSON responses. It serializes a response before committing HTTP headers,
+does not infer trusted origins from request headers, does not create sessions or
+cookies, and does not persist ceremony state or credentials. Its `WriteError`
+helper emits generic status text rather than raw error strings, so credential
+IDs, challenges, user handles, signatures, client data JSON, attestation objects,
+and assertion bytes are not reflected by default.
 
 ## Safe defaults checklist
 

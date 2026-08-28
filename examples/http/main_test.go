@@ -106,14 +106,16 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 		t.Fatal("stale credential update succeeded")
 	}
 	if !h.applyCredentialUpdate(webauthn.CredentialUpdate{
-		ID:                   credentialID,
-		PreviousSignCount:    7,
-		SignCount:            8,
-		SignCountChanged:     true,
-		BackupState:          true,
-		BackupStateChanged:   true,
-		UVInitialized:        true,
-		UVInitializedChanged: true,
+		ID:                             credentialID,
+		PreviousSignCount:              7,
+		SignCount:                      8,
+		SignCountChanged:               true,
+		BackupState:                    true,
+		BackupStateChanged:             true,
+		UVInitialized:                  true,
+		UVInitializedChanged:           true,
+		AuthenticatorAttachment:        protocol.AuthenticatorAttachmentCrossPlatform,
+		AuthenticatorAttachmentChanged: true,
 	}) {
 		t.Fatal("current credential update failed")
 	}
@@ -122,7 +124,7 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 		t.Fatalf("NewRawID() error = %v", err)
 	}
 	updated, ok := h.credentialByRawID(rawID)
-	if !ok || updated.SignCount != 8 || !updated.BackupState || !updated.UVInitialized {
+	if !ok || updated.SignCount != 8 || !updated.BackupState || !updated.UVInitialized || updated.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform {
 		t.Fatalf("updated credential = %+v", updated)
 	}
 }

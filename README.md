@@ -5,7 +5,7 @@ relying-party library.
 
 The core package is intentionally framework-neutral. It creates and verifies
 registration and authentication ceremonies, then returns credential records,
-counter updates, attestation results, extension results, and policy outcomes for
+conditional credential updates, attestation results, extension results, and policy outcomes for
 the application to persist in its own storage.
 
 Current status: implementation is complete. The repository has
@@ -54,6 +54,8 @@ The library is built around a few constraints that are enforced by tests and CI:
   CSRF mechanisms, account lookup, databases, or persistence adapters;
 - applications supply trusted origins, RP IDs, stored ceremony state, user
   bindings, credential storage, rate limits, sessions, and audit behavior;
+- finish operations reject caller-stored state that omits its expiry or resolved
+  user-verification policy;
 - WebAuthn byte values stay byte-oriented in the core API, while browser JSON
   conversion lives in optional packages;
 - attestation formats are selected explicitly by the caller and are not imported
@@ -127,9 +129,10 @@ untested Go snippets.
 
 The core package never infers trusted origins from request headers and never
 creates sessions, cookies, database records, or account bindings. Applications
-must store ceremony state server-side, enforce single use and expiry, map user
-handles to accounts, persist credential counter updates, rate-limit endpoints,
-and provide their own session and CSRF protections.
+must store ceremony state server-side without dropping required fields, enforce
+single use, atomically insert unique credential IDs, map user handles to
+accounts, persist conditional credential updates, rate-limit endpoints, and
+provide their own session and CSRF protections.
 
 Safe behavior is the default shape:
 
@@ -146,6 +149,7 @@ Safe behavior is the default shape:
 - signature counter rollback is surfaced as clone risk;
 - clone-risk counters are preserved unless explicit policy authorizes updating;
 - zero-value ceremony timeouts expire after five minutes;
+- incomplete caller-stored ceremony state fails closed;
 - unsupported algorithms and formats are rejected;
 - extension and attestation identifiers and concrete CBOR/COSE encodings are
   validated against their Level 3 grammar and canonical form;

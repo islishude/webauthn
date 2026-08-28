@@ -152,11 +152,20 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 	results := make([]extension.Result, 0, len(ids))
 	for _, id := range slices.Sorted(maps.Keys(ids)) {
 		clientInput, requested := inputs.requestedExtensions[id]
+		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
+		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
+		handler, known := lookupExtensionHandler(inputs.registry, id)
+		hasOutput := hasClientOutput || hasAuthenticatorOutput
+		if !known && hasOutput && inputs.policy.rejectUnknown {
+			return nil, ErrExtensionPolicy
+		}
+		if !requested && hasOutput && inputs.policy.rejectUnrequested {
+			return nil, ErrExtensionPolicy
+		}
+
 		if inputs.clientInputTransform != nil {
 			clientInput = inputs.clientInputTransform(id, clientInput)
 		}
-		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
-		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
 		var err error
 		clientInput, err = extension.CloneValue(clientInput)
 		if err != nil {
@@ -171,15 +180,7 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 
-		handler, known := lookupExtensionHandler(inputs.registry, id)
-		hasOutput := hasClientOutput || hasAuthenticatorOutput
-		if !known && hasOutput && inputs.policy.rejectUnknown {
-			return nil, ErrExtensionPolicy
-		}
 		if !requested && hasOutput {
-			if inputs.policy.rejectUnrequested {
-				return nil, ErrExtensionPolicy
-			}
 			results = append(results, rawExtensionResult(id, rawExtensionInputs{
 				requested:              requested,
 				clientInput:            clientInput,

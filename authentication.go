@@ -232,14 +232,16 @@ type AuthenticationFinishOptions struct {
 
 // CredentialUpdate is a conditional storage update after authentication.
 type CredentialUpdate struct {
-	ID                   protocol.CredentialID
-	PreviousSignCount    uint32
-	SignCount            uint32
-	SignCountChanged     bool
-	BackupState          bool
-	BackupStateChanged   bool
-	UVInitialized        bool
-	UVInitializedChanged bool
+	ID                             protocol.CredentialID
+	PreviousSignCount              uint32
+	SignCount                      uint32
+	SignCountChanged               bool
+	BackupState                    bool
+	BackupStateChanged             bool
+	UVInitialized                  bool
+	UVInitializedChanged           bool
+	AuthenticatorAttachment        protocol.AuthenticatorAttachment
+	AuthenticatorAttachmentChanged bool
 }
 
 // AuthenticationResult is the verified authentication ceremony output.
@@ -325,6 +327,7 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	}
 	nextBackupState := parsedAuthData.Flags.BackupState()
 	nextUVInitialized := options.Credential.UVInitialized
+	nextAuthenticatorAttachment := options.Credential.AuthenticatorAttachment
 	uvInitializationPending := !nextUVInitialized && parsedAuthData.Flags.UserVerified() && !options.UVInitializationAuthorized
 	if !nextUVInitialized && parsedAuthData.Flags.UserVerified() && options.UVInitializationAuthorized {
 		nextUVInitialized = true
@@ -333,22 +336,25 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	credential.BackupState = nextBackupState
 	credential.UVInitialized = nextUVInitialized
 	if attachment := normalizeAuthenticatorAttachment(options.Response.AuthenticatorAttachment); attachment != "" {
-		credential.AuthenticatorAttachment = attachment
+		nextAuthenticatorAttachment = attachment
 	}
+	credential.AuthenticatorAttachment = nextAuthenticatorAttachment
 
 	return AuthenticationResult{
 		Credential:      credential,
 		AuthenticatedAs: credential.UserHandle,
 		Counter:         counter,
 		Update: CredentialUpdate{
-			ID:                   credential.ID,
-			PreviousSignCount:    options.Credential.SignCount,
-			SignCount:            nextSignCount,
-			SignCountChanged:     nextSignCount != options.Credential.SignCount,
-			BackupState:          nextBackupState,
-			BackupStateChanged:   nextBackupState != options.Credential.BackupState,
-			UVInitialized:        nextUVInitialized,
-			UVInitializedChanged: nextUVInitialized != options.Credential.UVInitialized,
+			ID:                             credential.ID,
+			PreviousSignCount:              options.Credential.SignCount,
+			SignCount:                      nextSignCount,
+			SignCountChanged:               nextSignCount != options.Credential.SignCount,
+			BackupState:                    nextBackupState,
+			BackupStateChanged:             nextBackupState != options.Credential.BackupState,
+			UVInitialized:                  nextUVInitialized,
+			UVInitializedChanged:           nextUVInitialized != options.Credential.UVInitialized,
+			AuthenticatorAttachment:        nextAuthenticatorAttachment,
+			AuthenticatorAttachmentChanged: nextAuthenticatorAttachment != options.Credential.AuthenticatorAttachment,
 		},
 		Extensions:              extensionResults,
 		Warnings:                authenticationWarnings(counter),
@@ -387,11 +393,19 @@ func validateAuthenticationState(state AuthenticationState, now time.Time) error
 	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
-	if !state.ExpiresAt.IsZero() && !now.Before(state.ExpiresAt) {
-		return ErrCeremonyExpired
+	if state.ExpiresAt.IsZero() {
+		return fmt.Errorf("%w: expiry is required", ErrInvalidCeremonyState)
 	}
 	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
+	}
+	for _, descriptor := range state.AllowCredentials {
+		if err := descriptor.Validate(); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
+		}
+	}
+	if !now.Before(state.ExpiresAt) {
+		return ErrCeremonyExpired
 	}
 
 	return nil

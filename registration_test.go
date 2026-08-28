@@ -354,12 +354,20 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 			wantErr: webauthn.ErrMalformedResponse,
 		},
 		{
-			name: "duplicate credential",
+			name: "missing ceremony expiry",
 			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
 				t.Helper()
-				options.CredentialAlreadyRegistered = true
+				options.State.ExpiresAt = time.Time{}
 			},
-			wantErr: webauthn.ErrDuplicateCredential,
+			wantErr: webauthn.ErrInvalidCeremonyState,
+		},
+		{
+			name: "missing ceremony user verification policy",
+			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
+				t.Helper()
+				options.State.RequestedUserVerification = ""
+			},
+			wantErr: webauthn.ErrInvalidCeremonyState,
 		},
 		{
 			name: "expired ceremony",
@@ -413,6 +421,17 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 				t.Fatalf("FinishRegistration() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestCeremonyErrorsUseOperationNeutralText(t *testing.T) {
+	t.Parallel()
+
+	if got := webauthn.ErrMalformedResponse.Error(); got != "webauthn: malformed response" {
+		t.Fatalf("ErrMalformedResponse = %q", got)
+	}
+	if got := webauthn.ErrCeremonyExpired.Error(); got != "webauthn: ceremony expired" {
+		t.Fatalf("ErrCeremonyExpired = %q", got)
 	}
 }
 

@@ -263,6 +263,30 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 			wantErr: webauthn.ErrCloneRisk,
 		},
 		{
+			name: "missing ceremony expiry",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.State.ExpiresAt = time.Time{}
+			},
+			wantErr: webauthn.ErrInvalidCeremonyState,
+		},
+		{
+			name: "missing ceremony user verification policy",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.State.RequestedUserVerification = ""
+			},
+			wantErr: webauthn.ErrInvalidCeremonyState,
+		},
+		{
+			name: "invalid allow credential in ceremony state",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.State.AllowCredentials = []protocol.CredentialDescriptor{{Type: protocol.CredentialTypePublicKey}}
+			},
+			wantErr: webauthn.ErrInvalidCeremonyState,
+		},
+		{
 			name: "ceremony expires at exact deadline",
 			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
 				t.Helper()
@@ -473,6 +497,45 @@ func TestAuthenticationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtension
 	}
 }
 
+func TestAuthenticationPreservesUnknownCompositeExtensionOutput(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	bytes := []byte{0x01, 0x02}
+	options := fixture.finishOptions()
+	options.Response.ClientExtensionResults = map[string]any{
+		"future": map[any]any{int64(1): map[any]any{"bytes": bytes}},
+	}
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+	extensionResult := mustExtensionResult(t, result.Extensions, "future")
+	clientOutput, ok := extensionResult.Outputs["clientOutput"].(map[any]any)
+	if !ok {
+		t.Fatalf("client output = %T, want map[any]any", extensionResult.Outputs["clientOutput"])
+	}
+	nested, ok := clientOutput[int64(1)].(map[any]any)
+	if !ok {
+		t.Fatalf("nested output = %T, want map[any]any", clientOutput[int64(1)])
+	}
+	clonedBytes, ok := nested["bytes"].([]byte)
+	if !ok {
+		t.Fatalf("nested bytes = %T, want []byte", nested["bytes"])
+	}
+	bytes[0] = 0xff
+	if clonedBytes[0] != 0x01 {
+		t.Fatal("unknown extension result retained source alias")
+	}
+
+	options.ExtensionPolicy.RejectUnknown = true
+	options.Response.ClientExtensionResults = map[string]any{"future": map[any]any{new(int): true}}
+	_, err = webauthn.FinishAuthentication(context.Background(), options)
+	if !errors.Is(err, webauthn.ErrExtensionPolicy) || err.Error() != webauthn.ErrExtensionPolicy.Error() {
+		t.Fatalf("FinishAuthentication() error = %v, want exact ErrExtensionPolicy", err)
+	}
+}
+
 func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 	t.Parallel()
 
@@ -597,6 +660,28 @@ func TestAuthenticationIgnoresUnknownAuthenticatorAttachment(t *testing.T) {
 	}
 	if result.Credential.AuthenticatorAttachment != protocol.AuthenticatorAttachmentPlatform {
 		t.Fatalf("AuthenticatorAttachment = %q, want platform", result.Credential.AuthenticatorAttachment)
+	}
+	if result.Update.AuthenticatorAttachment != protocol.AuthenticatorAttachmentPlatform || result.Update.AuthenticatorAttachmentChanged {
+		t.Fatalf("attachment update = %+v, want unchanged platform", result.Update)
+	}
+}
+
+func TestAuthenticationSurfacesAuthenticatorAttachmentUpdate(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, false)
+	fixture.credential.AuthenticatorAttachment = protocol.AuthenticatorAttachmentPlatform
+	options := fixture.finishOptions()
+	options.Credential = fixture.credential
+	options.Response.AuthenticatorAttachment = protocol.AuthenticatorAttachmentCrossPlatform
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+	if result.Credential.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform ||
+		result.Update.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform ||
+		!result.Update.AuthenticatorAttachmentChanged {
+		t.Fatalf("result = %+v update = %+v", result.Credential, result.Update)
 	}
 }
 
