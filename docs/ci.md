@@ -12,7 +12,7 @@ The local workflow is controlled by the root `Makefile`. The GitHub workflow is 
 
 Action major versions and trigger branches are defined only in
 `.github/workflows/ci.yml` to avoid duplicated version drift. CI uses stable Go,
-Node.js 24 for e2e, Playwright `1.62.1`, golangci-lint `v2.12.2`, and
+Node.js 24 for e2e, Playwright `1.62.1`, golangci-lint `v2.13.1`, and
 `.golangci.yml` version 2.
 
 `go.mod` records minimum supported Go version `1.25.0`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
@@ -25,18 +25,18 @@ Required local tools:
 - a Go toolchain compatible with the `go.mod` minimum version;
 - Node.js with `npx` available for Prettier formatting;
 - Node.js 20 or newer with npm for `make e2e`;
-- `golangci-lint v2.12.2` for `make format`, `make lint`, and full `make ci`.
+- `golangci-lint v2.13.1` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
 
 ```sh
-curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.1
 ```
 
 A source install can be used as a fallback, but it should remain a developer-machine concern rather than a project dependency:
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 ```
 
 Verify the local binary before linting:
