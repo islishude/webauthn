@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/protocol"
@@ -134,7 +135,7 @@ func parseECCPublicArea(reader *tpmReader) (publicAreaEC2, error) {
 	if err := parseSymmetricDefinition(reader); err != nil {
 		return publicAreaEC2{}, err
 	}
-	if err := parseScheme(reader); err != nil {
+	if err := parseScheme(reader, tpmAlgECDSA); err != nil {
 		return publicAreaEC2{}, err
 	}
 	curveID, err := reader.uint16()
@@ -164,10 +165,11 @@ func parseRSAPublicArea(reader *tpmReader) (publicAreaRSA, error) {
 	if err := parseSymmetricDefinition(reader); err != nil {
 		return publicAreaRSA{}, err
 	}
-	if err := parseScheme(reader); err != nil {
+	if err := parseScheme(reader, tpmAlgRSASSA, tpmAlgRSAPSS); err != nil {
 		return publicAreaRSA{}, err
 	}
-	if _, err := reader.uint16(); err != nil {
+	keyBits, err := reader.uint16()
+	if err != nil {
 		return publicAreaRSA{}, publicAreaError(err)
 	}
 	exponent, err := reader.uint32()
@@ -181,7 +183,8 @@ func parseRSAPublicArea(reader *tpmReader) (publicAreaRSA, error) {
 	if err != nil {
 		return publicAreaRSA{}, publicAreaError(err)
 	}
-	if len(modulus) == 0 {
+	material := &codec.RSAPublicKeyMaterial{Modulus: modulus, Exponent: exponent}
+	if !material.Valid() || keyBits%8 != 0 || int(keyBits) != len(modulus)*8 || !validTPMRSAExponent(exponent) {
 		return publicAreaRSA{}, ErrUnsupportedKey
 	}
 
@@ -200,7 +203,7 @@ func parseSymmetricDefinition(reader *tpmReader) error {
 	return nil
 }
 
-func parseScheme(reader *tpmReader) error {
+func parseScheme(reader *tpmReader, allowed ...uint16) error {
 	scheme, err := reader.uint16()
 	if err != nil {
 		return publicAreaError(err)
@@ -208,11 +211,34 @@ func parseScheme(reader *tpmReader) error {
 	if scheme == tpmAlgNull {
 		return nil
 	}
-	if _, err := reader.uint16(); err != nil {
+	if !slices.Contains(allowed, scheme) {
+		return ErrUnsupportedKey
+	}
+	hashAlgorithm, err := reader.uint16()
+	if err != nil {
 		return publicAreaError(err)
+	}
+	if !validTPMHashAlgorithm(hashAlgorithm) {
+		return ErrUnsupportedAlgorithm
 	}
 
 	return nil
+}
+
+func validTPMHashAlgorithm(algorithm uint16) bool {
+	return algorithm == tpmAlgSHA256 || algorithm == tpmAlgSHA384 || algorithm == tpmAlgSHA512
+}
+
+func validTPMRSAExponent(exponent uint32) bool {
+	if exponent < 3 || exponent%2 == 0 {
+		return false
+	}
+	for divisor := uint32(3); divisor <= exponent/divisor; divisor += 2 {
+		if exponent%divisor == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func tpmCurve(curveID uint16) (string, int, bool) {
@@ -240,7 +266,7 @@ func validatePublicAreaBinding(parsed publicArea, material codec.CredentialPubli
 			return ErrPublicKeyMismatch
 		}
 	case tpmAlgRSA:
-		if parsed.rsa == nil || material.RSA == nil {
+		if parsed.rsa == nil || material.RSA == nil || !material.RSA.Valid() {
 			return ErrUnsupportedKey
 		}
 		if parsed.rsa.exponent != material.RSA.Exponent || !bytes.Equal(parsed.rsa.modulus, material.RSA.Modulus) {

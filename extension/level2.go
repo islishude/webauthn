@@ -92,8 +92,10 @@ func (handler AppIDHandler) VerifyOutput(_ context.Context, request OutputReques
 
 // AppIDExcludeResult is the parsed FIDO AppID exclusion extension result.
 type AppIDExcludeResult struct {
-	AppID    string
-	Excluded bool
+	AppID string
+	// ActedUpon reports that the client processed appidExclude. A successful
+	// registration response cannot mean that a matching credential was found.
+	ActedUpon bool
 }
 
 // AppIDExcludeHandler validates the registration-only AppID exclusion extension.
@@ -134,11 +136,11 @@ func (handler AppIDExcludeHandler) VerifyOutput(_ context.Context, request Outpu
 		return Result{ID: IDAppIDExclude, Outputs: map[string]any{IDAppIDExclude: output}}, nil
 	}
 
-	excluded, ok := request.ClientOutput.(bool)
-	if !ok || !excluded {
+	actedUpon, ok := request.ClientOutput.(bool)
+	if !ok || !actedUpon {
 		return Result{}, invalidRequest("appidExclude client output must be true")
 	}
-	output.Excluded = excluded
+	output.ActedUpon = actedUpon
 
 	return Result{ID: IDAppIDExclude, Accepted: true, Outputs: map[string]any{IDAppIDExclude: output}}, nil
 }

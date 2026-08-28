@@ -215,10 +215,11 @@ type CredentialParameter struct {
 	Algorithm COSEAlgorithmIdentifier
 }
 
-// Validate rejects credential parameter values that WebAuthn cannot use.
+// Validate checks the extension-point credential type is non-empty and the
+// algorithm fits Web IDL long. Ceremony builders ignore unsupported types.
 func (p CredentialParameter) Validate() error {
-	if err := p.Type.Validate(); err != nil {
-		return err
+	if p.Type == "" {
+		return ValueError{Field: "credential type", Value: ""}
 	}
 	return p.Algorithm.Validate()
 }
@@ -372,13 +373,17 @@ func (o PublicKeyCredentialCreationOptions) Validate() error {
 	if o.Challenge.Len() == 0 {
 		return errors.New("challenge is required")
 	}
-	if len(o.PubKeyCredParams) == 0 {
-		return errors.New("public key credential parameters are required")
-	}
+	hasSupportedCredentialType := len(o.PubKeyCredParams) == 0
 	for _, param := range o.PubKeyCredParams {
 		if err := param.Validate(); err != nil {
 			return err
 		}
+		if param.Type == CredentialTypePublicKey {
+			hasSupportedCredentialType = true
+		}
+	}
+	if !hasSupportedCredentialType {
+		return errors.New("no supported public key credential parameters")
 	}
 	for _, format := range o.AttestationFormats {
 		if !protocolidentifier.Valid(format) {

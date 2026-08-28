@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -32,7 +33,7 @@ func TestVerifierAcceptsAndroidSafetyNetAttestation(t *testing.T) {
 		certChain:  webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
 		header:     map[string]any{"alg": "RS256"},
 		expectCall: true,
-	})
+	}, validPolicy())
 
 	result, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
 		Format:            "android-safetynet",
@@ -49,13 +50,16 @@ func TestVerifierAcceptsAndroidSafetyNetAttestation(t *testing.T) {
 	if len(result.TrustPath.Certificates) != 1 || !bytes.Equal(result.TrustPath.Certificates[0].Raw(), fixture.certificate.raw) {
 		t.Fatalf("trust path = %+v, want leaf certificate", result.TrustPath)
 	}
+	if result.Evidence["apkPackageName"] != "com.example.authenticator" || result.Evidence["version"] != "1.0" {
+		t.Fatalf("evidence = %#v", result.Evidence)
+	}
 }
 
 func TestVerifierRejectsMalformedStatement(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	verifier := New(jwsVerifier{t: t})
+	verifier := New(jwsVerifier{t: t}, validPolicy())
 
 	tests := []struct {
 		name      string
@@ -110,11 +114,33 @@ func TestVerifierRejectsMalformedStatement(t *testing.T) {
 	}
 }
 
+func TestVerifierAcceptsConfiguredBasicIntegrityPolicy(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	policy := validPolicy()
+	policy.RequireCTSProfileMatch = false
+	policy.RequireBasicIntegrity = true
+	verifier := New(jwsVerifier{
+		t:         t,
+		payload:   safetyNetPayload(t, fixture.expectedNonce, false, json.Number("1700000000000")),
+		certChain: webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
+	}, policy)
+	if _, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:            "android-safetynet",
+		AuthenticatorData: fixture.authenticatorData,
+		ClientDataHash:    fixture.clientDataHash,
+		Statement:         fixture.statement,
+	}); err != nil {
+		t.Fatalf("VerifyAttestation() error = %v", err)
+	}
+}
+
 func TestVerifierRejectsJWSVerifierFailure(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	_, err := New(jwsVerifier{t: t, fail: true}).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+	_, err := New(jwsVerifier{t: t, fail: true}, validPolicy()).VerifyAttestation(context.Background(), attestation.VerificationRequest{
 		Format:            "android-safetynet",
 		AuthenticatorData: fixture.authenticatorData,
 		ClientDataHash:    fixture.clientDataHash,
@@ -151,11 +177,84 @@ func TestVerifierRejectsPayloadFailures(t *testing.T) {
 				t:         t,
 				payload:   tt.payload,
 				certChain: webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
-			}).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+			}, validPolicy()).VerifyAttestation(context.Background(), attestation.VerificationRequest{
 				Format:            "android-safetynet",
 				AuthenticatorData: fixture.authenticatorData,
 				ClientDataHash:    fixture.clientDataHash,
 				Statement:         fixture.statement,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("VerifyAttestation() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestVerifierRejectsSafetyNetPolicyBindingFailures(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	basePayload := func() map[string]any {
+		return map[string]any{
+			"nonce":                      fixture.expectedNonce,
+			"ctsProfileMatch":            true,
+			"basicIntegrity":             true,
+			"timestampMs":                json.Number("1700000000000"),
+			"apkPackageName":             "com.example.authenticator",
+			"apkCertificateDigestSha256": []string{base64.StdEncoding.EncodeToString(testCertificateDigest())},
+		}
+	}
+	for _, tt := range []struct {
+		name            string
+		mutatePayload   func(map[string]any)
+		mutatePolicy    func(*Policy)
+		mutateStatement func(codec.AttestationStatement)
+		wantErr         error
+	}{
+		{name: "stale timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1699999800000") }, wantErr: ErrInvalidPayload},
+		{name: "future timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1700000080000") }, wantErr: ErrInvalidPayload},
+		{name: "negative timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("-1") }, wantErr: ErrInvalidPayload},
+		{name: "wrong package", mutatePayload: func(value map[string]any) { value["apkPackageName"] = "com.attacker" }, wantErr: ErrInvalidPayload},
+		{name: "wrong certificate digest", mutatePayload: func(value map[string]any) {
+			value["apkCertificateDigestSha256"] = []string{base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x99}, 32))}
+		}, wantErr: ErrInvalidPayload},
+		{name: "malformed unrequired basic integrity", mutatePayload: func(value map[string]any) { value["basicIntegrity"] = "true" }, wantErr: ErrInvalidPayload},
+		{
+			name:          "malformed unrequired cts profile match",
+			mutatePayload: func(value map[string]any) { value["ctsProfileMatch"] = "true" },
+			mutatePolicy: func(policy *Policy) {
+				policy.RequireCTSProfileMatch = false
+				policy.RequireBasicIntegrity = true
+			},
+			wantErr: ErrInvalidPayload,
+		},
+		{name: "disallowed version", mutateStatement: func(statement codec.AttestationStatement) { statement["ver"] = "2.0" }, wantErr: ErrInvalidPayload},
+		{name: "missing expected package policy", mutatePolicy: func(policy *Policy) { policy.ExpectedAPKPackageName = "" }, wantErr: ErrPolicyConfiguration},
+		{name: "missing integrity policy", mutatePolicy: func(policy *Policy) { policy.RequireCTSProfileMatch = false }, wantErr: ErrPolicyConfiguration},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := basePayload()
+			if tt.mutatePayload != nil {
+				tt.mutatePayload(payload)
+			}
+			policy := validPolicy()
+			if tt.mutatePolicy != nil {
+				tt.mutatePolicy(&policy)
+			}
+			statement := cloneStatement(fixture.statement)
+			if tt.mutateStatement != nil {
+				tt.mutateStatement(statement)
+			}
+			_, err := New(jwsVerifier{
+				t:         t,
+				payload:   safetyNetPayloadMap(t, payload),
+				certChain: webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
+			}, policy).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+				Format:            "android-safetynet",
+				AuthenticatorData: fixture.authenticatorData,
+				ClientDataHash:    fixture.clientDataHash,
+				Statement:         statement,
 			})
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("VerifyAttestation() error = %v, want %v", err, tt.wantErr)
@@ -187,7 +286,7 @@ func TestVerifierRejectsCertificateFailures(t *testing.T) {
 				t:         t,
 				payload:   safetyNetPayload(t, fixture.expectedNonce, true, json.Number("1700000000000")),
 				certChain: tt.chain,
-			}).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+			}, validPolicy()).VerifyAttestation(context.Background(), attestation.VerificationRequest{
 				Format:            "android-safetynet",
 				AuthenticatorData: fixture.authenticatorData,
 				ClientDataHash:    fixture.clientDataHash,
@@ -276,10 +375,31 @@ func safetyNetPayload(t *testing.T, nonce string, ctsProfileMatch bool, timestam
 	t.Helper()
 
 	return safetyNetPayloadMap(t, map[string]any{
-		"nonce":           nonce,
-		"ctsProfileMatch": ctsProfileMatch,
-		"timestampMs":     timestamp,
+		"nonce":                      nonce,
+		"ctsProfileMatch":            ctsProfileMatch,
+		"basicIntegrity":             true,
+		"timestampMs":                timestamp,
+		"apkPackageName":             "com.example.authenticator",
+		"apkCertificateDigestSha256": []string{base64.StdEncoding.EncodeToString(testCertificateDigest())},
 	})
+}
+
+func validPolicy() Policy {
+	return Policy{
+		ExpectedAPKPackageName:       "com.example.authenticator",
+		ExpectedAPKCertificateSHA256: [][]byte{testCertificateDigest()},
+		AllowedVersions:              []string{"1.0"},
+		MaxAge:                       2 * time.Minute,
+		ClockSkew:                    10 * time.Second,
+		RequireCTSProfileMatch:       true,
+		Now: func() time.Time {
+			return time.UnixMilli(1700000000000).Add(time.Minute)
+		},
+	}
+}
+
+func testCertificateDigest() []byte {
+	return bytes.Repeat([]byte{0x42}, 32)
 }
 
 func safetyNetPayloadMap(t *testing.T, value map[string]any) []byte {

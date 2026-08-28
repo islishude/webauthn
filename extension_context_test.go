@@ -121,6 +121,33 @@ func TestStartAuthenticationLargeBlobWriteRequiresOneCredential(t *testing.T) {
 	}
 }
 
+func TestFinishAuthenticationRevalidatesLargeBlobCredentialContext(t *testing.T) {
+	t.Parallel()
+
+	registry, err := extension.NewLevel3Registry()
+	if err != nil {
+		t.Fatalf("NewLevel3Registry() error = %v", err)
+	}
+	for _, descriptors := range [][]protocol.CredentialDescriptor{
+		nil,
+		{
+			{Type: protocol.CredentialTypePublicKey, ID: mustCredentialID(t, []byte("credential-one"))},
+			{Type: protocol.CredentialTypePublicKey, ID: mustCredentialID(t, []byte("credential-two"))},
+		},
+	} {
+		fixture := newAuthenticationFixture(t, true)
+		options := fixture.finishOptions()
+		options.State.AllowCredentials = descriptors
+		options.State.RequestedExtensions = protocol.ExtensionInputs{
+			extension.IDLargeBlob: extension.LargeBlobInput{Write: []byte("blob")},
+		}
+		options.ExtensionRegistry = registry
+		if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidCeremonyState) {
+			t.Fatalf("FinishAuthentication(%d credentials) error = %v, want ErrInvalidCeremonyState", len(descriptors), err)
+		}
+	}
+}
+
 func mustProtocolChallenge(t *testing.T, value []byte) protocol.Challenge {
 	t.Helper()
 	challenge, err := protocol.NewChallenge(value)

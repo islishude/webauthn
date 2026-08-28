@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
@@ -64,7 +65,7 @@ func (a *app) loginOptions(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	a.store.saveAuthenticationState(stateID, authenticationState{Email: email, State: start.State})
-	http.SetCookie(response, a.cookie(authenticationCookie, stateID, 300))
+	http.SetCookie(response, a.cookie(authenticationCookie, stateID, int(webauthn.DefaultChallengeTTL/time.Second)))
 	_ = webauthnhttp.WriteRequestOptions(response, start.Options)
 }
 

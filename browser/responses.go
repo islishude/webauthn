@@ -3,6 +3,7 @@ package browser
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 
@@ -13,19 +14,19 @@ import (
 
 // RegistrationCredentialJSON is the browser JSON shape for a registration credential response.
 type RegistrationCredentialJSON struct {
-	ID                      string                           `json:"id,omitempty"`
+	ID                      string                           `json:"id"`
 	RawID                   string                           `json:"rawId"`
 	Type                    protocol.PublicKeyCredentialType `json:"type"`
 	Response                AttestationResponseJSON          `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults,omitempty"`
+	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults"`
 }
 
 // AttestationResponseJSON is the browser JSON shape for an authenticator attestation response.
 type AttestationResponseJSON struct {
 	ClientDataJSON     string                            `json:"clientDataJSON"`
 	AuthenticatorData  string                            `json:"authenticatorData"`
-	Transports         []protocol.AuthenticatorTransport `json:"transports,omitempty"`
+	Transports         []protocol.AuthenticatorTransport `json:"transports"`
 	PublicKey          *string                           `json:"publicKey,omitempty"`
 	PublicKeyAlgorithm protocol.COSEAlgorithmIdentifier  `json:"publicKeyAlgorithm"`
 	AttestationObject  string                            `json:"attestationObject"`
@@ -33,12 +34,12 @@ type AttestationResponseJSON struct {
 
 // AuthenticationCredentialJSON is the browser JSON shape for an authentication credential response.
 type AuthenticationCredentialJSON struct {
-	ID                      string                           `json:"id,omitempty"`
+	ID                      string                           `json:"id"`
 	RawID                   string                           `json:"rawId"`
 	Type                    protocol.PublicKeyCredentialType `json:"type"`
 	Response                AssertionResponseJSON            `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults,omitempty"`
+	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults"`
 }
 
 // AssertionResponseJSON is the browser JSON shape for an authenticator assertion response.
@@ -63,11 +64,17 @@ func RegistrationResponseFromJSON(data []byte) (webauthn.RegistrationResponse, e
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
+	if dto.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
+		return webauthn.RegistrationResponse{}, protocolValueError("id", errors.New("id does not match rawId"))
+	}
+	if err := validateResponseJSONShape(data, []string{"id", "rawId", "response", "clientExtensionResults", "type"}, []string{"clientDataJSON", "authenticatorData", "transports", "publicKeyAlgorithm", "attestationObject"}); err != nil {
+		return webauthn.RegistrationResponse{}, err
+	}
 	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", dto.Response.ClientDataJSON)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	authenticatorData, err := optionalAuthenticatorDataFromBase64URL("response.authenticatorData", dto.Response.AuthenticatorData)
+	authenticatorData, err := authenticatorDataFromBase64URL("response.authenticatorData", dto.Response.AuthenticatorData)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
@@ -78,6 +85,9 @@ func RegistrationResponseFromJSON(data []byte) (webauthn.RegistrationResponse, e
 	publicKey, err := optionalBytesFromBase64URL("response.publicKey", dto.Response.PublicKey)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
+	}
+	if dto.Response.PublicKeyAlgorithm == 0 {
+		return webauthn.RegistrationResponse{}, protocolValueError("response.publicKeyAlgorithm", errors.New("algorithm is required"))
 	}
 	clientExtensions, err := clientExtensionResultsFromJSON(dto.ClientExtensionResults)
 	if err != nil {
@@ -110,6 +120,12 @@ func AuthenticationResponseFromJSON(data []byte) (webauthn.AuthenticationRespons
 
 	rawID, err := rawIDFromBase64URL("rawId", dto.RawID)
 	if err != nil {
+		return webauthn.AuthenticationResponse{}, err
+	}
+	if dto.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
+		return webauthn.AuthenticationResponse{}, protocolValueError("id", errors.New("id does not match rawId"))
+	}
+	if err := validateResponseJSONShape(data, []string{"id", "rawId", "response", "clientExtensionResults", "type"}, []string{"clientDataJSON", "authenticatorData", "signature"}); err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
 	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", dto.Response.ClientDataJSON)
@@ -176,6 +192,39 @@ func unmarshalBrowserJSON(data []byte, target any) error {
 	return nil
 }
 
+func validateResponseJSONShape(data []byte, requiredTopLevel []string, requiredResponse []string) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("%w: %w", ErrMalformedJSON, err)
+	}
+	for _, name := range requiredTopLevel {
+		if !presentJSONMember(root, name) {
+			return protocolValueError(name, errors.New("required member is missing or null"))
+		}
+	}
+
+	var response map[string]json.RawMessage
+	if err := json.Unmarshal(root["response"], &response); err != nil || response == nil {
+		return protocolValueError("response", errors.New("response must be an object"))
+	}
+	for _, name := range requiredResponse {
+		if !presentJSONMember(response, name) {
+			return protocolValueError("response."+name, errors.New("required member is missing or null"))
+		}
+	}
+
+	var extensionResults map[string]json.RawMessage
+	if err := json.Unmarshal(root["clientExtensionResults"], &extensionResults); err != nil || extensionResults == nil {
+		return protocolValueError("clientExtensionResults", errors.New("member must be an object"))
+	}
+	return nil
+}
+
+func presentJSONMember(members map[string]json.RawMessage, name string) bool {
+	value, ok := members[name]
+	return ok && len(value) != 0 && string(value) != "null"
+}
+
 func rawIDFromBase64URL(field string, encoded string) (protocol.RawID, error) {
 	bytes, err := decodeBase64URL(field, encoded)
 	if err != nil {
@@ -226,14 +275,6 @@ func authenticatorDataFromBase64URL(field string, encoded string) (protocol.Auth
 	}
 
 	return value, nil
-}
-
-func optionalAuthenticatorDataFromBase64URL(field string, encoded string) (protocol.AuthenticatorData, error) {
-	if encoded == "" {
-		return protocol.AuthenticatorData{}, nil
-	}
-
-	return authenticatorDataFromBase64URL(field, encoded)
 }
 
 func signatureFromBase64URL(field string, encoded string) (protocol.Signature, error) {

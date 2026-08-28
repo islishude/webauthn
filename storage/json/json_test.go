@@ -93,8 +93,56 @@ func TestCredentialRecordRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalCredentialRecord() error = %v", err)
 	}
-	if !decoded.ID.Equal(record.ID) || !decoded.UserHandle.Equal(record.UserHandle) || decoded.RPID != record.RPID || decoded.SignCount != record.SignCount || !decoded.BackupEligible || !decoded.BackupState || !decoded.UVInitialized || !bytes.Equal(decoded.PublicKey.Raw(), record.PublicKey.Raw()) || !reflect.DeepEqual(decoded.PublicKey.PublicKeyMaterial(), record.PublicKey.PublicKeyMaterial()) {
+	if decoded.Type != record.Type || !decoded.ID.Equal(record.ID) || !decoded.UserHandle.Equal(record.UserHandle) || decoded.RPID != record.RPID || decoded.SignCount != record.SignCount || !decoded.BackupEligible || !decoded.BackupState || !decoded.UVInitialized || !bytes.Equal(decoded.PublicKey.Raw(), record.PublicKey.Raw()) || !reflect.DeepEqual(decoded.PublicKey.PublicKeyMaterial(), record.PublicKey.PublicKeyMaterial()) {
 		t.Fatalf("decoded credential = %+v", decoded)
+	}
+}
+
+func TestCredentialRecordVersionOneDefaultsPublicKeyType(t *testing.T) {
+	t.Parallel()
+
+	decoder := codeccbor.MustNewDecoder()
+	encoded, err := storagejson.MarshalCredentialRecord(credentialRecordFixture(t, decoder))
+	if err != nil {
+		t.Fatalf("MarshalCredentialRecord() error = %v", err)
+	}
+	var document map[string]any
+	if err := stdjson.Unmarshal(encoded, &document); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	document["version"] = float64(1)
+	payload := document["credentialRecord"].(map[string]any)
+	delete(payload, "type")
+	legacy, err := stdjson.Marshal(document)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	decoded, err := storagejson.UnmarshalCredentialRecord(legacy, decoder)
+	if err != nil {
+		t.Fatalf("UnmarshalCredentialRecord() error = %v", err)
+	}
+	if decoded.Type != protocol.CredentialTypePublicKey {
+		t.Fatalf("Type = %q, want public-key", decoded.Type)
+	}
+
+	for _, tt := range []struct {
+		name  string
+		value any
+	}{
+		{name: "empty", value: ""},
+		{name: "null", value: nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			payload["type"] = tt.value
+			invalid, err := stdjson.Marshal(document)
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
+			}
+			if _, err := storagejson.UnmarshalCredentialRecord(invalid, decoder); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
+				t.Fatalf("UnmarshalCredentialRecord() error = %v, want ErrInvalidEnvelope", err)
+			}
+		})
 	}
 }
 
@@ -118,7 +166,7 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 	}{
 		{
 			name:    "unknown version",
-			data:    bytes.Replace(registration, []byte(`"version":1`), []byte(`"version":2`), 1),
+			data:    bytes.Replace(registration, []byte(`"version":2`), []byte(`"version":3`), 1),
 			decode:  decodeRegistration,
 			wantErr: storagejson.ErrUnsupportedVersion,
 		},
@@ -150,6 +198,12 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 			name:    "non-canonical extension bytes base64url",
 			data:    bytes.Replace(registration, []byte(`"bytes":"AP8"`), []byte(`"bytes":"AP9"`), 1),
 			decode:  decodeRegistration,
+			wantErr: storagejson.ErrInvalidEnvelope,
+		},
+		{
+			name:    "missing v2 credential type",
+			data:    bytes.Replace(credential, []byte(`"type":"public-key",`), nil, 1),
+			decode:  decodeCredential,
 			wantErr: storagejson.ErrInvalidEnvelope,
 		},
 		{
@@ -190,6 +244,15 @@ func TestStorageJSONRejectsInvalidStateAndUnsupportedExtensionValue(t *testing.T
 	record.BackupEligible = false
 	if _, err := storagejson.MarshalCredentialRecord(record); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
 		t.Fatalf("invalid backup state error = %v", err)
+	}
+
+	authenticationState := authenticationStateFixture(t)
+	authenticationState.AllowCredentials = nil
+	authenticationState.RequestedExtensions = protocol.ExtensionInputs{
+		extension.IDLargeBlob: extension.LargeBlobInput{Write: []byte("blob")},
+	}
+	if _, err := storagejson.MarshalAuthenticationState(authenticationState); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
+		t.Fatalf("invalid largeBlob state error = %v", err)
 	}
 }
 
@@ -296,6 +359,7 @@ func credentialRecordFixture(t testing.TB, decoder *codeccbor.Decoder) webauthn.
 	var aaguid protocol.AAGUID
 	copy(aaguid[:], []byte("0123456789abcdef"))
 	return webauthn.CredentialRecord{
+		Type:                    protocol.CredentialTypePublicKey,
 		ID:                      credentialID,
 		PublicKey:               publicKey,
 		UserHandle:              mustUserHandle(t),

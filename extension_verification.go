@@ -3,6 +3,7 @@ package webauthn
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -84,23 +85,41 @@ func verifyRemoteClientDataBinding(inputs protocol.ExtensionInputs, registry *ex
 
 func validateAuthenticationExtensionContext(inputs protocol.ExtensionInputs, registry *extension.Registry, allowCredentials []protocol.CredentialDescriptor) error {
 	value, requested := inputs[extension.IDLargeBlob]
-	if !requested || registry == nil {
+	if !requested {
 		return nil
+	}
+	if registry == nil {
+		return fmt.Errorf("%w: largeBlob handler is required", ErrExtensionPolicy)
 	}
 	if _, known := registry.Lookup(extension.IDLargeBlob); !known {
+		return fmt.Errorf("%w: largeBlob handler is required", ErrExtensionPolicy)
+	}
+	if err := validateLargeBlobCredentialContext(value, allowCredentials); err != nil {
+		return fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	return nil
+}
+
+func validateStoredAuthenticationExtensionContext(inputs protocol.ExtensionInputs, allowCredentials []protocol.CredentialDescriptor) error {
+	value, requested := inputs[extension.IDLargeBlob]
+	if !requested {
 		return nil
 	}
+	return validateLargeBlobCredentialContext(value, allowCredentials)
+}
+
+func validateLargeBlobCredentialContext(value any, allowCredentials []protocol.CredentialDescriptor) error {
 	normalized, err := (extension.LargeBlobHandler{}).ValidateInput(extension.InputRequest{
 		Operation: extension.OperationAuthentication,
 		ID:        extension.IDLargeBlob,
 		Input:     value,
 	})
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+		return err
 	}
 	largeBlob := normalized.(extension.LargeBlobInput)
 	if largeBlob.Write != nil && len(allowCredentials) != 1 {
-		return fmt.Errorf("%w: largeBlob write requires exactly one allowed credential", ErrExtensionPolicy)
+		return errors.New("largeBlob write requires exactly one allowed credential")
 	}
 	return nil
 }

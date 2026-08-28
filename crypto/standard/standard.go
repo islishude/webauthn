@@ -119,7 +119,7 @@ func verifyECDSA(material codec.CredentialPublicKeyMaterial, curveName string, c
 }
 
 func verifyRSA(material codec.CredentialPublicKeyMaterial, hash stdcrypto.Hash, pss bool, signed []byte, signature []byte) error {
-	if material.RSA == nil || material.EC2 != nil || material.OKP != nil || len(material.RSA.Modulus) == 0 || material.RSA.Exponent < 3 || material.RSA.Exponent%2 == 0 {
+	if material.RSA == nil || material.EC2 != nil || material.OKP != nil || !material.RSA.Valid() {
 		return ErrInvalidPublicKey
 	}
 	publicKey := &rsa.PublicKey{N: new(big.Int).SetBytes(material.RSA.Modulus), E: int(material.RSA.Exponent)}

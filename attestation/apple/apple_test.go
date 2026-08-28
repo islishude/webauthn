@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -58,6 +59,25 @@ func TestVerifierAcceptsRSAAppleAttestation(t *testing.T) {
 	}
 	if result.Type != attestation.TypeAnonymizationCA || result.TrustPath.Kind != attestation.TrustPathX509 || !result.CryptographicallyValid {
 		t.Fatalf("result = %+v, want valid Apple anonymization CA attestation", result)
+	}
+}
+
+func TestVerifierAcceptsEd25519AppleAttestation(t *testing.T) {
+	t.Parallel()
+
+	fixture := newEd25519Fixture(t, certificateOptions{})
+	result, err := New().VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:              "apple",
+		AuthenticatorData:   fixture.authenticatorData,
+		ClientDataHash:      fixture.clientDataHash,
+		Statement:           fixture.statement,
+		CredentialPublicKey: fixture.credentialPublicKey,
+	})
+	if err != nil {
+		t.Fatalf("VerifyAttestation() error = %v", err)
+	}
+	if !result.CryptographicallyValid {
+		t.Fatalf("result = %+v, want valid Ed25519 Apple attestation", result)
 	}
 }
 
@@ -244,6 +264,20 @@ func newRSAFixture(t *testing.T, options certificateOptions) fixture {
 	}}
 
 	return newFixture(t, -257, key, &key.PublicKey, material, options)
+}
+
+func newEd25519Fixture(t *testing.T, options certificateOptions) fixture {
+	t.Helper()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	material := codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{
+		Curve: codec.OKPCurveEd25519,
+		X:     bytes.Clone(publicKey),
+	}}
+	return newFixture(t, protocol.AlgorithmEdDSA, privateKey, publicKey, material, options)
 }
 
 func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privateKey any, publicKey any, material codec.CredentialPublicKeyMaterial, options certificateOptions) fixture {

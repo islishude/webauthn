@@ -97,6 +97,7 @@ allocating an intermediate copy.
 
 Stored credential records should include at minimum:
 
+- credential type;
 - credential ID;
 - credential public key in an adapter-consumable form;
 - user handle or account binding;
@@ -114,6 +115,8 @@ authenticator-attachment changes use explicit conditional updates. Optional
 `storage/json` reconstructs typed key material by
 decoding the stored raw COSE key rather than trusting serialized derivatives.
 COSE algorithm identifiers remain extensible but are bounded to Web IDL `long`.
+RSA material additionally enforces RFC 8230 minimal unsigned encoding and a
+2048–16384 bit modulus before signature verification.
 Ed448 (`-53`) is represented as typed OKP material and requires a caller
 signature adapter because `crypto/standard` does not implement Ed448. The W3C
 Ed448 vector uses CIRCL only from external test code to exercise that adapter
@@ -200,7 +203,7 @@ Plan 05's initial `attestation/tpm` slice adds no dependency. It uses `codec.Cre
 
 Plan 05's initial `attestation/androidkey` slice adds no dependency. It uses `codec.CredentialPublicKey.PublicKeyMaterial` to bind the Android Key certificate public key to the credential public key, parses only the WebAuthn-required Android Key attestation extension fields with Go standard library ASN.1/X.509 support, and delegates attestation signature verification through `crypto.SignatureVerifier`. Trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 
-Plan 05's initial `attestation/androidsafetynet` slice adds no dependency. It uses `crypto.JWSVerifier` to delegate SafetyNet compact JWS verification and certificate-chain handling, validates the WebAuthn nonce binding and `ctsProfileMatch` payload result, checks the leaf certificate hostname for `attest.android.com`, and leaves trust-chain acceptance as caller policy through `attestation.TrustPolicy`.
+Plan 05's initial `attestation/androidsafetynet` slice adds no dependency. It uses `crypto.JWSVerifier` to delegate SafetyNet compact JWS verification and certificate-chain handling, requires explicit expected application/signing-certificate, freshness, version, and integrity policy, validates the WebAuthn nonce binding, checks the leaf certificate hostname for `attest.android.com`, and leaves Google-root and certificate-status acceptance to `attestation.TrustPolicy`.
 
 Plan 05's `attestation/apple` slice adds no dependency. It uses Go standard library ASN.1/X.509 parsing to validate the Apple anonymous attestation nonce extension, uses `codec.CredentialPublicKey.PublicKeyMaterial` to bind the credential certificate public key to the credential public key, and leaves trust-chain acceptance as caller policy through `attestation.TrustPolicy`.
 
@@ -221,11 +224,23 @@ contracts, adds typed byte comparison/append helpers, and makes attestation
 acceptance depend only on explicit trust policy.
 
 The pre-v1 Level 3 security cleanup adds no dependency. It enforces the 1023-byte
-credential ID limit, five-minute default expiry, BE/BS and RP-ID invariants,
+credential ID limit, a five-minute browser hint and separate ten-minute default
+challenge lifetime, BE/BS and RP-ID invariants,
 clone-risk update policy, and authorized `uvInitialized` transitions. Extension
 handlers validate inputs at start and verify outputs after core cryptographic
 checks; registries are immutable and outputs deterministic. Standard signature
 verification and storage JSON remain optional subpackages outside the root graph.
+
+The post-audit Recommendation remediation adds no dependency. It binds
+`appid=true` in both directions to the AppID hash, performs clone-risk policy
+before extension handlers, requires extension handlers to be side-effect-free,
+enforces RFC 8230 RSA bounds, validates TPM public-area unions, supports
+Ed25519 certificate-to-credential binding for Android Key and Apple, and makes
+SafetyNet application identity and freshness explicit. The `browser` adapter
+now requires the Level 3 `toJSON()` members, PRF preserves optional-member
+presence, largeBlob authentication requires a registered handler and its state
+is revalidated at finish, and storage envelope v2
+records credential type while continuing to read v1.
 
 Finish-state validation is strict even for caller-owned persistence mappings:
 missing expiry and unresolved user-verification policy are invalid rather than

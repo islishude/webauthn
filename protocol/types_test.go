@@ -114,10 +114,19 @@ func TestCreationOptionsValidateRequiredFields(t *testing.T) {
 		t.Fatalf("Validate() empty display name error = %v", err)
 	}
 
-	options.PubKeyCredParams[0].Type = protocol.PublicKeyCredentialType("future-type")
-	err = options.Validate()
-	if !errors.Is(err, protocol.ErrUnsupportedValue) {
-		t.Fatalf("Validate() error = %v, want ErrUnsupportedValue", err)
+	options.PubKeyCredParams = append(options.PubKeyCredParams, protocol.CredentialParameter{
+		Type: protocol.PublicKeyCredentialType("future-type"), Algorithm: protocol.AlgorithmES256,
+	})
+	if err := options.Validate(); err != nil {
+		t.Fatalf("Validate() mixed future type error = %v", err)
+	}
+	options.PubKeyCredParams = options.PubKeyCredParams[1:]
+	if err := options.Validate(); err == nil {
+		t.Fatal("Validate() accepted only unsupported credential types")
+	}
+	options.PubKeyCredParams = nil
+	if err := options.Validate(); err != nil {
+		t.Fatalf("Validate() empty parameters error = %v", err)
 	}
 }
 

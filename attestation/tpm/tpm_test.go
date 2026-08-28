@@ -197,6 +197,33 @@ func TestVerifierRejectsPublicAreaFailures(t *testing.T) {
 	}
 }
 
+func TestParseRSAPublicAreaRejectsInvalidParameters(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, codec.MinRSAModulusBits)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	valid := buildRSAPublicArea(t, key.N.Bytes(), uint32(key.E)) //nolint:gosec // Generated RSA exponent fits uint32.
+	for _, tt := range []struct {
+		name   string
+		mutate func([]byte)
+	}{
+		{name: "keyBits mismatch", mutate: func(value []byte) { binary.BigEndian.PutUint16(value[14:16], 1024) }},
+		{name: "composite exponent", mutate: func(value []byte) { binary.BigEndian.PutUint32(value[16:20], 9) }},
+		{name: "invalid rsa scheme", mutate: func(value []byte) { binary.BigEndian.PutUint16(value[12:14], 0xffff) }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			value := bytes.Clone(valid)
+			tt.mutate(value)
+			if _, err := parsePublicArea(value); !errors.Is(err, ErrUnsupportedKey) {
+				t.Fatalf("parsePublicArea() error = %v, want ErrUnsupportedKey", err)
+			}
+		})
+	}
+}
+
 func TestVerifierRejectsCertInfoFailures(t *testing.T) {
 	t.Parallel()
 
@@ -362,7 +389,7 @@ func newEC2Fixture(t *testing.T) fixture {
 func newRSAFixture(t *testing.T) fixture {
 	t.Helper()
 
-	modulus := bytes.Repeat([]byte{0x03}, 256)
+	modulus := bytes.Repeat([]byte{0x83}, 256)
 	publicArea := buildRSAPublicArea(t, modulus, 65537)
 	material := codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{
 		Modulus:  modulus,

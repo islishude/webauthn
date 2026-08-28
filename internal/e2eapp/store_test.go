@@ -21,7 +21,7 @@ func TestStoreInsertCredentialIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
-	record := webauthn.CredentialRecord{ID: credentialID, UserHandle: userHandle, RPID: "localhost"}
+	record := webauthn.CredentialRecord{Type: protocol.CredentialTypePublicKey, ID: credentialID, UserHandle: userHandle, RPID: "localhost"}
 
 	const workers = 32
 	var successes atomic.Int64
@@ -60,6 +60,7 @@ func TestStoreAppliesAuthenticatorAttachmentUpdate(t *testing.T) {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
 	record := webauthn.CredentialRecord{
+		Type:                    protocol.CredentialTypePublicKey,
 		ID:                      credentialID,
 		UserHandle:              userHandle,
 		RPID:                    "localhost",

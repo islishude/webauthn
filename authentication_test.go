@@ -59,6 +59,7 @@ func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 		UserVerification: protocol.UserVerificationPreferred,
 		Hints:            []protocol.PublicKeyCredentialHint{protocol.HintHybrid},
 		Timeout:          3 * time.Second,
+		StateTTL:         4 * time.Second,
 		Now:              func() time.Time { return now },
 	})
 	if err != nil {
@@ -73,8 +74,8 @@ func TestAuthenticationStartGeneratesDefaultChallenge(t *testing.T) {
 	if result.Options.TimeoutMilliseconds != 3000 {
 		t.Fatalf("TimeoutMilliseconds = %v, want 3000", result.Options.TimeoutMilliseconds)
 	}
-	if !result.State.ExpiresAt.Equal(now.Add(3 * time.Second)) {
-		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(3*time.Second))
+	if !result.State.ExpiresAt.Equal(now.Add(4 * time.Second)) {
+		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(4*time.Second))
 	}
 }
 
@@ -90,10 +91,10 @@ func TestAuthenticationStartUsesSafeTimeoutDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartAuthentication() error = %v", err)
 	}
-	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultCeremonyTimeout.Milliseconds() {
+	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultBrowserTimeout.Milliseconds() {
 		t.Fatalf("TimeoutMilliseconds = %d", result.Options.TimeoutMilliseconds)
 	}
-	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultCeremonyTimeout)) {
+	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultChallengeTTL)) {
 		t.Fatalf("ExpiresAt = %v", result.State.ExpiresAt)
 	}
 }
@@ -108,6 +109,51 @@ func TestAuthenticationStartRejectsNegativeTimeout(t *testing.T) {
 	})
 	if !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("StartAuthentication() error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestAuthenticationStartRejectsInvalidStateTTL(t *testing.T) {
+	t.Parallel()
+
+	base := webauthn.AuthenticationStartOptions{
+		RPID:         "example.com",
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+	}
+	negative := base
+	negative.StateTTL = -time.Second
+	if _, err := webauthn.StartAuthentication(context.Background(), negative); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("negative state ttl error = %v, want ErrInvalidConfiguration", err)
+	}
+	short := base
+	short.Timeout = 2 * time.Minute
+	short.StateTTL = time.Minute
+	if _, err := webauthn.StartAuthentication(context.Background(), short); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("short state ttl error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestAuthenticationStartRequiresRegisteredLargeBlobHandler(t *testing.T) {
+	t.Parallel()
+
+	registry, err := extension.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	base := webauthn.AuthenticationStartOptions{
+		RPID:              "example.com",
+		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		ExtensionRegistry: registry,
+	}
+	base.Extensions = protocol.ExtensionInputs{
+		extension.IDLargeBlob: map[string]any{"read": true},
+	}
+	if _, err := webauthn.StartAuthentication(context.Background(), base); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("unregistered largeBlob error = %v, want ErrInvalidConfiguration", err)
+	}
+
+	base.Extensions = protocol.ExtensionInputs{"future": true}
+	if _, err := webauthn.StartAuthentication(context.Background(), base); err != nil {
+		t.Fatalf("unknown extension StartAuthentication() error = %v", err)
 	}
 }
 
@@ -170,6 +216,14 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 					Type: protocol.CredentialTypePublicKey,
 					ID:   mustCredentialID(t, []byte("other-credential")),
 				}}
+			},
+			wantErr: webauthn.ErrCredentialNotAllowed,
+		},
+		{
+			name: "missing credential type",
+			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
+				t.Helper()
+				options.Credential.Type = ""
 			},
 			wantErr: webauthn.ErrCredentialNotAllowed,
 		},
@@ -366,6 +420,66 @@ func TestAuthenticationAppIDRejectsPolicyMismatch(t *testing.T) {
 	}
 }
 
+func TestAuthenticationAppIDOutputBindsExpectedRPIDHash(t *testing.T) {
+	t.Parallel()
+
+	const appID = "https://legacy.example/appid"
+	tests := []struct {
+		name      string
+		hashInput string
+		output    map[string]any
+		wantErr   error
+		wantAppID bool
+	}{
+		{name: "normal hash without output", hashInput: "example.com"},
+		{name: "normal hash with false output", hashInput: "example.com", output: map[string]any{extension.IDAppID: false}},
+		{name: "normal hash with true output", hashInput: "example.com", output: map[string]any{extension.IDAppID: true}, wantErr: webauthn.ErrRPIDHashMismatch},
+		{name: "appid hash with true output", hashInput: appID, output: map[string]any{extension.IDAppID: true}, wantAppID: true},
+		{name: "appid hash with false output", hashInput: appID, output: map[string]any{extension.IDAppID: false}, wantErr: webauthn.ErrRPIDHashMismatch},
+		{name: "appid hash without output", hashInput: appID, wantErr: webauthn.ErrRPIDHashMismatch},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := newAuthenticationFixture(t, true)
+			registry, err := extension.NewLevel3Registry()
+			if err != nil {
+				t.Fatalf("NewLevel3Registry() error = %v", err)
+			}
+			options := fixture.finishOptions()
+			options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+			options.ExtensionPolicy.AppID = appID
+			options.ExtensionRegistry = registry
+			options.Response.ClientExtensionResults = tt.output
+			options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, tt.hashInput, authenticationFlagUP, 8, nil))
+
+			result, err := webauthn.FinishAuthentication(context.Background(), options)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("FinishAuthentication() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			found := false
+			for _, extensionResult := range result.Extensions {
+				if extensionResult.ID != extension.IDAppID {
+					continue
+				}
+				found = true
+				output := extensionResult.Outputs[extension.IDAppID].(extension.AppIDResult)
+				if output.Used != tt.wantAppID {
+					t.Fatalf("AppIDResult.Used = %t, want %t", output.Used, tt.wantAppID)
+				}
+			}
+			if !found {
+				t.Fatal("AppID result missing")
+			}
+		})
+	}
+}
+
 func TestAuthenticationCounterPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -477,6 +591,31 @@ func TestAuthenticationExtensionOutputRunsAfterSignatureVerification(t *testing.
 	}
 	if called {
 		t.Fatal("extension output handler ran before signature verification")
+	}
+}
+
+func TestAuthenticationExtensionOutputDoesNotRunBeforeCloneRiskRejection(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	called := false
+	registry, err := extension.NewRegistry(trackingExtensionHandler{id: "track", called: &called})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.ExtensionRegistry = registry
+	options.Credential.SignCount = 8
+	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP, 7, nil))
+	options.CounterPolicy.RejectCloneRisk = true
+
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrCloneRisk) {
+		t.Fatalf("FinishAuthentication() error = %v, want ErrCloneRisk", err)
+	}
+	if called {
+		t.Fatal("extension output handler ran before clone-risk rejection")
 	}
 }
 
@@ -723,6 +862,7 @@ func newAuthenticationFixture(t *testing.T, usernameFirst bool) *authenticationF
 	}
 
 	credential := webauthn.CredentialRecord{
+		Type:       protocol.CredentialTypePublicKey,
 		ID:         mustCredentialID(t, credentialID),
 		PublicKey:  codec.NewCredentialPublicKey(-7, []byte("raw-key"), codec.CredentialPublicKeyMaterial{}),
 		UserHandle: userHandle,

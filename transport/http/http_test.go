@@ -172,11 +172,13 @@ func (w *trackingResponseWriter) Write(data []byte) (int, error) {
 }
 
 func registrationResponseJSON() string {
-	return `{"type":"public-key","rawId":"` + encode([]byte("credential-1")) + `","response":{"clientDataJSON":"` + encode([]byte("{}")) + `","authenticatorData":"` + encode(make([]byte, 37)) + `","publicKeyAlgorithm":-7,"attestationObject":"` + encode([]byte{0xa0}) + `"}}`
+	id := encode([]byte("credential-1"))
+	return `{"id":"` + id + `","type":"public-key","rawId":"` + id + `","clientExtensionResults":{},"response":{"clientDataJSON":"` + encode([]byte("{}")) + `","authenticatorData":"` + encode(make([]byte, 37)) + `","transports":[],"publicKeyAlgorithm":-7,"attestationObject":"` + encode([]byte{0xa0}) + `"}}`
 }
 
 func authenticationResponseJSON() string {
-	return `{"type":"public-key","rawId":"` + encode([]byte("credential-1")) + `","response":{"clientDataJSON":"` + encode([]byte("{}")) + `","authenticatorData":"` + encode(make([]byte, 37)) + `","signature":"` + encode([]byte("signature")) + `"}}`
+	id := encode([]byte("credential-1"))
+	return `{"id":"` + id + `","type":"public-key","rawId":"` + id + `","clientExtensionResults":{},"response":{"clientDataJSON":"` + encode([]byte("{}")) + `","authenticatorData":"` + encode(make([]byte, 37)) + `","signature":"` + encode([]byte("signature")) + `"}}`
 }
 
 func mustChallenge(t *testing.T, value []byte) protocol.Challenge {

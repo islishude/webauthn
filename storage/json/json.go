@@ -16,12 +16,13 @@ import (
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/codec"
+	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/protocol"
 )
 
 const (
-	// EnvelopeVersion is the only storage envelope version currently supported.
-	EnvelopeVersion = 1
+	// EnvelopeVersion is the current storage envelope version.
+	EnvelopeVersion = 2
 	// MaxEnvelopeBytes bounds storage input before JSON decoding.
 	MaxEnvelopeBytes = 1 << 20
 	// MaxStoredPublicKeyBytes bounds a persisted raw COSE credential key.
@@ -30,6 +31,7 @@ const (
 	kindRegistrationState   = "registration-state"
 	kindAuthenticationState = "authentication-state"
 	kindCredentialRecord    = "credential-record" //nolint:gosec // Public envelope discriminator, not a credential secret.
+	legacyEnvelopeVersion   = 1
 )
 
 var (
@@ -86,18 +88,19 @@ type authenticationStateDTO struct {
 }
 
 type credentialRecordDTO struct {
-	ID                      string   `json:"id"`
-	PublicKeyCOSE           string   `json:"publicKeyCose"`
-	UserHandle              string   `json:"userHandle"`
-	RPID                    string   `json:"rpId"`
-	AAGUID                  string   `json:"aaguid"`
-	SignCount               uint32   `json:"signCount"`
-	Transports              []string `json:"transports,omitempty"`
-	BackupEligible          bool     `json:"backupEligible"`
-	BackupState             bool     `json:"backupState"`
-	UVInitialized           bool     `json:"uvInitialized"`
-	AuthenticatorAttachment string   `json:"authenticatorAttachment,omitempty"`
-	AttestationType         string   `json:"attestationType"`
+	Type                    stdjson.RawMessage `json:"type,omitempty"`
+	ID                      string             `json:"id"`
+	PublicKeyCOSE           string             `json:"publicKeyCose"`
+	UserHandle              string             `json:"userHandle"`
+	RPID                    string             `json:"rpId"`
+	AAGUID                  string             `json:"aaguid"`
+	SignCount               uint32             `json:"signCount"`
+	Transports              []string           `json:"transports,omitempty"`
+	BackupEligible          bool               `json:"backupEligible"`
+	BackupState             bool               `json:"backupState"`
+	UVInitialized           bool               `json:"uvInitialized"`
+	AuthenticatorAttachment string             `json:"authenticatorAttachment,omitempty"`
+	AttestationType         string             `json:"attestationType"`
 }
 
 // MarshalRegistrationState encodes registration state for trusted server-side storage.
@@ -245,7 +248,12 @@ func MarshalCredentialRecord(record webauthn.CredentialRecord) ([]byte, error) {
 	if err := validateCredentialRecord(record); err != nil {
 		return nil, err
 	}
+	credentialType, err := stdjson.Marshal(record.Type)
+	if err != nil {
+		return nil, fmt.Errorf("%w: credential type", ErrInvalidEnvelope)
+	}
 	payload := &credentialRecordDTO{
+		Type:                    credentialType,
 		ID:                      encodeBytes(record.ID.Bytes()),
 		PublicKeyCOSE:           encodeBytes(record.PublicKey.Raw()),
 		UserHandle:              encodeBytes(record.UserHandle.Bytes()),
@@ -273,6 +281,10 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 		return webauthn.CredentialRecord{}, err
 	}
 	payload := envelope.CredentialRecord
+	credentialType, err := credentialRecordType(envelope.Version, payload.Type)
+	if err != nil {
+		return webauthn.CredentialRecord{}, err
+	}
 	idBytes, err := decodeBytes("id", payload.ID, 1, protocol.MaxCredentialIDLength)
 	if err != nil {
 		return webauthn.CredentialRecord{}, err
@@ -300,6 +312,7 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 	var aaguid protocol.AAGUID
 	copy(aaguid[:], aaguidBytes)
 	record := webauthn.CredentialRecord{
+		Type:                    credentialType,
 		ID:                      id,
 		PublicKey:               publicKey,
 		UserHandle:              userHandle,
@@ -317,6 +330,21 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 		return webauthn.CredentialRecord{}, err
 	}
 	return record, nil
+}
+
+func credentialRecordType(version int, raw stdjson.RawMessage) (protocol.PublicKeyCredentialType, error) {
+	if len(raw) == 0 {
+		if version == legacyEnvelopeVersion {
+			return protocol.CredentialTypePublicKey, nil
+		}
+		return "", fmt.Errorf("%w: credential type is required", ErrInvalidEnvelope)
+	}
+
+	var value string
+	if err := stdjson.Unmarshal(raw, &value); err != nil || value == "" {
+		return "", fmt.Errorf("%w: credential type", ErrInvalidEnvelope)
+	}
+	return protocol.PublicKeyCredentialType(value), nil
 }
 
 func marshalEnvelope(value envelope) ([]byte, error) {
@@ -344,7 +372,7 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return envelope{}, fmt.Errorf("%w: trailing data", ErrInvalidEnvelope)
 	}
-	if value.Version != EnvelopeVersion {
+	if value.Version != EnvelopeVersion && value.Version != legacyEnvelopeVersion {
 		return envelope{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, value.Version)
 	}
 	if value.Kind != expectedKind {
@@ -395,11 +423,24 @@ func validateAuthenticationState(state webauthn.AuthenticationState) error {
 			return invalid(err)
 		}
 	}
+	if value, ok := state.RequestedExtensions[extension.IDLargeBlob]; ok {
+		normalized, err := (extension.LargeBlobHandler{}).ValidateInput(extension.InputRequest{
+			Operation: extension.OperationAuthentication,
+			ID:        extension.IDLargeBlob,
+			Input:     value,
+		})
+		if err != nil {
+			return invalid(err)
+		}
+		if largeBlob := normalized.(extension.LargeBlobInput); largeBlob.Write != nil && len(state.AllowCredentials) != 1 {
+			return fmt.Errorf("%w: largeBlob write requires exactly one allowed credential", ErrInvalidEnvelope)
+		}
+	}
 	return nil
 }
 
 func validateCredentialRecord(record webauthn.CredentialRecord) error {
-	if record.ID.Len() == 0 || record.UserHandle.Len() == 0 || record.RPID == "" || record.PublicKey.Algorithm == 0 || len(record.PublicKey.Raw()) == 0 || len(record.PublicKey.Raw()) > MaxStoredPublicKeyBytes || record.AttestationType == "" {
+	if record.Type.Validate() != nil || record.ID.Len() == 0 || record.UserHandle.Len() == 0 || record.RPID == "" || record.PublicKey.Algorithm == 0 || len(record.PublicKey.Raw()) == 0 || len(record.PublicKey.Raw()) > MaxStoredPublicKeyBytes || record.AttestationType == "" {
 		return fmt.Errorf("%w: credential required fields", ErrInvalidEnvelope)
 	}
 	if err := record.PublicKey.Algorithm.Validate(); err != nil {

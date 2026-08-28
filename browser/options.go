@@ -125,7 +125,7 @@ func CredentialDescriptorToJSON(descriptor protocol.CredentialDescriptor) Creden
 
 func credentialParametersToJSON(parameters []protocol.CredentialParameter) []CredentialParameterJSON {
 	if len(parameters) == 0 {
-		return nil
+		return []CredentialParameterJSON{}
 	}
 
 	out := make([]CredentialParameterJSON, len(parameters))
@@ -180,7 +180,7 @@ func prfInputToJSON(value any) any {
 		if input.Eval != nil {
 			out["eval"] = prfValuesToJSON(*input.Eval)
 		}
-		if len(input.EvalByCredential) != 0 {
+		if input.EvalByCredential != nil {
 			byCredential := make(map[string]any, len(input.EvalByCredential))
 			for id, values := range input.EvalByCredential {
 				byCredential[id] = prfValuesToJSON(values)

@@ -34,11 +34,14 @@ var (
 
 // AuthenticationStartOptions configures assertion option creation.
 type AuthenticationStartOptions struct {
-	RPID                 string
-	OriginPolicy         OriginPolicy
-	Challenge            protocol.Challenge
-	ChallengeGenerator   ChallengeGenerator
-	Timeout              time.Duration
+	RPID               string
+	OriginPolicy       OriginPolicy
+	Challenge          protocol.Challenge
+	ChallengeGenerator ChallengeGenerator
+	Timeout            time.Duration
+	// StateTTL controls the lifetime of the trusted server-side challenge state
+	// independently from the browser timeout hint. Zero uses DefaultChallengeTTL.
+	StateTTL             time.Duration
 	AllowCredentials     []protocol.CredentialDescriptor
 	UserVerification     protocol.UserVerificationRequirement
 	Hints                []protocol.PublicKeyCredentialHint
@@ -130,7 +133,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
-	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
+	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.StateTTL, options.now())
 	if err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
@@ -302,6 +305,10 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	if err := verifyAuthenticationSignature(ctx, options.SignatureVerifier, options.Credential, options.Response, clientDataHash); err != nil {
 		return AuthenticationResult{}, err
 	}
+	counter := compareCounters(options.Credential.SignCount, parsedAuthData.SignCount)
+	if counter.CloneRisk && options.CounterPolicy.RejectCloneRisk {
+		return AuthenticationResult{}, ErrCloneRisk
+	}
 	extensionResults, err := verifyAuthenticationExtensions(ctx, authenticationExtensionInputs{
 		state:                   options.State,
 		selectedCredentialID:    options.Credential.ID,
@@ -313,11 +320,6 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	})
 	if err != nil {
 		return AuthenticationResult{}, err
-	}
-
-	counter := compareCounters(options.Credential.SignCount, parsedAuthData.SignCount)
-	if counter.CloneRisk && options.CounterPolicy.RejectCloneRisk {
-		return AuthenticationResult{}, ErrCloneRisk
 	}
 
 	credential := options.Credential
@@ -376,7 +378,7 @@ func validateAuthenticationDependencies(options AuthenticationFinishOptions) err
 	if options.SignatureVerifier == nil {
 		return fmt.Errorf("%w: signature verifier is required", ErrInvalidConfiguration)
 	}
-	if options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
+	if options.Credential.Type.Validate() != nil || options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
 		return ErrCredentialNotAllowed
 	}
 	if options.CounterPolicy.RejectCloneRisk && options.CounterPolicy.UpdateOnCloneRisk {
@@ -403,6 +405,9 @@ func validateAuthenticationState(state AuthenticationState, now time.Time) error
 		if err := descriptor.Validate(); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 		}
+	}
+	if err := validateStoredAuthenticationExtensionContext(state.RequestedExtensions, state.AllowCredentials); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
 	}
 	if !now.Before(state.ExpiresAt) {
 		return ErrCeremonyExpired
@@ -472,11 +477,9 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 		return protocol.ParsedAuthenticatorData{}, ErrMalformedResponse
 	}
 
-	expectedRPIDHash := sha256.Sum256([]byte(state.RPID))
-	if !bytes.Equal(parsed.RPIDHash, expectedRPIDHash[:]) {
-		if !authenticationAppIDAllowed(state, response, policy, parsed.RPIDHash) {
-			return protocol.ParsedAuthenticatorData{}, ErrRPIDHashMismatch
-		}
+	expectedRPIDHash, ok := expectedAuthenticationRPIDHash(state, response, policy)
+	if !ok || !bytes.Equal(parsed.RPIDHash, expectedRPIDHash) {
+		return protocol.ParsedAuthenticatorData{}, ErrRPIDHashMismatch
 	}
 	if !parsed.Flags.UserPresent() {
 		return protocol.ParsedAuthenticatorData{}, ErrUserPresenceRequired
@@ -497,25 +500,20 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 	return parsed, nil
 }
 
-func authenticationAppIDAllowed(state AuthenticationState, response AuthenticationResponse, policy AuthenticationExtensionPolicy, rpIDHash []byte) bool {
-	if policy.AppID == "" {
-		return false
-	}
-	requestedAppID, requested := state.RequestedExtensions[extension.IDAppID]
-	if !requested {
-		return false
-	}
-	appID, ok := requestedAppID.(string)
-	if !ok || appID == "" || appID != policy.AppID {
-		return false
-	}
-	used, ok := response.ClientExtensionResults[extension.IDAppID].(bool)
-	if !ok || !used {
-		return false
+func expectedAuthenticationRPIDHash(state AuthenticationState, response AuthenticationResponse, policy AuthenticationExtensionPolicy) ([]byte, bool) {
+	used, _ := response.ClientExtensionResults[extension.IDAppID].(bool)
+	if !used {
+		rpIDHash := sha256.Sum256([]byte(state.RPID))
+		return rpIDHash[:], true
 	}
 
-	appIDHash := sha256.Sum256([]byte(policy.AppID))
-	return bytes.Equal(rpIDHash, appIDHash[:])
+	requestedAppID, requested := state.RequestedExtensions[extension.IDAppID]
+	appID, ok := requestedAppID.(string)
+	if !requested || !ok || appID == "" || policy.AppID == "" || appID != policy.AppID {
+		return nil, false
+	}
+	appIDHash := sha256.Sum256([]byte(appID))
+	return appIDHash[:], true
 }
 
 func decodeAuthenticationExtensions(decoder codec.ExtensionMapDecoder, parsed protocol.ParsedAuthenticatorData) (codec.ExtensionMap, error) {

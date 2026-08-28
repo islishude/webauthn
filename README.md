@@ -14,7 +14,7 @@ format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
 with deprecated `uvm` retained, a separately opt-in non-normative
 `remoteClientDataJSON` preview handler, optional browser JSON and
-standard-library HTTP helpers, compile-checked examples, a complete 45-case W3C
+standard-library HTTP helpers, RFC 8230 RSA key bounds, compile-checked examples, a complete 45-case W3C
 Level 3 vector inventory, real-browser conformance tests, fuzz smoke targets,
 import graph checks, dependency license checks, and release documentation.
 
@@ -36,13 +36,13 @@ Implemented areas:
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Registration        | Transport-neutral start and finish APIs, including conditional-mediation state binding.                                                             |
 | Authentication      | Username-first and discoverable credential/passkey flows.                                                                                           |
-| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` packages.                          |
+| Attestation formats | Optional `none`, `packed`, `fido-u2f`, `tpm`, `android-key`, legacy policy-bound `android-safetynet`, `apple`, and `compound` packages.             |
 | Attestation trust   | Explicit caller-selected trust policies, trust-root hooks, metadata hooks, certificate status hooks, and AAGUID rules.                              |
 | Extensions          | Recommendation `appid`, `appidExclude`, `credProps`, `largeBlob`, and `prf`; deprecated `uvm` and non-default `remoteClientDataJSON` remain opt-in. |
 | Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.                             |
 | HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                                       |
-| Signature verifier  | Optional standard-library verifier for common EC, RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters.                     |
-| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and credential records.                                                 |
+| Signature verifier  | Optional standard-library verifier for common EC, RFC 8230-bounded RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters.    |
+| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and typed credential records; v2 reads legacy v1 envelopes.             |
 | Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                                                    |
 | Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.                                   |
 
@@ -93,7 +93,8 @@ The package graph is designed so applications only import what they need:
 - `attestation/fidou2f`: optional `fido-u2f` verifier;
 - `attestation/tpm`: optional `tpm` verifier;
 - `attestation/androidkey`: optional `android-key` verifier;
-- `attestation/androidsafetynet`: optional `android-safetynet` verifier;
+- `attestation/androidsafetynet`: optional legacy verifier with explicit
+  application identity, freshness, integrity, and outer trust policy;
 - `attestation/apple`: optional Apple anonymous attestation verifier;
 - `attestation/compound`: optional `compound` verifier that dispatches
   sub-statements through a caller-supplied attestation registry;
@@ -120,7 +121,8 @@ Public examples are compiled by `make example-build` and by CI:
 - `examples/passkey` shows discoverable credential authentication, including
   lookup by returned user handle and credential ID before verification.
 - `examples/attestation` shows explicit attestation format selection and a
-  restricted enrollment trust policy.
+  restricted enrollment policy that requires a trusted certificate path and
+  good certificate status in addition to format and AAGUID policy.
 
 The README intentionally points to compile-checked examples instead of carrying
 untested Go snippets.
@@ -138,6 +140,8 @@ Safe behavior is the default shape:
 
 - challenges are server-generated and compared against their exact canonical
   unpadded base64url encoding;
+- the five-minute browser timeout hint is separate from the default ten-minute
+  trusted challenge-state lifetime;
 - origins and RP IDs are explicit policy inputs;
 - cross-origin `topOrigin` checks are explicit `OriginPolicy` inputs;
 - a present `topOrigin` cannot be collapsed into an absent value;
@@ -148,9 +152,10 @@ Safe behavior is the default shape:
   are rejected;
 - signature counter rollback is surfaced as clone risk;
 - clone-risk counters are preserved unless explicit policy authorizes updating;
-- zero-value ceremony timeouts expire after five minutes;
 - incomplete caller-stored ceremony state fails closed;
 - unsupported algorithms and formats are rejected;
+- RSA credential keys require minimally encoded parameters and a 2048–16384 bit
+  modulus;
 - extension and attestation identifiers and concrete CBOR/COSE encodings are
   validated against their Level 3 grammar and canonical form;
 - attestation acceptance requires caller-supplied trust policy such as

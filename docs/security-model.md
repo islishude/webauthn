@@ -77,7 +77,8 @@ The project must not implement cryptographic primitives. Signature verification 
 
 The concrete CBOR adapter rejects non-canonical CTAP2 encodings, tags,
 indefinite lengths, duplicate or extra attestation-object keys, and optional or
-private COSE key parameters. Authenticator RFU flag bits are rejected. These
+private COSE key parameters. RSA values must be minimally encoded and use a
+2048–16384 bit modulus. Authenticator RFU flag bits are rejected. These
 checks occur before decoded material reaches signature or trust policy.
 
 ## Signature counter policy
@@ -110,6 +111,26 @@ The current default remains conservative. Without a caller-supplied `attestation
 
 The `attestation` package provides explicit trust policy building blocks for `none`, self attestation, format and type allow-lists, x5c trust-root verification through caller-provided certificate verifiers, AAGUID allow-lists, caller-owned metadata lookup, caller-owned certificate status checks, and policy composition. These policies do not include built-in trust anchors, network fetching, metadata caches, or automatic restricted-enrollment defaults.
 
+Format, type, and AAGUID allow-lists classify evidence but do not establish
+X.509 trust. Restricted enrollment must compose them with trusted roots or
+trusted metadata and certificate-status policy. The public attestation example
+does so and rejects self-signed or revoked paths.
+
+Legacy SafetyNet verification additionally requires expected Android package
+and application-signing-certificate digests, a bounded timestamp window, an
+integrity requirement, and an optional version allow-list. JWS verification and
+outer Google-root/status acceptance remain separate requirements.
+
+Compound attestation returns successful sub-results as raw trust evidence.
+`RequireTrustedRoots` deliberately does not treat that aggregate as an X.509
+path; callers accepting `compound` must recursively evaluate the trust of enough
+successful sub-statements rather than relying on a format allow-list alone.
+
+The storage-neutral `CredentialRecord` does not retain attestation chains.
+Deployments that need later CA-revocation response or metadata re-evaluation
+must persist the `RegistrationResult.Attestation` evidence in an application
+schema indexed by the credential.
+
 ## Extension policy
 
 Extensions are optional for clients and authenticators. Known inputs are
@@ -125,7 +146,13 @@ raw results by default, including nested maps with non-string comparable CBOR
 keys; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed
 behavior. Rejection policy is applied before raw-value copying.
 
-The AppID extension is accepted for RP ID hash fallback only when the request included the same `appid` input, the caller configured the same AppID in policy, and the client output reports that AppID was used.
+Custom extension handlers must be deterministic and side-effect-free because a
+later caller-owned atomic insert or persistence conflict can still reject an
+otherwise verified registration result.
+
+The AppID extension selects exactly one expected hash: `appid=true` requires the
+AppID hash and request/policy agreement, while false or absent output requires
+the ordinary RP ID hash.
 
 The PRF extension validates requested inputs, output result lengths, and
 `evalByCredential` binding to the authentication allow-credentials list,
@@ -137,8 +164,15 @@ specific inputs could affect the result. PRF
 outputs are extension results for caller policy and storage; they are not login
 success criteria by themselves.
 
-`largeBlob` writes require exactly one allowed credential and a `written`
-result. An `appidExclude` output, when present, must be true. Editor's Draft
+When a client implements PRF over CTAP `hmac-secret`, signed authenticator data
+can contain an unrequested `hmac-secret` output that the RP cannot interpret.
+The default policy ignores it. Enabling `RejectUnknown` or `RejectUnrequested`
+intentionally trades that interoperability for stricter local policy.
+
+Authentication requests for `largeBlob` require a registered handler so the
+single-credential write constraint is enforced before state is emitted and
+again after restoration. Writes require exactly one allowed credential and a
+`written` result. An `appidExclude` output, when present, must be true. Editor's Draft
 `remoteClientDataJSON` requires a true client output. The remote extension is
 not in default registries; an opt-in caller must configure the remote origin
 explicitly, and the serialized input must remain byte-for-byte identical to
@@ -157,7 +191,10 @@ Defaults should minimize credential and authenticator disclosure.
 - Error results should support generic user-facing messages to reduce username and credential enumeration risk.
 - Credential descriptors and transport hints should be treated as operational hints, not public identifiers to expose unnecessarily.
 - User handles should be opaque stable identifiers, not email addresses or usernames.
-- Logs must not include challenges, credential IDs, user handles, signatures, client data JSON, or attestation objects unless the application explicitly opts into sensitive debug logging.
+- Logs must not include challenges, credential IDs, user handles, signatures,
+  client data JSON, attestation objects, PRF results, largeBlob contents, or
+  other extension secrets unless the application explicitly opts into sensitive
+  debug logging.
 
 ## Malformed input handling
 
@@ -178,7 +215,8 @@ Malformed data should fail closed. The parser and verifier must test:
 
 ## Time and replay
 
-Ceremony state includes a five-minute expiry by default. Finish rejects missing
+The browser timeout hint defaults to five minutes while trusted challenge state
+defaults to a separate ten-minute lifetime. Finish rejects missing
 expiry or unresolved user-verification policy as invalid state and rejects at
 the exact deadline. Callers must still atomically consume state once; optional
 `storage/json` serializes trusted server-side state but does not enforce replay
@@ -191,7 +229,7 @@ fixed clock.
 
 ## Optional transport helpers
 
-The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
+The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, requires Level 3 `toJSON()` members, binds canonical `id` to `rawId`, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
 
 The optional `transport/http` package only reads bounded JSON request bodies and
 writes JSON responses. It serializes a response before committing HTTP headers,
@@ -207,7 +245,8 @@ Before stable release, defaults should be:
 
 - 32-byte server-generated random challenges;
 - exact challenge comparison;
-- five-minute default ceremony expiry and exact-deadline rejection;
+- five-minute browser timeout, ten-minute challenge lifetime, and exact-deadline
+  rejection;
 - explicit allowed origins;
 - explicit allowed top origins for cross-origin ceremonies;
 - explicit RP ID;

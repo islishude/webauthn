@@ -124,6 +124,24 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 	}
 }
 
+func TestCredentialCreationOptionsPreservesEmptyPRFEvalByCredential(t *testing.T) {
+	t.Parallel()
+
+	dto := browser.CredentialCreationOptionsFromProtocol(protocol.PublicKeyCredentialCreationOptions{
+		Extensions: protocol.ExtensionInputs{
+			extension.IDPRF: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{}},
+		},
+	})
+	prf := dto.Extensions[extension.IDPRF].(map[string]any)
+	byCredential, present := prf["evalByCredential"]
+	if !present {
+		t.Fatal("evalByCredential member was dropped")
+	}
+	if len(byCredential.(map[string]any)) != 0 {
+		t.Fatalf("evalByCredential = %#v, want empty object", byCredential)
+	}
+}
+
 func TestCredentialDescriptorFromJSON(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +165,7 @@ func TestRegistrationResponseFromJSON(t *testing.T) {
 	t.Parallel()
 
 	payload := map[string]any{
+		"id":                      encode([]byte("credential-1")),
 		"type":                    protocol.CredentialTypePublicKey,
 		"rawId":                   encode([]byte("credential-1")),
 		"authenticatorAttachment": "platform",
@@ -206,6 +225,7 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 	t.Parallel()
 
 	payload := map[string]any{
+		"id":                      encode([]byte("credential-1")),
 		"type":                    protocol.CredentialTypePublicKey,
 		"rawId":                   encode([]byte("credential-1")),
 		"authenticatorAttachment": "cross-platform",
@@ -296,6 +316,62 @@ func TestResponseDecodersRejectInvalidInputs(t *testing.T) {
 				t.Fatalf("RegistrationResponseFromJSON() error = %v, want %v", err, test.err)
 			}
 		})
+	}
+}
+
+func TestResponseDecodersRequireLevel3JSONMembers(t *testing.T) {
+	t.Parallel()
+
+	registration := func() map[string]any {
+		return map[string]any{
+			"id":                     encode([]byte("credential-1")),
+			"rawId":                  encode([]byte("credential-1")),
+			"type":                   protocol.CredentialTypePublicKey,
+			"clientExtensionResults": map[string]any{},
+			"response": map[string]any{
+				"clientDataJSON":     encode([]byte(`{"type":"webauthn.create"}`)),
+				"authenticatorData":  encode(make([]byte, protocol.MinAuthenticatorDataLength)),
+				"transports":         []string{},
+				"publicKeyAlgorithm": -7,
+				"attestationObject":  encode([]byte{0xa0}),
+			},
+		}
+	}
+	for _, tt := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "missing id", mutate: func(value map[string]any) { delete(value, "id") }},
+		{name: "mismatched id", mutate: func(value map[string]any) { value["id"] = encode([]byte("other")) }},
+		{name: "missing extension results", mutate: func(value map[string]any) { delete(value, "clientExtensionResults") }},
+		{name: "missing authenticator data", mutate: func(value map[string]any) { delete(value["response"].(map[string]any), "authenticatorData") }},
+		{name: "missing transports", mutate: func(value map[string]any) { delete(value["response"].(map[string]any), "transports") }},
+		{name: "missing public key algorithm", mutate: func(value map[string]any) { delete(value["response"].(map[string]any), "publicKeyAlgorithm") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			value := registration()
+			tt.mutate(value)
+			if _, err := browser.RegistrationResponseFromJSON(mustJSON(t, value)); !errors.Is(err, browser.ErrInvalidProtocolValue) {
+				t.Fatalf("RegistrationResponseFromJSON() error = %v, want ErrInvalidProtocolValue", err)
+			}
+		})
+	}
+
+	authentication := map[string]any{
+		"id":                     encode([]byte("credential-1")),
+		"rawId":                  encode([]byte("credential-1")),
+		"type":                   protocol.CredentialTypePublicKey,
+		"clientExtensionResults": map[string]any{},
+		"response": map[string]any{
+			"clientDataJSON":    encode([]byte(`{"type":"webauthn.get"}`)),
+			"authenticatorData": encode(make([]byte, protocol.MinAuthenticatorDataLength)),
+			"signature":         encode([]byte("signature")),
+		},
+	}
+	delete(authentication, "clientExtensionResults")
+	if _, err := browser.AuthenticationResponseFromJSON(mustJSON(t, authentication)); !errors.Is(err, browser.ErrInvalidProtocolValue) {
+		t.Fatalf("AuthenticationResponseFromJSON() error = %v, want ErrInvalidProtocolValue", err)
 	}
 }
 

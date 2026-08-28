@@ -253,11 +253,11 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 			key: map[int]any{
 				1:  3,
 				3:  -257,
-				-1: bytes.Repeat([]byte{0x03}, 256),
+				-1: bytes.Repeat([]byte{0x83}, 256),
 				-2: []byte{0x01, 0x00, 0x01},
 			},
 			want: func(material codecMaterial) bool {
-				return bytes.Equal(material.rsaModulus, bytes.Repeat([]byte{0x03}, 256)) && material.rsaExponent == 65537
+				return bytes.Equal(material.rsaModulus, bytes.Repeat([]byte{0x83}, 256)) && material.rsaExponent == 65537
 			},
 		},
 		{
@@ -298,6 +298,32 @@ func TestDecoderCredentialPublicKeyReportsPublicKeyMaterial(t *testing.T) {
 			}
 			if !tt.want(materialView(key.PublicKeyMaterial())) {
 				t.Fatalf("PublicKeyMaterial() = %+v", key.PublicKeyMaterial())
+			}
+		})
+	}
+}
+
+func TestDecoderRejectsInvalidRSARequirements(t *testing.T) {
+	t.Parallel()
+
+	validModulus := bytes.Repeat([]byte{0x83}, 256)
+	for _, tt := range []struct {
+		name     string
+		modulus  []byte
+		exponent []byte
+	}{
+		{name: "1024-bit modulus", modulus: bytes.Repeat([]byte{0x83}, 128), exponent: []byte{0x01, 0x00, 0x01}},
+		{name: "modulus leading zero", modulus: append([]byte{0}, validModulus...), exponent: []byte{0x01, 0x00, 0x01}},
+		{name: "exponent leading zero", modulus: validModulus, exponent: []byte{0x00, 0x01, 0x00, 0x01}},
+		{name: "oversized modulus", modulus: bytes.Repeat([]byte{0x83}, codec.MaxRSAModulusBits/8+1), exponent: []byte{0x01, 0x00, 0x01}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey(mustCBOR(t, map[int]any{
+				1: 3, 3: -257, -1: tt.modulus, -2: tt.exponent,
+			}))
+			if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+				t.Fatalf("DecodeCredentialPublicKey() error = %v, want ErrMalformedCBOR", err)
 			}
 		})
 	}

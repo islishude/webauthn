@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
@@ -35,17 +37,43 @@ var (
 	// ErrCertificateRequirements reports a SafetyNet certificate requirement
 	// failure.
 	ErrCertificateRequirements = errors.New("android-safetynet certificate requirements failed")
+	// ErrPolicyConfiguration reports missing fail-closed SafetyNet expectations.
+	ErrPolicyConfiguration = errors.New("android-safetynet policy configuration invalid")
 )
 
 // Verifier verifies the exact "android-safetynet" attestation format.
 type Verifier struct {
 	jwsVerifier webcrypto.JWSVerifier
+	policy      Policy
+}
+
+// Policy binds a SafetyNet response to the expected Android application,
+// signing certificate, freshness window, and integrity decision.
+type Policy struct {
+	// ExpectedAPKPackageName is the exact Android package allowed to produce the response.
+	ExpectedAPKPackageName string
+	// ExpectedAPKCertificateSHA256 contains allowed raw SHA-256 application
+	// signing-certificate digests.
+	ExpectedAPKCertificateSHA256 [][]byte
+	// AllowedVersions optionally restricts the attestation statement's ver value.
+	AllowedVersions []string
+	// MaxAge is the maximum age of timestampMs and must be positive.
+	MaxAge time.Duration
+	// ClockSkew permits a bounded future timestamp and must not be negative.
+	ClockSkew time.Duration
+	// RequireCTSProfileMatch requires a true ctsProfileMatch payload claim.
+	RequireCTSProfileMatch bool
+	// RequireBasicIntegrity requires a true basicIntegrity payload claim.
+	RequireBasicIntegrity bool
+	// Now supplies the verification time; nil uses time.Now.
+	Now func() time.Time
 }
 
 // New returns an Android SafetyNet attestation verifier using jwsVerifier for
-// JWS signature and certificate-chain verification.
-func New(jwsVerifier webcrypto.JWSVerifier) Verifier {
-	return Verifier{jwsVerifier: jwsVerifier}
+// Compact JWS signature and certificate-chain verification and policy for all
+// relying-party-specific payload bindings.
+func New(jwsVerifier webcrypto.JWSVerifier, policy Policy) Verifier {
+	return Verifier{jwsVerifier: jwsVerifier, policy: clonePolicy(policy)}
 }
 
 // Format returns the WebAuthn attestation format identifier.
@@ -60,6 +88,9 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	}
 	if request.Format != format || v.jwsVerifier == nil {
 		return attestation.VerificationResult{}, ErrInvalidStatement
+	}
+	if err := validatePolicy(v.policy); err != nil {
+		return attestation.VerificationResult{}, err
 	}
 
 	statement, err := parseStatement(request.Statement)
@@ -77,7 +108,8 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if err := validateSafetyNetCertificate(verification.Certificates); err != nil {
 		return attestation.VerificationResult{}, err
 	}
-	if err := validatePayload(verification.Payload, expectedNonce(request.AuthenticatorData, request.ClientDataHash)); err != nil {
+	evidence, err := validatePayload(verification.Payload, expectedNonce(request.AuthenticatorData, request.ClientDataHash), statement.version, v.policy)
+	if err != nil {
 		return attestation.VerificationResult{}, err
 	}
 
@@ -85,7 +117,40 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 		Type:                   attestation.TypeBasic,
 		TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathX509, Certificates: verification.Certificates},
 		CryptographicallyValid: true,
+		Evidence:               evidence,
 	}, nil
+}
+
+func clonePolicy(policy Policy) Policy {
+	out := policy
+	out.AllowedVersions = slices.Clone(policy.AllowedVersions)
+	out.ExpectedAPKCertificateSHA256 = make([][]byte, len(policy.ExpectedAPKCertificateSHA256))
+	for i, digest := range policy.ExpectedAPKCertificateSHA256 {
+		out.ExpectedAPKCertificateSHA256[i] = slices.Clone(digest)
+	}
+	return out
+}
+
+func validatePolicy(policy Policy) error {
+	if policy.ExpectedAPKPackageName == "" || len(policy.ExpectedAPKCertificateSHA256) == 0 || policy.MaxAge <= 0 || policy.ClockSkew < 0 || (!policy.RequireCTSProfileMatch && !policy.RequireBasicIntegrity) {
+		return ErrPolicyConfiguration
+	}
+	for _, digest := range policy.ExpectedAPKCertificateSHA256 {
+		if len(digest) != sha256.Size {
+			return ErrPolicyConfiguration
+		}
+	}
+	if slices.Contains(policy.AllowedVersions, "") {
+		return ErrPolicyConfiguration
+	}
+	return nil
+}
+
+func (p Policy) now() time.Time {
+	if p.Now != nil {
+		return p.Now()
+	}
+	return time.Now()
 }
 
 func expectedNonce(authenticatorData protocol.AuthenticatorData, clientDataHash []byte) string {

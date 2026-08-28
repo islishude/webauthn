@@ -69,11 +69,14 @@ type RegistrationStartOptions struct {
 	// responsible for checking the client's conditionalCreate capability and
 	// setting the browser API option. The zero value keeps user presence
 	// required.
-	ConditionalMediation   bool
-	Challenge              protocol.Challenge
-	ChallengeGenerator     ChallengeGenerator
-	PubKeyCredParams       []protocol.CredentialParameter
-	Timeout                time.Duration
+	ConditionalMediation bool
+	Challenge            protocol.Challenge
+	ChallengeGenerator   ChallengeGenerator
+	PubKeyCredParams     []protocol.CredentialParameter
+	Timeout              time.Duration
+	// StateTTL controls the lifetime of the trusted server-side challenge state
+	// independently from the browser timeout hint. Zero uses DefaultChallengeTTL.
+	StateTTL               time.Duration
 	ExcludeCredentials     []protocol.CredentialDescriptor
 	AuthenticatorSelection *protocol.AuthenticatorSelectionCriteria
 	Hints                  []protocol.PublicKeyCredentialHint
@@ -127,13 +130,9 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
-	if len(options.PubKeyCredParams) == 0 {
-		return RegistrationStartResult{}, fmt.Errorf("%w: public key credential parameters are required", ErrInvalidConfiguration)
-	}
-	for _, parameter := range options.PubKeyCredParams {
-		if err := parameter.Validate(); err != nil {
-			return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
-		}
+	credentialParameters, err := registrationCredentialParameters(options.PubKeyCredParams)
+	if err != nil {
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
 
 	challenge := options.Challenge
@@ -180,7 +179,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if authenticatorSelection != nil && authenticatorSelection.UserVerification == "" {
 		authenticatorSelection.UserVerification = userVerification
 	}
-	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.now())
+	timeoutMilliseconds, expiresAt, err := timeoutState(options.Timeout, options.StateTTL, options.now())
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
@@ -189,7 +188,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		RP:                     options.RP,
 		User:                   options.User,
 		Challenge:              challenge,
-		PubKeyCredParams:       slices.Clone(options.PubKeyCredParams),
+		PubKeyCredParams:       slices.Clone(credentialParameters),
 		TimeoutMilliseconds:    timeoutMilliseconds,
 		ExcludeCredentials:     cloneCredentialDescriptors(options.ExcludeCredentials),
 		AuthenticatorSelection: authenticatorSelection,
@@ -209,7 +208,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		UserHandle:                options.User.ID,
 		RequestedUserVerification: userVerification,
 		RequestedExtensions:       stateExtensions,
-		AllowedAlgorithms:         algorithmsFromParameters(options.PubKeyCredParams),
+		AllowedAlgorithms:         algorithmsFromParameters(credentialParameters),
 		Attestation:               attestationConveyance,
 		ExpiresAt:                 expiresAt,
 	}

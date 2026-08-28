@@ -104,6 +104,35 @@ func TestVerifierRSAAlgorithms(t *testing.T) {
 	}
 }
 
+func TestVerifierRejectsUndersizedRSAKey(t *testing.T) {
+	t.Parallel()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec // Deliberately undersized rejection fixture.
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	verifier, err := standard.NewVerifier(protocol.AlgorithmRS256)
+	if err != nil {
+		t.Fatalf("NewVerifier() error = %v", err)
+	}
+	signature, err := protocol.NewSignature([]byte("signature"))
+	if err != nil {
+		t.Fatalf("NewSignature() error = %v", err)
+	}
+	err = verifier.VerifySignature(context.Background(), webcrypto.SignatureInput{
+		Algorithm: protocol.AlgorithmRS256,
+		PublicKey: codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{
+			Modulus:  privateKey.N.Bytes(),
+			Exponent: uint32(privateKey.E), //nolint:gosec // Generated exponent fits uint32.
+		}},
+		Signed:    []byte("signed"),
+		Signature: signature,
+	})
+	if !errors.Is(err, standard.ErrInvalidPublicKey) {
+		t.Fatalf("VerifySignature() error = %v, want ErrInvalidPublicKey", err)
+	}
+}
+
 func TestVerifierEd25519Algorithms(t *testing.T) {
 	t.Parallel()
 

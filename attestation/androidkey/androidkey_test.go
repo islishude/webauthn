@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -105,6 +106,32 @@ func TestVerifierAcceptsRSAAndroidKeyAttestation(t *testing.T) {
 	}
 	if result.Type != attestation.TypeBasic || result.TrustPath.Kind != attestation.TrustPathX509 || !result.CryptographicallyValid {
 		t.Fatalf("result = %+v, want valid Android Key basic attestation", result)
+	}
+}
+
+func TestVerifierAcceptsEd25519AndroidKeyAttestation(t *testing.T) {
+	t.Parallel()
+
+	fixture := newEd25519Fixture(t, extensionOptions{})
+	verifier := New(signatureVerifier{
+		t:             t,
+		wantAlgorithm: protocol.AlgorithmEdDSA,
+		wantPublicKey: fixture.certificate.leaf.PublicKey,
+		wantSigned:    fixture.signed,
+		wantSignature: []byte("signature"),
+	})
+	result, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:              "android-key",
+		AuthenticatorData:   fixture.authenticatorData,
+		ClientDataHash:      fixture.clientDataHash,
+		Statement:           fixture.statement,
+		CredentialPublicKey: fixture.credentialPublicKey,
+	})
+	if err != nil {
+		t.Fatalf("VerifyAttestation() error = %v", err)
+	}
+	if !result.CryptographicallyValid {
+		t.Fatalf("result = %+v, want valid Ed25519 Android Key attestation", result)
 	}
 }
 
@@ -305,6 +332,20 @@ func newRSAFixture(t *testing.T, options extensionOptions) fixture {
 	}}
 
 	return newFixture(t, -257, key, &key.PublicKey, material, options)
+}
+
+func newEd25519Fixture(t *testing.T, options extensionOptions) fixture {
+	t.Helper()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	material := codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{
+		Curve: codec.OKPCurveEd25519,
+		X:     bytes.Clone(publicKey),
+	}}
+	return newFixture(t, protocol.AlgorithmEdDSA, privateKey, publicKey, material, options)
 }
 
 func newFixture(t *testing.T, algorithm protocol.COSEAlgorithmIdentifier, privateKey any, publicKey any, material codec.CredentialPublicKeyMaterial, options extensionOptions) fixture {

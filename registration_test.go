@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -33,6 +34,9 @@ func TestRegistrationWithNoneAttestation(t *testing.T) {
 	}
 	if !bytes.Equal(result.Credential.ID.Bytes(), fixture.credentialID) {
 		t.Fatalf("credential ID = %x, want %x", result.Credential.ID.Bytes(), fixture.credentialID)
+	}
+	if result.Credential.Type != protocol.CredentialTypePublicKey {
+		t.Fatalf("credential type = %q, want public-key", result.Credential.Type)
 	}
 	if result.Credential.RPID != "example.com" {
 		t.Fatalf("RPID = %q, want example.com", result.Credential.RPID)
@@ -108,6 +112,7 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 		Hints:              []protocol.PublicKeyCredentialHint{protocol.HintClientDevice},
 		AttestationFormats: []string{"packed", "none"},
 		Timeout:            1500 * time.Millisecond,
+		StateTTL:           2 * time.Second,
 		Now:                func() time.Time { return now },
 	})
 	if err != nil {
@@ -128,8 +133,8 @@ func TestRegistrationStartGeneratesDefaultChallenge(t *testing.T) {
 	if result.Options.TimeoutMilliseconds != 1500 {
 		t.Fatalf("TimeoutMilliseconds = %v, want 1500", result.Options.TimeoutMilliseconds)
 	}
-	if !result.State.ExpiresAt.Equal(now.Add(1500 * time.Millisecond)) {
-		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(1500*time.Millisecond))
+	if !result.State.ExpiresAt.Equal(now.Add(2 * time.Second)) {
+		t.Fatalf("ExpiresAt = %v, want %v", result.State.ExpiresAt, now.Add(2*time.Second))
 	}
 	if !result.State.ConditionalMediation {
 		t.Fatal("ConditionalMediation = false, want true")
@@ -151,10 +156,10 @@ func TestRegistrationStartUsesSafeTimeoutDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartRegistration() error = %v", err)
 	}
-	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultCeremonyTimeout.Milliseconds() {
+	if int64(result.Options.TimeoutMilliseconds) != webauthn.DefaultBrowserTimeout.Milliseconds() {
 		t.Fatalf("TimeoutMilliseconds = %d", result.Options.TimeoutMilliseconds)
 	}
-	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultCeremonyTimeout)) {
+	if !result.State.ExpiresAt.Equal(now.Add(webauthn.DefaultChallengeTTL)) {
 		t.Fatalf("ExpiresAt = %v", result.State.ExpiresAt)
 	}
 	if !result.State.UserHandle.Equal(userHandle) {
@@ -178,11 +183,64 @@ func TestRegistrationStartRejectsInvalidTimeAndChallengeConfiguration(t *testing
 	if _, err := webauthn.StartRegistration(context.Background(), negativeTimeout); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("negative timeout error = %v, want ErrInvalidConfiguration", err)
 	}
+	negativeStateTTL := base
+	negativeStateTTL.StateTTL = -time.Second
+	if _, err := webauthn.StartRegistration(context.Background(), negativeStateTTL); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("negative state ttl error = %v, want ErrInvalidConfiguration", err)
+	}
+	shortStateTTL := base
+	shortStateTTL.Timeout = 2 * time.Minute
+	shortStateTTL.StateTTL = time.Minute
+	if _, err := webauthn.StartRegistration(context.Background(), shortStateTTL); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("short state ttl error = %v, want ErrInvalidConfiguration", err)
+	}
 
 	shortChallenge := base
 	shortChallenge.ChallengeGenerator = webauthn.RandomChallengeGenerator{Length: -1}
 	if _, err := webauthn.StartRegistration(context.Background(), shortChallenge); err == nil {
 		t.Fatal("negative challenge length accepted")
+	}
+}
+
+func TestRegistrationStartUsesSpecificationAlgorithmDefaults(t *testing.T) {
+	t.Parallel()
+
+	result, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
+		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:         protocol.UserEntity{ID: mustUserHandle(t, []byte("user-1")), Name: "user", DisplayName: "User"},
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+	})
+	if err != nil {
+		t.Fatalf("StartRegistration() error = %v", err)
+	}
+	want := []protocol.COSEAlgorithmIdentifier{protocol.AlgorithmES256, protocol.AlgorithmRS256}
+	if !slices.Equal(result.State.AllowedAlgorithms, want) {
+		t.Fatalf("AllowedAlgorithms = %v, want %v", result.State.AllowedAlgorithms, want)
+	}
+}
+
+func TestRegistrationStartIgnoresUnsupportedCredentialTypes(t *testing.T) {
+	t.Parallel()
+
+	base := webauthn.RegistrationStartOptions{
+		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:         protocol.UserEntity{ID: mustUserHandle(t, []byte("user-1")), Name: "user", DisplayName: "User"},
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams: []protocol.CredentialParameter{
+			{Type: protocol.PublicKeyCredentialType("future-type"), Algorithm: 123},
+			{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmES256},
+		},
+	}
+	result, err := webauthn.StartRegistration(context.Background(), base)
+	if err != nil {
+		t.Fatalf("StartRegistration() error = %v", err)
+	}
+	if len(result.Options.PubKeyCredParams) != 1 || result.Options.PubKeyCredParams[0].Type != protocol.CredentialTypePublicKey {
+		t.Fatalf("PubKeyCredParams = %#v", result.Options.PubKeyCredParams)
+	}
+	base.PubKeyCredParams = base.PubKeyCredParams[:1]
+	if _, err := webauthn.StartRegistration(context.Background(), base); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("only unsupported types error = %v, want ErrInvalidConfiguration", err)
 	}
 }
 

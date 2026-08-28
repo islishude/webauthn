@@ -32,12 +32,21 @@ func algorithmsFromParameters(parameters []protocol.CredentialParameter) []proto
 	return algorithms
 }
 
-func timeoutState(timeout time.Duration, now time.Time) (uint32, time.Time, error) {
+func timeoutState(timeout time.Duration, stateTTL time.Duration, now time.Time) (uint32, time.Time, error) {
 	if timeout < 0 {
 		return 0, time.Time{}, errors.New("timeout must not be negative")
 	}
+	if stateTTL < 0 {
+		return 0, time.Time{}, errors.New("state ttl must not be negative")
+	}
 	if timeout == 0 {
-		timeout = DefaultCeremonyTimeout
+		timeout = DefaultBrowserTimeout
+	}
+	if stateTTL == 0 {
+		stateTTL = DefaultChallengeTTL
+	}
+	if stateTTL < timeout {
+		return 0, time.Time{}, errors.New("state ttl must not be shorter than timeout")
 	}
 	milliseconds := timeout.Milliseconds()
 	if milliseconds == 0 {
@@ -46,7 +55,31 @@ func timeoutState(timeout time.Duration, now time.Time) (uint32, time.Time, erro
 	if milliseconds > math.MaxUint32 {
 		return 0, time.Time{}, errors.New("timeout exceeds uint32 milliseconds")
 	}
-	return uint32(milliseconds), now.Add(timeout), nil
+	return uint32(milliseconds), now.Add(stateTTL), nil
+}
+
+func registrationCredentialParameters(parameters []protocol.CredentialParameter) ([]protocol.CredentialParameter, error) {
+	if len(parameters) == 0 {
+		return []protocol.CredentialParameter{
+			{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmES256},
+			{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmRS256},
+		}, nil
+	}
+
+	out := make([]protocol.CredentialParameter, 0, len(parameters))
+	for _, parameter := range parameters {
+		if err := parameter.Validate(); err != nil {
+			return nil, err
+		}
+		if parameter.Type != protocol.CredentialTypePublicKey {
+			continue
+		}
+		out = append(out, parameter)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no supported public key credential parameters")
+	}
+	return out, nil
 }
 
 func cloneCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []protocol.CredentialDescriptor {

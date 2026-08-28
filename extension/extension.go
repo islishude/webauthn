@@ -71,7 +71,10 @@ type Result struct {
 	Warnings   []string
 }
 
-// Handler validates input and interprets output for one exact extension identifier.
+// Handler validates input and interprets output for one exact extension
+// identifier. Implementations must be deterministic and side-effect-free:
+// VerifyOutput can run before caller-owned persistence and uniqueness decisions,
+// and a ceremony can still fail after a handler returns.
 type Handler interface {
 	ID() string
 	ValidateInput(InputRequest) (any, error)

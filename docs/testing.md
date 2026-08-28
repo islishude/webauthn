@@ -135,7 +135,8 @@ Required coverage:
   descriptors in caller-stored state;
 - zero-counter behavior;
 - counter increment behavior;
-- counter rollback clone-risk behavior.
+- counter rollback clone-risk behavior;
+- clone-risk rejection before any custom extension output callback;
 - known authenticator-attachment persistence updates and unknown attachment
   preservation.
 
@@ -176,26 +177,34 @@ Format-specific coverage:
 - `tpm`: TPM statement shape, public-key/name binding, strict `TPMT_SIGNATURE`,
   critical SAN and exact manufacturer/model/version attribute checks.
 - `android-key`: challenge binding, exact authorization-list values, union
-  default, and hardware/TEE-only policy.
+  default, hardware/TEE-only policy, and Ed25519 certificate-key binding.
 - `android-safetynet`: legacy JWS response verification through dependency,
-  nonce binding, certificate/trust policy.
+  nonce, application identity, signing-certificate digest, timestamp, version,
+  integrity, and certificate/trust policy.
 - `fido-u2f`: U2F registration signature base construction and ES256 requirement.
-- `apple`: anonymous attestation certificate and DER sequence/explicit nonce
-  binding behavior, including the W3C vector.
+- `apple`: anonymous attestation certificate, Ed25519 certificate-key support,
+  and DER sequence/explicit nonce binding behavior, including the W3C vector.
 
 ### Extension tests
 
 Required coverage:
 
 - `appid` authentication RP ID hash switching;
+- AppID four-quadrant binding: true only with the AppID hash, false/absent only
+  with the ordinary RP ID hash;
 - `appidExclude` option serialization and policy representation;
 - `uvm` output parsing and absence behavior;
 - `credProps` output parsing for discoverable credential/passkey flows;
 - `largeBlob` option and output shape handling;
 - `prf` input/output handling and `evalByCredential` binding to both the allow
   list and the credential that actually produced the assertion;
+- rejection of registration `evalByCredential` whenever the member is present,
+  including an empty object;
 - operation-specific PRF/largeBlob outputs, equal-input PRF results, and the
   single-credential largeBlob write rule;
+- registered-handler enforcement at largeBlob start plus finish-time
+  revalidation of the single-credential write rule after trusted state
+  restoration;
 - opt-in Editor's Draft `remoteClientDataJSON` challenge and byte binding;
 - deprecated `uvm` result metadata;
 - unknown extension policy and recursively copied composite values with
@@ -212,6 +221,7 @@ Required coverage:
 - algorithm allow-list enforcement;
 - ECDSA DER signature verification behavior;
 - RSA PKCS#1 v1.5 and RSA-PSS behavior for supported algorithms;
+- rejection of undersized, oversized, and non-minimally encoded RSA keys;
 - real Ed448 verification of the Recommendation vector through a CIRCL-backed
   test adapter, without adding Ed448 to `crypto/standard`;
 - JWS/JWT verification handoff behavior for SafetyNet-like formats;
@@ -275,7 +285,7 @@ The TPM Plan 05 slice added tests for:
 
 The Android Key Plan 05 slice added tests for:
 
-- optional `attestation/androidkey` EC2 and RSA valid paths;
+- optional `attestation/androidkey` EC2, RSA, and Ed25519 valid paths;
 - malformed statement fields, malformed x5c, invalid signature, certificate public-key mismatch, missing or malformed Android Key attestation extension, challenge mismatch, `allApplications` rejection, missing or wrong origin, and missing signing purpose;
 - shared attestation statement helper reuse across optional format packages;
 - continued root import graph independence from optional attestation format packages.
@@ -284,12 +294,15 @@ The Android SafetyNet Plan 05 slice added tests for:
 
 - optional `attestation/androidsafetynet` valid path;
 - malformed statement fields, JWS verifier rejection, malformed payload JSON, nonce mismatch, missing or false `ctsProfileMatch`, missing or non-numeric `timestampMs`, missing x5c chain, malformed leaf certificate, and SafetyNet service hostname mismatch;
+- the audit remediation adds package name, application certificate digest,
+  freshness/future-skew, version allow-list, configurable integrity, malformed
+  optional integrity-claim types, and invalid policy rejection;
 - shared attestation statement string helper reuse across optional format packages;
 - continued root import graph independence from optional attestation format packages.
 
 The Apple Plan 05 slice added tests for:
 
-- optional `attestation/apple` EC2 and RSA valid paths;
+- optional `attestation/apple` EC2, RSA, and Ed25519 valid paths;
 - malformed statement fields, missing or empty x5c, malformed certificates, missing or malformed nonce extension, nonce mismatch, missing credential public key material, leaf public-key mismatch, and leaf-first trust path preservation;
 - shared X.509 certificate-chain, extension lookup, and certificate public-key binding helpers across optional format packages;
 - continued root import graph independence from optional attestation format packages.
@@ -312,6 +325,8 @@ Plan 08 added tests and checks for:
 Plan 09 added tests and checks for:
 
 - optional `browser` DTO conversion for creation/request options, credential descriptors, registration responses, authentication responses, malformed JSON, invalid or non-canonical base64url, invalid protocol values, oversized user handles, known largeBlob byte fields, and unknown extension preservation;
+- Level 3 response required-member presence plus canonical `id`/`rawId`
+  agreement;
 - optional `transport/http` JSON helpers for creation/request option writing, registration/authentication response reading, body-size rejection, malformed JSON handling, and generic error responses that do not echo sensitive error text;
 - compile-checked public examples under `examples/manual`, `examples/http`, `examples/passkey`, and `examples/attestation`;
 - README reference checks that keep public Go usage in compile-checked examples.
@@ -354,8 +369,8 @@ The API cleanup added tests and checks for:
 The pre-v1 Level 3 security cleanup added tests and checks for:
 
 - 1023/1024-byte credential ID boundaries, UTF-8 BOM parsing while preserving
-  signed bytes, five-minute default expiry, exact-deadline expiry, and negative
-  timeout/challenge configuration;
+  signed bytes, separate five-minute browser timeout and ten-minute challenge
+  lifetime, exact-deadline expiry, and negative timeout/challenge configuration;
 - BS-without-BE rejection, immutable backup eligibility, credential RP-ID
   binding, UP/UV result surfacing, and explicitly authorized UV initialization;
 - clone-risk rejection, default counter preservation, explicit rollback update,
@@ -366,10 +381,13 @@ The pre-v1 Level 3 security cleanup added tests and checks for:
 - typed COSE key validation and optional `crypto/standard` ECDSA, RSA PKCS#1,
   RSA-PSS, Ed25519, tampering, policy, and key-mismatch cases;
 - optional `storage/json` registration/authentication/credential round trips,
-  version and shape rejection, binary and integer extension preservation, damaged
-  COSE rejection, and server-side storage fuzzing;
+  v2 credential-type persistence, absent-only v1 type migration, explicit
+  empty/null type rejection, version and shape rejection, binary and integer
+  extension preservation, damaged COSE rejection, and server-side storage
+  fuzzing;
 - the public HTTP example's per-session state isolation, one-time consumption,
-  exact expiry, concurrent starts, atomic uniqueness, and conditional updates.
+  exact expiry, concurrent starts, random 64-byte user handle, existing
+  credential exclusions, atomic uniqueness, and conditional updates.
 
 The 2026-08-23 Level 3 conformance refresh added:
 
@@ -419,6 +437,20 @@ The 2026-08-28 fail-closed API remediation added:
 - conditional authenticator-attachment persistence, operation-neutral error
   text, and HTTP serialization-before-commit behavior.
 
+The 2026-08-28 section-by-section audit remediation added:
+
+- trusted-root and certificate-status enforcement in the restricted-enrollment
+  example;
+- RFC 8230 RSA size/minimal-encoding rejection and stricter TPM public-area
+  unions;
+- AppID hash/output four-quadrant coverage and clone-risk-before-extension
+  callback ordering;
+- SafetyNet package, application certificate, freshness, version, and integrity
+  policy plus Android Key/Apple Ed25519 certificate binding;
+- Level 3 required response-member and `id`/`rawId` checks, PRF empty-member
+  presence rejection, and finish-time largeBlob state revalidation;
+- credential type persistence in storage envelope v2 with v1 read compatibility.
+
 ## Fuzzing targets
 
 Current fuzzing targets are:
@@ -448,6 +480,13 @@ exercises capture, deletion, reseeding, and credential-inclusive storage state
 without writing passkey private material to disk. Chromium CDP remains the
 native-browser path for transport selection, UV failure, and bogus signatures.
 
+The experimental Playwright Credentials shim omits registration
+`authenticatorData` and returns an empty `toJSON()` response. The test-only RP
+normalizes only that missing convenience member from the authoritative
+`attestationObject` before invoking the strict public browser decoder. A
+provided member is never overwritten, so the core equality check still rejects
+mismatches; production browser parsing is not relaxed.
+
 Current fixture coverage:
 
 - platform-style authenticator with discoverable credential and user verification required;
@@ -476,9 +515,9 @@ The matrix below maps W3C WebAuthn Level 3 relying-party operation groups to rep
 | Registration credential construction and atomic application insertion                                                             | `TestRegistrationWithNoneAttestation`, `TestStoreInsertCredentialIsAtomic`, storage JSON round trip                                                                                                                                                                 |
 | Authentication allow-credentials and credential/user-handle ownership checks                                                      | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationUsernameFirst`, `TestAuthenticationDiscoverable`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                                                                                      |
 | Authentication collected client data type, challenge, origin, cross-origin, and reserved token binding checks                     | `TestAuthenticationRejectsInvalidInputs`, `FuzzParseCollectedClientData`                                                                                                                                                                                            |
-| Authentication RP ID hash and AppID extension behavior                                                                            | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`                                                                                                                  |
+| Authentication RP ID hash and AppID extension behavior                                                                            | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput`, `TestAuthenticationAppIDRejectsPolicyMismatch`, `TestAuthenticationAppIDOutputBindsExpectedRPIDHash`                                                            |
 | Authentication UP, UV, extension output, and signature verification                                                               | `TestAuthenticationRejectsInvalidInputs`, `TestAuthenticationLevel2UVMExtension`, `TestAuthenticationLevel2LargeBlobExtension`, `TestAuthenticationLevel3PRFExtension`, `TestBrowserVirtualAuthenticatorFixturesVerify`                                             |
-| Authentication backup, UV, counter, and clone-risk behavior                                                                       | `TestAuthenticationCounterPolicy`, `TestAuthenticationUVInitializationPolicy`, invalid-input matrix                                                                                                                                                                 |
+| Authentication backup, UV, counter, and clone-risk behavior                                                                       | `TestAuthenticationCounterPolicy`, `TestAuthenticationUVInitializationPolicy`, `TestAuthenticationExtensionOutputDoesNotRunBeforeCloneRiskRejection`, invalid-input matrix                                                                                          |
 | Parser, transport, and storage boundary robustness                                                                                | Protocol/codec/browser fuzz targets plus all three `storage/json` fuzz targets                                                                                                                                                                                      |
 | Root modularity and dependency hygiene                                                                                            | `TestRootPackageImportGraphExcludesOptionalPackages`, `make import-graph-check`, `make license-check`, `make example-build`, `make readme-check`                                                                                                                    |
 | Protocol byte safety and allocation-sensitive comparisons                                                                         | `TestCredentialIDTypedEqualityDoesNotUseDefensiveCopies`, `TestUserHandleTypedEqualityDoesNotUseDefensiveCopies`, `TestAppendToAppendsWithoutExposingStoredBytes`                                                                                                   |

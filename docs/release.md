@@ -17,6 +17,19 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 ## Release notes
 
+2026-08-28: Closed the section-by-section Recommendation audit. Restricted
+enrollment now demonstrates trusted-root and certificate-status policy; RSA
+keys enforce RFC 8230 encoding and 2048–16384 bit bounds; AppID output is bound
+bidirectionally to the selected hash; clone-risk rejection precedes extension
+callbacks; TPM public areas are parsed strictly; Android Key and Apple accept
+Ed25519 certificate keys; and legacy SafetyNet requires explicit application,
+certificate, freshness, version, and integrity policy. Browser response JSON now
+requires the Level 3 members and `id`/`rawId` agreement. PRF optional-member
+presence and largeBlob restored-state constraints fail closed. Credential
+records persist their type in storage envelope v2, whose reader remains
+compatible with v1. Browser timeout hints and server challenge TTLs are now
+separate. No dependency changed.
+
 2026-08-28: Hardened caller-owned state and persistence boundaries. Finish
 rejects missing expiry and unresolved user-verification policy; registration no
 longer accepts or returns a precomputed credential-uniqueness boolean, and the
@@ -90,7 +103,29 @@ added.
   field was removed.
 - Pass the selected immutable extension registry to start options whenever
   extension inputs are non-empty. Custom handlers now implement `ValidateInput`
-  and `VerifyOutput`; post-construction `Register` mutation was removed.
+  and side-effect-free `VerifyOutput`; post-construction `Register` mutation was
+  removed.
+- Register a `largeBlob` handler whenever requesting that authentication
+  extension. It is not accepted as an unknown pass-through because restored
+  state must reapply its single-credential write constraint.
+- Set `StateTTL` separately when the default ten-minute challenge lifetime is
+  not appropriate. `Timeout` remains the five-minute browser hint by default,
+  and configured state TTL may not be shorter than the hint. Use
+  `DefaultBrowserTimeout`; `DefaultCeremonyTimeout` is now deprecated because it
+  cannot name both lifetimes accurately.
+- Populate `CredentialRecord.Type`; registration returns `public-key` and
+  `storage/json` envelope v2 persists it. The v2 reader maps an absent type in
+  legacy v1 records to `public-key` and rejects explicit empty or null values.
+- An empty registration `PubKeyCredParams` now expands to the Recommendation's
+  ES256/RS256 defaults. Unsupported credential types are ignored when a
+  supported `public-key` entry remains and fail when none remains.
+- Update custom registration response JSON to include required `id`,
+  `clientExtensionResults`, `authenticatorData`, `transports`, and
+  `publicKeyAlgorithm`, with `id` equal to canonical base64url `rawId`.
+- Construct legacy SafetyNet verifiers with an explicit
+  `androidsafetynet.Policy`; the prior policy-free constructor no longer exists.
+- Rename `AppIDExcludeResult.Excluded` to `ActedUpon`; a successful `true`
+  output means the extension ran, not that a credential was found and excluded.
 - Authentication `extension.OutputRequest` now includes
   `SelectedCredentialID`. Root ceremony callers receive this automatically;
   callers that invoke `PRFHandler.VerifyOutput` directly with
@@ -106,9 +141,10 @@ added.
 - Persist credential updates conditionally using `PreviousSignCount` and the
   `*Changed` fields, including `AuthenticatorAttachmentChanged`.
   `BackupEligible` is no longer an authentication update.
-- Treat zero timeout as five minutes and reject negative timeout, invalid backup
-  flags, RP-ID mismatch, credential IDs longer than 1023 bytes, and caller-stored
-  state missing expiry or a resolved user-verification policy.
+- Treat zero browser timeout as five minutes and zero state TTL as ten minutes;
+  reject negative or inconsistent timing, invalid backup flags, RP-ID mismatch,
+  credential IDs longer than 1023 bytes, and caller-stored state missing expiry
+  or a resolved user-verification policy.
 - Use optional `storage/json` for versioned trusted server-side state encoding or
   map the storage-neutral root records into an application schema.
 

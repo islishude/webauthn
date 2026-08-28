@@ -32,7 +32,7 @@ behavior.
 | `PublicKeyCredentialUserEntity`      | Protocol model                                    | Preserve user handle as bytes; allow the required `displayName` member to contain the specified empty-string value.                                                    |
 | `PublicKeyCredentialDescriptor`      | Protocol model                                    | Store and replay transport hints including `hybrid` and `smart-card`; unknown transports must not break parsing before validation boundaries.                          |
 | `PublicKeyCredentialHint`            | Protocol model and browser DTOs                   | Preserve `security-key`, `client-device`, and `hybrid` hints as UI hints, not security facts.                                                                          |
-| COSE algorithm identifiers           | Crypto adapter policy                             | Enforce Web IDL `long`, expose Ed448 `-53`, and route unsupported cryptography through caller adapters.                                                                |
+| COSE algorithm identifiers           | Crypto adapter policy                             | Enforce Web IDL `long`, RFC 8230 RSA encoding/key sizes, expose Ed448 `-53`, and route unsupported cryptography through caller adapters.                               |
 
 ## Client data
 
@@ -48,16 +48,17 @@ behavior.
 
 ## Authenticator data
 
-| Field                    | Component                                  | Required behavior                                                                                 |
-| ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `rpIdHash`               | Authenticator data parser and verifier     | Must equal SHA-256 of expected RP ID, or AppID hash when AppID request, policy, and output agree. |
-| Flags                    | Authenticator data parser                  | Expose UP/UV/AT/ED, reject RFU bits and BS without BE, and keep backup eligibility immutable.     |
-| `signCount`              | Counter policy                             | Return comparison and clone risk; preserve stored value unless explicit policy updates it.        |
-| Attested credential data | Registration parser                        | Required when AT flag is set in registration attestation data.                                    |
-| AAGUID                   | Registration result and attestation policy | Needed for trust policy and metadata lookup.                                                      |
-| Credential ID            | Registration result                        | Must be inserted under an application-owned atomic uniqueness constraint.                         |
-| Credential public key    | Codec and crypto adapter input             | Require CTAP2 canonical COSE with only required parameters; persist typed EC2/RSA/OKP material.   |
-| Extensions               | Extension framework                        | Decode through CBOR adapter and route by extension identifier.                                    |
+| Field                    | Component                                  | Required behavior                                                                                                                             |
+| ------------------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpIdHash`               | Authenticator data parser and verifier     | Must equal SHA-256 of expected RP ID, or AppID hash when AppID request, policy, and output agree.                                             |
+| Flags                    | Authenticator data parser                  | Expose UP/UV/AT/ED, reject RFU bits and BS without BE, and keep backup eligibility immutable.                                                 |
+| `signCount`              | Counter policy                             | Return comparison and clone risk; preserve stored value unless explicit policy updates it.                                                    |
+| Attested credential data | Registration parser                        | Required when AT flag is set in registration attestation data.                                                                                |
+| AAGUID                   | Registration result and attestation policy | Needed for trust policy and metadata lookup.                                                                                                  |
+| Credential type          | Registration result and stored record      | Persist `public-key` explicitly for the Level 3 record shape and future type separation.                                                      |
+| Credential ID            | Registration result                        | Must be inserted under an application-owned atomic uniqueness constraint.                                                                     |
+| Credential public key    | Codec and crypto adapter input             | Require CTAP2 canonical COSE with only required parameters; RSA is minimally encoded and 2048–16384 bits; persist typed EC2/RSA/OKP material. |
+| Extensions               | Extension framework                        | Decode through CBOR adapter and route by extension identifier.                                                                                |
 
 ## Registration relying-party operation
 
@@ -99,31 +100,31 @@ associated with the credential.
 
 ## Attestation statement formats
 
-| Format identifier   | Package                        | Modular dependency notes                                                                  | Status   |
-| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- | -------- |
-| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                             | Complete |
-| `packed`            | `attestation/packed`           | Exact subject encodings, AAGUID/firmware fields, and enterprise-only serial policy        | Complete |
-| `tpm`               | `attestation/tpm`              | TPM bindings, strict `TPMT_SIGNATURE`, and critical SAN manufacturer/model/version checks | Complete |
-| `android-key`       | `attestation/androidkey`       | Union default plus explicit hardware/TEE-only authorization-list policy                   | Complete |
-| `android-safetynet` | `attestation/androidsafetynet` | SafetyNet compact JWS verification delegated to `crypto.JWSVerifier`; legacy format       | Complete |
-| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters                  | Complete |
-| `apple`             | `attestation/apple`            | DER sequence/explicit nonce and credential-certificate public-key binding                 | Complete |
-| `compound`          | `attestation/compound`         | Dispatches normalized sub-statements through caller-selected verifiers                    | Complete |
+| Format identifier   | Package                        | Modular dependency notes                                                                                                                    | Status   |
+| ------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `none`              | `attestation/none`             | No crypto dependency beyond structural checks                                                                                               | Complete |
+| `packed`            | `attestation/packed`           | Exact subject encodings, AAGUID/firmware fields, and enterprise-only serial policy                                                          | Complete |
+| `tpm`               | `attestation/tpm`              | TPM bindings, strict `TPMT_SIGNATURE`, and critical SAN manufacturer/model/version checks                                                   | Complete |
+| `android-key`       | `attestation/androidkey`       | Union default plus explicit hardware/TEE-only authorization-list policy                                                                     | Complete |
+| `android-safetynet` | `attestation/androidsafetynet` | JWS verification is delegated; application, certificate digest, freshness, version, integrity, roots, and status are explicit legacy policy | Complete |
+| `fido-u2f`          | `attestation/fidou2f`          | U2F signature construction and certificate verification through adapters                                                                    | Complete |
+| `apple`             | `attestation/apple`            | DER sequence/explicit nonce and credential-certificate public-key binding                                                                   | Complete |
+| `compound`          | `attestation/compound`         | Dispatches normalized sub-statements through caller-selected verifiers                                                                      | Complete |
 
 The root package must not import these packages automatically. Trust acceptance
 remains caller policy after format verification succeeds.
 
 ## Extensions
 
-| Extension identifier   | Applicability                   | Behavior                                                                                                               | Status                |
-| ---------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `appid`                | Authentication                  | Allows RP ID hash verification against AppID when request, policy, and client output agree.                            | Complete              |
-| `appidExclude`         | Registration                    | Represents input and validates policy; most exclusion behavior remains client-side.                                    | Complete              |
-| `credProps`            | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                           | Complete              |
-| `largeBlob`            | Registration and authentication | Represents inputs/outputs and leaves application data storage policy to caller.                                        | Complete              |
-| `prf`                  | Registration and authentication | Validates PRF input/output and binds `evalByCredential` results to the selected credential, not merely the allow list. | Complete              |
-| `remoteClientDataJSON` | Registration and authentication | Editor's Draft client-only extension; validates ceremony/challenge and exact serialized client-data binding.           | Preview, opt-in       |
-| `uvm`                  | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.                        | Deprecated, supported |
+| Extension identifier   | Applicability                   | Behavior                                                                                                                  | Status                |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `appid`                | Authentication                  | `true` selects only the AppID hash; false/absent selects only the ordinary RP ID hash, with request and policy agreement. | Complete              |
+| `appidExclude`         | Registration                    | Represents input and reports whether processing was acted upon; finding a credential aborts client-side registration.     | Complete              |
+| `credProps`            | Registration                    | Surfaces discoverable/resident credential property output for passkey flows.                                              | Complete              |
+| `largeBlob`            | Registration and authentication | Requires a registered handler, validates restored write context, and leaves application data storage policy to caller.    | Complete              |
+| `prf`                  | Registration and authentication | Validates PRF input/output and binds `evalByCredential` results to the selected credential, not merely the allow list.    | Complete              |
+| `remoteClientDataJSON` | Registration and authentication | Editor's Draft client-only extension; validates ceremony/challenge and exact serialized client-data binding.              | Preview, opt-in       |
+| `uvm`                  | Registration and authentication | Deprecated in Level 3; retained as opt-in support and marked `Deprecated` in extension results.                           | Deprecated, supported |
 
 `extension.NewLevel3Registry` excludes `uvm` by default.
 `extension.NewLevel3RegistryWithDeprecated` includes it for callers that still
@@ -145,16 +146,16 @@ production acceptance.
 
 ## Security and privacy policy surfaces
 
-| Area                      | Implementation hook                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------ |
-| Cryptographic challenges  | Server-side challenge generator and exact challenge validation.                      |
-| Username enumeration      | Error shaping and option behavior do not force account existence leaks.              |
-| Attestation privacy       | Defaults do not require identifying attestation unless RP policy opts in.            |
-| Credential ID privacy     | Discoverable credentials and account-agnostic starts are allowed where configured.   |
-| Signature counters        | Clone-risk signals are surfaced for caller policy.                                   |
-| Server-side serialization | Optional versioned storage JSON with bounded, strict decoding.                       |
-| Origin and RP ID scoping  | Explicit origin, top-origin, and RP ID policy; no implicit trust in request headers. |
-| Transport hints           | Hints are preserved as UI hints, not security proof.                                 |
+| Area                      | Implementation hook                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Cryptographic challenges  | Server-side challenge generator, exact validation, five-minute browser hint, and ten-minute state lifetime. |
+| Username enumeration      | Error shaping and option behavior do not force account existence leaks.                                     |
+| Attestation privacy       | Defaults do not require identifying attestation unless RP policy opts in.                                   |
+| Credential ID privacy     | Discoverable credentials and account-agnostic starts are allowed where configured.                          |
+| Signature counters        | Clone-risk signals are surfaced for caller policy.                                                          |
+| Server-side serialization | Optional versioned storage JSON with bounded, strict decoding.                                              |
+| Origin and RP ID scoping  | Explicit origin, top-origin, and RP ID policy; no implicit trust in request headers.                        |
+| Transport hints           | Hints are preserved as UI hints, not security proof.                                                        |
 
 ## Out-of-scope for the core package
 

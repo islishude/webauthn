@@ -87,7 +87,7 @@ func (PRFHandler) ValidateInput(request InputRequest) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if request.Operation == OperationRegistration && len(input.EvalByCredential) != 0 {
+	if request.Operation == OperationRegistration && input.EvalByCredential != nil {
 		return nil, invalidRequest("prf evalByCredential is authentication-only")
 	}
 	if request.Operation == OperationAuthentication && len(input.EvalByCredential) != 0 {

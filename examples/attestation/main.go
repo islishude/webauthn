@@ -4,6 +4,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	attnone "github.com/islishude/webauthn/attestation/none"
 	"github.com/islishude/webauthn/attestation/packed"
+	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/crypto/standard"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -19,12 +20,19 @@ func selectedAttestationFormats() (*attestation.Registry, error) {
 	)
 }
 
-func restrictedEnrollmentPolicy(allowedAAGUID protocol.AAGUID) attestation.TrustPolicy {
+func restrictedEnrollmentPolicy(
+	allowedAAGUID protocol.AAGUID,
+	certificateVerifier webcrypto.CertificateVerifier,
+	verificationContext webcrypto.CertificateVerificationContext,
+	statusProvider attestation.CertificateStatusProvider,
+) attestation.TrustPolicy {
 	return attestation.AllOf(
 		attestation.RejectNone(),
 		attestation.AllowFormats("packed"),
-		attestation.AllowTypes(attestation.TypeBasic, attestation.TypeAttCA, attestation.TypeUncertain),
+		attestation.AllowTypes(attestation.TypeUncertain),
 		attestation.RequireAAGUID(allowedAAGUID),
+		attestation.RequireTrustedRoots(certificateVerifier, verificationContext),
+		attestation.RequireCertificateStatus(statusProvider),
 	)
 }
 

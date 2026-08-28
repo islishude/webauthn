@@ -83,7 +83,9 @@ func AcceptNone() TrustPolicy {
 	}
 }
 
-// RejectNone returns a policy that rejects none attestation and accepts others.
+// RejectNone returns a classification policy that rejects none attestation and
+// accepts other types. It does not establish trust in an X.509 path; restricted
+// enrollment must compose it with trusted-root or trusted-metadata policy.
 func RejectNone() TrustPolicy {
 	return rejectTypesPolicy{
 		rejected:     typeSet(TypeNone),
@@ -101,7 +103,8 @@ func AcceptSelf() TrustPolicy {
 	}
 }
 
-// RejectSelf returns a policy that rejects self attestation and accepts others.
+// RejectSelf returns a classification policy that rejects self attestation and
+// accepts other types. It does not establish trust in an X.509 path.
 func RejectSelf() TrustPolicy {
 	return rejectTypesPolicy{
 		rejected:     typeSet(TypeSelf),
@@ -110,7 +113,8 @@ func RejectSelf() TrustPolicy {
 	}
 }
 
-// AllowTypes returns a policy that accepts only the listed attestation types.
+// AllowTypes returns a classification policy that accepts only the listed
+// attestation types. It does not establish trust in an X.509 path.
 func AllowTypes(types ...Type) TrustPolicy {
 	return allowTypesPolicy{
 		allowed:      typeSet(types...),
@@ -119,7 +123,8 @@ func AllowTypes(types ...Type) TrustPolicy {
 	}
 }
 
-// AllowFormats returns a policy that accepts only the listed format identifiers.
+// AllowFormats returns a classification policy that accepts only the listed
+// format identifiers. It does not establish trust in an X.509 path.
 func AllowFormats(formats ...string) TrustPolicy {
 	return allowFormatsPolicy{
 		allowed:      formatSet(formats...),
@@ -128,7 +133,9 @@ func AllowFormats(formats ...string) TrustPolicy {
 	}
 }
 
-// RequireAAGUID returns a policy that accepts only the listed AAGUID values.
+// RequireAAGUID returns a classification policy that accepts only the listed
+// AAGUID values. An AAGUID allow-list does not establish attestation trust by
+// itself and must be composed with trusted-root or trusted-metadata policy.
 func RequireAAGUID(aaguids ...protocol.AAGUID) TrustPolicy {
 	return aaguidPolicy{allowed: aaguidSet(aaguids...)}
 }

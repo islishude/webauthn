@@ -149,8 +149,6 @@ function encodeRegistrationCredential(credential) {
     response: {
       clientDataJSON: bufferToB64url(response.clientDataJSON),
       attestationObject: bufferToB64url(response.attestationObject),
-      // The server decodes the authoritative authenticatorData copy from the
-      // attestation object; do not send the redundant convenience accessor.
       publicKey: optionalBufferToB64url(response.getPublicKey?.()),
       publicKeyAlgorithm: response.getPublicKeyAlgorithm?.() || 0,
       transports: response.getTransports?.() || [],

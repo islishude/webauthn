@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/attestation"
@@ -70,7 +71,7 @@ func (a *app) registerOptions(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	a.store.saveRegistrationState(stateID, registrationState{Email: user.Email, State: start.State})
-	http.SetCookie(response, a.cookie(registrationCookie, stateID, 300))
+	http.SetCookie(response, a.cookie(registrationCookie, stateID, int(webauthn.DefaultChallengeTTL/time.Second)))
 	_ = webauthnhttp.WriteCreationOptions(response, start.Options)
 }
 
@@ -91,7 +92,12 @@ func (a *app) registerFinish(response http.ResponseWriter, request *http.Request
 		writeGenericError(response, http.StatusUnauthorized)
 		return
 	}
-	credentialResponse, err := browser.RegistrationResponseFromJSON(input.Credential)
+	normalizedCredential, err := normalizePlaywrightRegistrationJSON(input.Credential, a.decoder)
+	if err != nil {
+		writeGenericError(response, http.StatusBadRequest)
+		return
+	}
+	credentialResponse, err := browser.RegistrationResponseFromJSON(normalizedCredential)
 	if err != nil {
 		writeGenericError(response, http.StatusBadRequest)
 		return

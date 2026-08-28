@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	webauthn "github.com/islishude/webauthn"
+	"github.com/islishude/webauthn/browser"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -58,7 +61,7 @@ func TestHTTPExampleExpiresStateAtDeadline(t *testing.T) {
 	h.now = func() time.Time { return now }
 	router := routes(h)
 	cookie := beginRegistrationRequest(t, router)
-	now = now.Add(webauthn.DefaultCeremonyTimeout)
+	now = now.Add(webauthn.DefaultChallengeTTL)
 
 	finish := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "https://example.com/register/finish", strings.NewReader(`{}`))
 	finish.AddCookie(cookie)
@@ -98,7 +101,7 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 	if err != nil {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
-	record := webauthn.CredentialRecord{ID: credentialID, UserHandle: userHandle, RPID: "example.com", SignCount: 7}
+	record := webauthn.CredentialRecord{Type: protocol.CredentialTypePublicKey, ID: credentialID, UserHandle: userHandle, RPID: "example.com", SignCount: 7}
 	if !h.insertCredential(record) || h.insertCredential(record) {
 		t.Fatal("credential insertion was not atomic and unique")
 	}
@@ -126,6 +129,44 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 	updated, ok := h.credentialByRawID(rawID)
 	if !ok || updated.SignCount != 8 || !updated.BackupState || !updated.UVInitialized || updated.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform {
 		t.Fatalf("updated credential = %+v", updated)
+	}
+}
+
+func TestHTTPExampleUsesOpaqueHandleAndExistingCredentialExclusions(t *testing.T) {
+	t.Parallel()
+
+	h := mustHandler(t)
+	credentialID, err := protocol.NewCredentialID([]byte("existing-credential"))
+	if err != nil {
+		t.Fatalf("NewCredentialID() error = %v", err)
+	}
+	if !h.insertCredential(webauthn.CredentialRecord{
+		Type:       protocol.CredentialTypePublicKey,
+		ID:         credentialID,
+		UserHandle: h.userHandle,
+		RPID:       "example.com",
+	}) {
+		t.Fatal("insertCredential() = false")
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "https://example.com/register/options", nil)
+	routes(h).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("registration status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	var options browser.CredentialCreationOptionsJSON
+	if err := json.Unmarshal(recorder.Body.Bytes(), &options); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	handle, err := base64.RawURLEncoding.DecodeString(options.User.ID)
+	if err != nil {
+		t.Fatalf("user handle decode error = %v", err)
+	}
+	if len(handle) != protocol.MaxUserHandleLength {
+		t.Fatalf("user handle length = %d, want %d", len(handle), protocol.MaxUserHandleLength)
+	}
+	if len(options.ExcludeCredentials) != 1 || options.ExcludeCredentials[0].ID != base64.RawURLEncoding.EncodeToString(credentialID.Bytes()) {
+		t.Fatalf("ExcludeCredentials = %#v", options.ExcludeCredentials)
 	}
 }
 

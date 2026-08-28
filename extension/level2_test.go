@@ -124,7 +124,7 @@ func TestAppIDExcludeHandler(t *testing.T) {
 			t.Fatalf("VerifyOutput() error = %v", err)
 		}
 		output := typedOutput[extension.AppIDExcludeResult](t, result, extension.IDAppIDExclude)
-		if !result.Accepted || !output.Excluded || output.AppID != "https://legacy.example/appid" {
+		if !result.Accepted || !output.ActedUpon || output.AppID != "https://legacy.example/appid" {
 			t.Fatalf("result = %+v output = %+v", result, output)
 		}
 	})

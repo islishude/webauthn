@@ -122,6 +122,25 @@ func TestPRFHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("reject registration empty evalByCredential", func(t *testing.T) {
+		t.Parallel()
+
+		for _, input := range []any{
+			extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{}},
+			map[string]any{"evalByCredential": map[string]any{}},
+		} {
+			_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+				Operation:   extension.OperationRegistration,
+				ID:          extension.IDPRF,
+				Requested:   true,
+				ClientInput: input,
+			})
+			if !errors.Is(err, extension.ErrInvalidRequest) {
+				t.Fatalf("VerifyOutput(%T) error = %v, want ErrInvalidRequest", input, err)
+			}
+		}
+	})
+
 	t.Run("reject unallowed evalByCredential", func(t *testing.T) {
 		t.Parallel()
 

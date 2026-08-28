@@ -56,8 +56,17 @@ var (
 )
 
 const (
-	// DefaultCeremonyTimeout is used when callers leave Timeout at its zero value.
-	DefaultCeremonyTimeout = 5 * time.Minute
+	// DefaultBrowserTimeout is the browser timeout hint used when callers leave
+	// Timeout at its zero value.
+	DefaultBrowserTimeout = 5 * time.Minute
+	// DefaultCeremonyTimeout is retained as the former name of the browser hint.
+	//
+	// Deprecated: use DefaultBrowserTimeout or DefaultChallengeTTL according to
+	// which lifetime is intended.
+	DefaultCeremonyTimeout = DefaultBrowserTimeout
+	// DefaultChallengeTTL is the server-side ceremony-state lifetime used when
+	// callers leave StateTTL at its zero value.
+	DefaultChallengeTTL = 10 * time.Minute
 )
 
 // RegistrationResponse is the structured, transport-neutral browser
@@ -101,6 +110,7 @@ type RegistrationFinishOptions struct {
 // CredentialRecord is storage-neutral credential material returned after
 // registration verification.
 type CredentialRecord struct {
+	Type                    protocol.PublicKeyCredentialType
 	ID                      protocol.CredentialID
 	PublicKey               codec.CredentialPublicKey
 	UserHandle              protocol.UserHandle
@@ -207,6 +217,7 @@ func FinishRegistration(ctx context.Context, options RegistrationFinishOptions) 
 
 	result := RegistrationResult{
 		Credential: CredentialRecord{
+			Type:                    options.Response.Type,
 			ID:                      attested.CredentialID,
 			PublicKey:               credentialPublicKey,
 			UserHandle:              options.State.UserHandle,

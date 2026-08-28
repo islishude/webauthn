@@ -2,6 +2,7 @@
 package codec
 
 import (
+	"math/bits"
 	"slices"
 
 	"github.com/islishude/webauthn/protocol"
@@ -137,6 +138,24 @@ const (
 type RSAPublicKeyMaterial struct {
 	Modulus  []byte
 	Exponent uint32
+}
+
+const (
+	// MinRSAModulusBits is the RFC 8230 minimum RSA modulus size.
+	MinRSAModulusBits = 2048
+	// MaxRSAModulusBits bounds RSA verification work while retaining RFC 8230's
+	// recommended interoperability range.
+	MaxRSAModulusBits = 16384
+)
+
+// Valid reports whether the RSA material is minimally encoded and within the
+// supported RFC 8230 key-size range.
+func (m *RSAPublicKeyMaterial) Valid() bool {
+	if m == nil || len(m.Modulus) == 0 || m.Modulus[0] == 0 || m.Modulus[len(m.Modulus)-1]%2 == 0 || m.Exponent < 3 || m.Exponent%2 == 0 {
+		return false
+	}
+	modulusBits := (len(m.Modulus)-1)*8 + bits.Len8(m.Modulus[0])
+	return modulusBits >= MinRSAModulusBits && modulusBits <= MaxRSAModulusBits
 }
 
 // OKPPublicKeyMaterial contains public values for a COSE OKP key.

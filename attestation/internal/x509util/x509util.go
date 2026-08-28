@@ -155,13 +155,21 @@ func ValidatePublicKey(publicKey any, material codec.CredentialPublicKeyMaterial
 		if typed == nil || typed.N == nil {
 			return unsupported
 		}
-		if material.RSA == nil {
+		if material.RSA == nil || !material.RSA.Valid() {
 			return unsupported
 		}
-		if typed.E <= 0 || uint64(typed.E) > uint64(^uint32(0)) {
+		if typed.N.BitLen() < codec.MinRSAModulusBits || typed.N.BitLen() > codec.MaxRSAModulusBits || typed.E <= 0 || uint64(typed.E) > uint64(^uint32(0)) {
 			return unsupported
 		}
 		if uint32(typed.E) != material.RSA.Exponent || !bytes.Equal(typed.N.Bytes(), material.RSA.Modulus) {
+			return mismatch
+		}
+	case ed25519.PublicKey:
+		if len(typed) != ed25519.PublicKeySize || material.OKP == nil || material.EC2 != nil || material.RSA != nil ||
+			material.OKP.Curve != codec.OKPCurveEd25519 || len(material.OKP.X) != ed25519.PublicKeySize {
+			return unsupported
+		}
+		if !bytes.Equal(typed, material.OKP.X) {
 			return mismatch
 		}
 	default:
@@ -189,7 +197,7 @@ func PublicKeyMaterial(publicKey any) (codec.CredentialPublicKeyMaterial, bool) 
 			Y:     fixedBytes(typed.Y, coordinateLength),
 		}}, true
 	case *rsa.PublicKey:
-		if typed == nil || typed.N == nil || typed.E < 3 || typed.E%2 == 0 || uint64(typed.E) > uint64(^uint32(0)) {
+		if typed == nil || typed.N == nil || typed.N.BitLen() < codec.MinRSAModulusBits || typed.N.BitLen() > codec.MaxRSAModulusBits || typed.E < 3 || typed.E%2 == 0 || uint64(typed.E) > uint64(^uint32(0)) {
 			return codec.CredentialPublicKeyMaterial{}, false
 		}
 		return codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{

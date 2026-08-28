@@ -30,6 +30,7 @@ type handler struct {
 	registrationStates   map[string]webauthn.RegistrationState
 	authenticationStates map[string]webauthn.AuthenticationState
 	records              map[string]webauthn.CredentialRecord
+	userHandle           protocol.UserHandle
 
 	verifiers  *attestation.Registry
 	extensions *extension.Registry
@@ -60,11 +61,20 @@ func newHandler() (*handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	userHandleBytes := make([]byte, protocol.MaxUserHandleLength)
+	if _, err := io.ReadFull(rand.Reader, userHandleBytes); err != nil {
+		return nil, err
+	}
+	userHandle, err := protocol.NewUserHandle(userHandleBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	return &handler{
 		registrationStates:   make(map[string]webauthn.RegistrationState),
 		authenticationStates: make(map[string]webauthn.AuthenticationState),
 		records:              make(map[string]webauthn.CredentialRecord),
+		userHandle:           userHandle,
 		verifiers:            verifiers,
 		extensions:           extensions,
 		decoder:              decoder,
@@ -75,20 +85,16 @@ func newHandler() (*handler, error) {
 }
 
 func (h *handler) beginRegistration(response http.ResponseWriter, request *http.Request) {
-	userHandle, err := protocol.NewUserHandle([]byte("demo-user"))
-	if err != nil {
-		_ = webauthnhttp.WriteError(response, http.StatusInternalServerError, err)
-		return
-	}
 	start, err := webauthn.StartRegistration(request.Context(), webauthn.RegistrationStartOptions{
-		RP:                protocol.RPEntity{ID: "example.com", Name: "Example"},
-		User:              protocol.UserEntity{ID: userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
-		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		PubKeyCredParams:  protocol.RecommendedLevel3CredentialParameters(),
-		Attestation:       protocol.AttestationNone,
-		Extensions:        protocol.ExtensionInputs{extension.IDCredProps: true},
-		ExtensionRegistry: h.extensions,
-		Now:               h.now,
+		RP:                 protocol.RPEntity{ID: "example.com", Name: "Example"},
+		User:               protocol.UserEntity{ID: h.userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
+		OriginPolicy:       webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams:   protocol.RecommendedLevel3CredentialParameters(),
+		ExcludeCredentials: h.credentialDescriptors(),
+		Attestation:        protocol.AttestationNone,
+		Extensions:         protocol.ExtensionInputs{extension.IDCredProps: true},
+		ExtensionRegistry:  h.extensions,
+		Now:                h.now,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)
@@ -298,6 +304,20 @@ func (h *handler) firstCredential() (webauthn.CredentialRecord, bool) {
 	return webauthn.CredentialRecord{}, false
 }
 
+func (h *handler) credentialDescriptors() []protocol.CredentialDescriptor {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	descriptors := make([]protocol.CredentialDescriptor, 0, len(h.records))
+	for _, record := range h.records {
+		descriptors = append(descriptors, protocol.CredentialDescriptor{
+			Type:       record.Type,
+			ID:         record.ID,
+			Transports: append([]protocol.AuthenticatorTransport(nil), record.Transports...),
+		})
+	}
+	return descriptors
+}
+
 func (h *handler) applyCredentialUpdate(update webauthn.CredentialUpdate) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -339,7 +359,7 @@ func (h *handler) setStateCookie(response http.ResponseWriter, name string, valu
 		Name:     name,
 		Value:    value,
 		Path:     "/",
-		MaxAge:   int(webauthn.DefaultCeremonyTimeout / time.Second),
+		MaxAge:   int(webauthn.DefaultChallengeTTL / time.Second),
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,

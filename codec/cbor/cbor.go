@@ -288,7 +288,7 @@ func validateCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, mat
 		return validateEC2Material(material, codec.EC2CurveP521, ecdh.P521())
 	case protocol.AlgorithmRS256, protocol.AlgorithmRS384, protocol.AlgorithmRS512,
 		protocol.AlgorithmPS256, protocol.AlgorithmPS384, protocol.AlgorithmPS512:
-		if material.RSA == nil || material.EC2 != nil || material.OKP != nil || len(material.RSA.Modulus) == 0 || material.RSA.Exponent < 3 || material.RSA.Exponent%2 == 0 {
+		if material.RSA == nil || material.EC2 != nil || material.OKP != nil || !material.RSA.Valid() {
 			return ErrMalformedCBOR
 		}
 	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
@@ -377,11 +377,11 @@ func okpPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 
 func rsaPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
 	modulus, err := key.GetBytes(iana.RSAKeyParameterN)
-	if err != nil || len(modulus) == 0 {
+	if err != nil || len(modulus) == 0 || modulus[0] == 0 {
 		return codec.CredentialPublicKeyMaterial{}
 	}
 	exponentBytes, err := key.GetBytes(iana.RSAKeyParameterE)
-	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 {
+	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 || exponentBytes[0] == 0 {
 		return codec.CredentialPublicKeyMaterial{}
 	}
 
