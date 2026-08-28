@@ -15,6 +15,10 @@ Source: <https://www.w3.org/TR/2026/REC-webauthn-3-20260825/#sctn-test-vectors>
 local, network-independent fixtures. The shared attestation root certificate is
 included but is not counted as a separate test case.
 
+The published Ed448 registration and authentication cases remain in the source
+inventory, but the executable ceremony test skips them because this repository
+does not provide an Ed448 signature verifier.
+
 Section 16 is non-normative. Its TPM registration vector encodes `sig` as a DER
 ECDSA signature even though normative section 8.3 requires a `TPMT_SIGNATURE`.
 The original bytes are retained and expected to fail strict verification. The

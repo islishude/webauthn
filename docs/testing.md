@@ -13,7 +13,9 @@ section 16 lives under `testdata/w3c/webauthn-level3`: 30 ceremony cases, 12 PRF
 Web Authentication API cases, and 3 CTAP2 `hmac-secret` calculation cases. The
 fixtures record their frozen source URL, section, test-only sensitivity, and W3C
 permissive document license. Tests read only committed local data and never
-fetch a specification or generator from the network.
+fetch a specification or generator from the network. The two Ed448 ceremony
+cases remain in the inventory but are skipped because the test suite does not
+provide an Ed448 signature verifier.
 
 Section 16 is non-normative. Its TPM registration object contains a DER ECDSA
 signature where normative section 8.3 requires `TPMT_SIGNATURE`. Coverage
@@ -222,8 +224,6 @@ Required coverage:
 - ECDSA DER signature verification behavior;
 - RSA PKCS#1 v1.5 and RSA-PSS behavior for supported algorithms;
 - rejection of undersized, oversized, and non-minimally encoded RSA keys;
-- real Ed448 verification of the Recommendation vector through a CIRCL-backed
-  test adapter, without adding Ed448 to `crypto/standard`;
 - JWS/JWT verification handoff behavior for SafetyNet-like formats;
 - X.509 chain acceptance and rejection through trust policy.
 
@@ -396,8 +396,8 @@ The 2026-08-23 Level 3 conformance refresh added:
 - CTAP2 canonical CBOR rejection, exact attestation-object maps, required-only
   COSE parameters, Ed448 typed-key routing, and storage revalidation;
 - byte-for-byte Recommendation-verified vectors for none, cross-origin,
-  top-origin, the 1023-byte
-  credential-ID boundary, Ed448, Apple anonymous attestation, and PRF;
+  top-origin, the 1023-byte credential-ID boundary, Apple anonymous
+  attestation, and PRF, with Ed448 retained only as non-executed inventory;
 - packed enterprise/firmware/subject rules, TPM SAN profiles, Android
   hardware-enforced policy, and Apple nonce ASN.1 rejection paths;
 - Playwright 1.62.1 Credentials lifecycle and in-memory credential storage-state
@@ -417,8 +417,7 @@ The 2026-08-28 vector completion added:
 - a 45-entry unique coverage manifest with category guards for 30 ceremony, 12
   PRF Web API, and 3 CTAP2 calculation cases;
 - all published ceremony algorithms and attestation formats, official-root
-  certificate path checks, and real Ed448 verification through a test-only
-  CIRCL adapter;
+  certificate path checks, with the Ed448 pair retained as skipped inventory;
 - strict rejection of the non-normative TPM DER-signature fixture plus a
   conforming in-memory `TPMT_SIGNATURE` derivative;
 - selected-credential PRF binding, positive coverage for all 12 published PRF

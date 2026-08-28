@@ -118,9 +118,9 @@ COSE algorithm identifiers remain extensible but are bounded to Web IDL `long`.
 RSA material additionally enforces RFC 8230 minimal unsigned encoding and a
 2048–16384 bit modulus before signature verification.
 Ed448 (`-53`) is represented as typed OKP material and requires a caller
-signature adapter because `crypto/standard` does not implement Ed448. The W3C
-Ed448 vector uses CIRCL only from external test code to exercise that adapter
-with a real signature; CIRCL is not imported by production packages.
+signature adapter because `crypto/standard` does not implement Ed448. The
+repository retains the published Ed448 vector in its source inventory but does
+not execute it or provide an Ed448 test verifier.
 
 ## Ceremony verification shape
 
@@ -262,9 +262,9 @@ The 2026-08-28 vector completion records all 45 Recommendation section 16 cases:
 30 ceremony cases, 12 Web Authentication API PRF cases, and 3 test-only CTAP2
 calculation cases. Authentication extension dispatch now supplies the selected
 credential ID so `evalByCredential` is bound to the credential that actually
-produced the assertion. `github.com/cloudflare/circl v1.6.5` is a test-only
-Ed448 verifier; it does not change `crypto/standard`, the root import graph, or
-the client/authenticator scope of the library.
+produced the assertion. The Ed448 ceremony pair remains recorded for inventory
+completeness but is excluded from executable coverage because neither
+`crypto/standard` nor the test suite supplies an Ed448 verifier.
 
 ## Compatibility and passkey behavior
 

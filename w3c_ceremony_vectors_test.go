@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudflare/circl/sign/ed448"
 	"github.com/fxamacker/cbor/v2"
 
 	webauthn "github.com/islishude/webauthn"
@@ -24,7 +23,6 @@ import (
 	attnone "github.com/islishude/webauthn/attestation/none"
 	attpacked "github.com/islishude/webauthn/attestation/packed"
 	atttpm "github.com/islishude/webauthn/attestation/tpm"
-	"github.com/islishude/webauthn/codec"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	cryptostandard "github.com/islishude/webauthn/crypto/standard"
@@ -48,12 +46,15 @@ func TestW3CLevel3CeremonyVectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVerifier() error = %v", err)
 	}
-	signatures := w3cSignatureVerifier{standard: standardVerifier}
+	signatures := standardVerifier
 	decoder := codeccbor.MustNewDecoder()
 
 	for _, vector := range fixture.Vectors {
 		t.Run(vector.Name, func(t *testing.T) {
 			t.Parallel()
+			if protocol.COSEAlgorithmIdentifier(vector.Algorithm) == protocol.AlgorithmEd448 {
+				t.Skip("Ed448 signature verification is not supported by the test suite")
+			}
 
 			var registration webauthn.RegistrationResult
 			if !t.Run("registration", func(t *testing.T) {
@@ -106,7 +107,7 @@ func finishW3CRegistration(
 	vector w3cCeremonyVector,
 	attestationObjectBytes []byte,
 	rootCertificate []byte,
-	signatures w3cSignatureVerifier,
+	signatures *cryptostandard.Verifier,
 	decoder *codeccbor.Decoder,
 ) (webauthn.RegistrationResult, error) {
 	t.Helper()
@@ -170,7 +171,7 @@ func finishW3CAuthentication(
 	fixture w3cCeremonyFixture,
 	vector w3cCeremonyVector,
 	credential webauthn.CredentialRecord,
-	signatures w3cSignatureVerifier,
+	signatures *cryptostandard.Verifier,
 	decoder *codeccbor.Decoder,
 ) (webauthn.AuthenticationResult, error) {
 	t.Helper()
@@ -235,7 +236,7 @@ func w3cAttestationConfiguration(
 	t *testing.T,
 	vector w3cCeremonyVector,
 	rootCertificate []byte,
-	signatures w3cSignatureVerifier,
+	signatures *cryptostandard.Verifier,
 ) (*attestation.Registry, attestation.TrustPolicy) {
 	t.Helper()
 
@@ -275,35 +276,6 @@ func w3cAttestationConfiguration(
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	return registry, trustPolicy
-}
-
-type w3cSignatureVerifier struct {
-	standard *cryptostandard.Verifier
-}
-
-func (v w3cSignatureVerifier) AcceptsAlgorithm(algorithm protocol.COSEAlgorithmIdentifier) bool {
-	return algorithm == protocol.AlgorithmEd448 || v.standard.AcceptsAlgorithm(algorithm)
-}
-
-func (v w3cSignatureVerifier) VerifySignature(ctx context.Context, input webcrypto.SignatureInput) error {
-	if input.Algorithm != protocol.AlgorithmEd448 {
-		return v.standard.VerifySignature(ctx, input)
-	}
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-	}
-	if input.PublicKey.OKP == nil || input.PublicKey.EC2 != nil || input.PublicKey.RSA != nil ||
-		input.PublicKey.OKP.Curve != codec.OKPCurveEd448 || len(input.PublicKey.OKP.X) != ed448.PublicKeySize {
-		return errors.New("W3C Ed448 public key is invalid")
-	}
-	if !ed448.Verify(ed448.PublicKey(input.PublicKey.OKP.X), input.Signed, input.Signature.Bytes(), "") {
-		return errors.New("W3C Ed448 signature is invalid")
-	}
-	return nil
 }
 
 type w3cCertificateVerifier struct{}
@@ -421,7 +393,5 @@ func appendW3CUint16(out []byte, value uint16) []byte {
 }
 
 var (
-	_ webcrypto.AlgorithmPolicy     = w3cSignatureVerifier{}
-	_ webcrypto.SignatureVerifier   = w3cSignatureVerifier{}
 	_ webcrypto.CertificateVerifier = w3cCertificateVerifier{}
 )

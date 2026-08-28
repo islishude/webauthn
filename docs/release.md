@@ -45,10 +45,10 @@ calculations. Authentication extension output now carries the selected
 credential ID, and PRF `evalByCredential` results are checked only against that
 credential before falling back to `eval`. The non-normative TPM vector's raw DER
 signature remains rejected in favor of normative `TPMT_SIGNATURE`; a test-only
-derived wrapper validates the intended flow. Added test-only
-`github.com/cloudflare/circl v1.6.5` for real Ed448 vector verification. No
-storage format, browser wire format, root import boundary, or production
-CTAP/Ed448 implementation changed.
+derived wrapper validates the intended flow. The published Ed448 pair remains
+in the inventory but is skipped; the test-only CIRCL verifier and dependency
+were removed. No storage format, browser wire format, root import boundary, or
+production CTAP/Ed448 implementation changed.
 
 2026-08-25: Updated the stable baseline to the final WebAuthn Level 3
 Recommendation. W3C records no substantive protocol change from the 26 May

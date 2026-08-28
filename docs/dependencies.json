@@ -1,20 +1,6 @@
 {
   "modules": [
     {
-      "path": "github.com/bwesterb/go-ristretto",
-      "version": "v1.2.4",
-      "license": "MIT",
-      "scope": "indirect CIRCL test dependency",
-      "notes": "Present through the W3C Ed448 test adapter dependency; not imported by production packages or exposed in public APIs."
-    },
-    {
-      "path": "github.com/cloudflare/circl",
-      "version": "v1.6.5",
-      "license": "BSD-3-Clause",
-      "scope": "W3C Ed448 tests only",
-      "notes": "Performs real Ed448 verification for the Recommendation vector behind a test adapter; crypto/standard and production import graphs do not depend on it."
-    },
-    {
       "path": "github.com/davecgh/go-spew",
       "version": "v1.1.1",
       "license": "ISC",
@@ -58,35 +44,35 @@
     },
     {
       "path": "golang.org/x/crypto",
-      "version": "v0.54.0",
+      "version": "v0.53.0",
       "license": "BSD-3-Clause",
-      "scope": "indirect COSE and CIRCL test dependency",
-      "notes": "Pulled by the selected COSE dependency and test-only Ed448 adapter; no direct root API exposure."
+      "scope": "indirect COSE dependency",
+      "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
     },
     {
       "path": "golang.org/x/net",
-      "version": "v0.56.0",
+      "version": "v0.55.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
     },
     {
       "path": "golang.org/x/sys",
-      "version": "v0.47.0",
+      "version": "v0.46.0",
       "license": "BSD-3-Clause",
-      "scope": "indirect COSE and CIRCL test dependency",
-      "notes": "Pulled by the selected COSE dependency and test-only Ed448 adapter; no direct root API exposure."
+      "scope": "indirect COSE dependency",
+      "notes": "Pulled by the selected COSE dependency; no direct root API exposure."
     },
     {
       "path": "golang.org/x/term",
-      "version": "v0.45.0",
+      "version": "v0.44.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
     },
     {
       "path": "golang.org/x/text",
-      "version": "v0.40.0",
+      "version": "v0.38.0",
       "license": "BSD-3-Clause",
       "scope": "indirect dependency graph",
       "notes": "Pulled transitively by Go extended packages; no direct root API exposure."
