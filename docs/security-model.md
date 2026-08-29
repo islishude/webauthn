@@ -146,6 +146,13 @@ raw results by default, including nested maps with non-string comparable CBOR
 keys; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed
 behavior. Rejection policy is applied before raw-value copying.
 
+Known handlers normalize raw boundary data into typed inputs and outputs. The
+heterogeneous registry erases those types only internally; callers recover a
+known output through `extension.Find` and cannot access the erased value
+directly. `RawValue` preserves absent versus explicit-null state and returns
+defensive copies. `FindRaw` is reserved for unknown or unrequested evidence and
+does not mark that evidence accepted.
+
 Custom extension handlers must be deterministic and side-effect-free because a
 later caller-owned atomic insert or persistence conflict can still reject an
 otherwise verified registration result.

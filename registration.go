@@ -130,7 +130,7 @@ type RegistrationResult struct {
 	Credential       CredentialRecord
 	Attestation      attestation.VerificationResult
 	AttestationTrust AttestationTrustResult
-	Extensions       []extension.Result
+	Extensions       extension.Results
 	Warnings         []string
 }
 

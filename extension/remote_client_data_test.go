@@ -13,21 +13,25 @@ func TestRemoteClientDataJSONHandler(t *testing.T) {
 	t.Parallel()
 
 	handler := extension.RemoteClientDataJSONHandler{}
+	registry, err := extension.NewRegistry(extension.Register(handler))
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
 	challenge := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef"))
 	input := `{"type":"webauthn.create","challenge":"` + challenge + `","origin":"https://remote.example"}`
-	result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+	result, err := registry.VerifyOutput(context.Background(), extension.RawOutputRequest{
 		Operation:    extension.OperationRegistration,
 		ID:           extension.IDRemoteClientDataJSON,
 		Requested:    true,
-		ClientInput:  input,
-		ClientOutput: true,
+		ClientInput:  rawValue(t, input),
+		ClientOutput: rawValue(t, true),
 	})
 	if err != nil {
 		t.Fatalf("VerifyOutput() error = %v", err)
 	}
-	output := typedOutput[extension.RemoteClientDataJSONResult](t, result, extension.IDRemoteClientDataJSON)
-	if !result.Accepted || !output.Used {
-		t.Fatalf("result = %+v output = %+v", result, output)
+	typed, ok := extension.Find(extension.Results{result}, handler)
+	if !ok || !typed.Accepted || !typed.Output.Used {
+		t.Fatalf("result = %+v typed = %+v", result, typed)
 	}
 
 	for _, test := range []struct {
@@ -43,12 +47,12 @@ func TestRemoteClientDataJSONHandler(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			_, err := registry.VerifyOutput(context.Background(), extension.RawOutputRequest{
 				Operation:    test.operation,
 				ID:           extension.IDRemoteClientDataJSON,
 				Requested:    true,
-				ClientInput:  test.input,
-				ClientOutput: test.output,
+				ClientInput:  rawValue(t, test.input),
+				ClientOutput: rawValue(t, test.output),
 			})
 			if !errors.Is(err, extension.ErrInvalidRequest) {
 				t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
@@ -56,20 +60,20 @@ func TestRemoteClientDataJSONHandler(t *testing.T) {
 		})
 	}
 
-	if _, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
-		Operation:           extension.OperationRegistration,
-		ID:                  extension.IDRemoteClientDataJSON,
-		Requested:           true,
-		ClientInput:         input,
-		ClientOutputPresent: true,
+	if _, err := registry.VerifyOutput(context.Background(), extension.RawOutputRequest{
+		Operation:    extension.OperationRegistration,
+		ID:           extension.IDRemoteClientDataJSON,
+		Requested:    true,
+		ClientInput:  rawValue(t, input),
+		ClientOutput: rawValue(t, nil),
 	}); !errors.Is(err, extension.ErrInvalidRequest) {
 		t.Fatalf("VerifyOutput() explicit null error = %v, want ErrInvalidRequest", err)
 	}
-	if _, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+	if _, err := registry.VerifyOutput(context.Background(), extension.RawOutputRequest{
 		Operation:   extension.OperationRegistration,
 		ID:          extension.IDRemoteClientDataJSON,
 		Requested:   true,
-		ClientInput: input,
+		ClientInput: rawValue(t, input),
 	}); !errors.Is(err, extension.ErrInvalidRequest) {
 		t.Fatalf("VerifyOutput() absent output error = %v, want ErrInvalidRequest", err)
 	}

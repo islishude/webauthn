@@ -253,7 +253,7 @@ type AuthenticationResult struct {
 	AuthenticatedAs         protocol.UserHandle
 	Counter                 CounterResult
 	Update                  CredentialUpdate
-	Extensions              []extension.Result
+	Extensions              extension.Results
 	Warnings                []string
 	UserPresent             bool
 	UserVerified            bool
@@ -542,7 +542,7 @@ type authenticationExtensionInputs struct {
 	clientDataJSON          protocol.ClientDataJSON
 }
 
-func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationExtensionInputs) ([]extension.Result, error) {
+func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationExtensionInputs) (extension.Results, error) {
 	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.registry, inputs.clientDataJSON); err != nil {
 		return nil, err
 	}

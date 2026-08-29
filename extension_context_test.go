@@ -19,7 +19,7 @@ func TestStartRegistrationValidatesRemoteClientDataChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
-	registry, err := extension.NewRegistry(extension.RemoteClientDataJSONHandler{})
+	registry, err := extension.NewRegistry(extension.Register(extension.RemoteClientDataJSONHandler{}))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestFinishRegistrationBindsRemoteClientDataBytes(t *testing.T) {
 	t.Parallel()
 
 	fixture := newRegistrationFixture(t)
-	registry, err := extension.NewRegistry(extension.RemoteClientDataJSONHandler{})
+	registry, err := extension.NewRegistry(extension.Register(extension.RemoteClientDataJSONHandler{}))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}

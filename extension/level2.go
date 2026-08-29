@@ -22,13 +22,13 @@ const (
 )
 
 // Level2Handlers returns handlers for WebAuthn Level 2 defined extensions.
-func Level2Handlers() []Handler {
-	return []Handler{
-		AppIDHandler{},
-		AppIDExcludeHandler{},
-		UVMHandler{},
-		CredPropsHandler{},
-		LargeBlobHandler{},
+func Level2Handlers() []HandlerEntry {
+	return []HandlerEntry{
+		Register(AppIDHandler{}),
+		Register(AppIDExcludeHandler{}),
+		Register(UVMHandler{}),
+		Register(CredPropsHandler{}),
+		Register(LargeBlobHandler{}),
 	}
 }
 
@@ -52,42 +52,41 @@ func (AppIDHandler) ID() string {
 }
 
 // ValidateInput validates AppID extension input at ceremony start.
-func (AppIDHandler) ValidateInput(request InputRequest) (any, error) {
+func (AppIDHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationAuthentication); err != nil {
-		return nil, err
+		return "", err
 	}
-	return requiredStringValue(request.Input, IDAppID)
+	input, err := rawValue(request.Input)
+	if err != nil {
+		return "", err
+	}
+	return requiredStringValue(input, IDAppID)
 }
 
 // VerifyOutput validates AppID client output after core verification.
-func (handler AppIDHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (AppIDHandler) VerifyOutput(_ context.Context, request OutputRequest[string]) (Verification[AppIDResult], error) {
 	if err := requireOperation(request, OperationAuthentication); err != nil {
-		return Result{}, err
+		return Verification[AppIDResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest(IDAppID + " must be requested")
+		return Verification[AppIDResult]{}, invalidRequest(IDAppID + " must be requested")
 	}
-	normalized, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput})
-	if err != nil {
-		return Result{}, err
-	}
-	appID := normalized.(string)
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("appid has no authenticator output")
+		return Verification[AppIDResult]{}, invalidRequest("appid has no authenticator output")
 	}
 
-	output := AppIDResult{AppID: appID}
+	output := AppIDResult{AppID: request.ClientInput}
 	if !hasClientOutput(request) {
-		return Result{ID: IDAppID, Outputs: map[string]any{IDAppID: output}}, nil
+		return Verification[AppIDResult]{Output: output}, nil
 	}
 
-	used, ok := request.ClientOutput.(bool)
+	used, ok := As[bool](request.ClientOutput)
 	if !ok {
-		return Result{}, invalidRequest("appid client output must be boolean")
+		return Verification[AppIDResult]{}, invalidRequest("appid client output must be boolean")
 	}
 	output.Used = used
 
-	return Result{ID: IDAppID, Accepted: true, Outputs: map[string]any{IDAppID: output}}, nil
+	return Verification[AppIDResult]{Accepted: true, Output: output}, nil
 }
 
 // AppIDExcludeResult is the parsed FIDO AppID exclusion extension result.
@@ -107,42 +106,41 @@ func (AppIDExcludeHandler) ID() string {
 }
 
 // ValidateInput validates AppID exclusion input at ceremony start.
-func (AppIDExcludeHandler) ValidateInput(request InputRequest) (any, error) {
+func (AppIDExcludeHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationRegistration); err != nil {
-		return nil, err
+		return "", err
 	}
-	return requiredStringValue(request.Input, IDAppIDExclude)
+	input, err := rawValue(request.Input)
+	if err != nil {
+		return "", err
+	}
+	return requiredStringValue(input, IDAppIDExclude)
 }
 
 // VerifyOutput validates AppID exclusion client output after core verification.
-func (handler AppIDExcludeHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (AppIDExcludeHandler) VerifyOutput(_ context.Context, request OutputRequest[string]) (Verification[AppIDExcludeResult], error) {
 	if err := requireOperation(request, OperationRegistration); err != nil {
-		return Result{}, err
+		return Verification[AppIDExcludeResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest(IDAppIDExclude + " must be requested")
+		return Verification[AppIDExcludeResult]{}, invalidRequest(IDAppIDExclude + " must be requested")
 	}
-	normalized, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput})
-	if err != nil {
-		return Result{}, err
-	}
-	appID := normalized.(string)
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("appidExclude has no authenticator output")
+		return Verification[AppIDExcludeResult]{}, invalidRequest("appidExclude has no authenticator output")
 	}
 
-	output := AppIDExcludeResult{AppID: appID}
+	output := AppIDExcludeResult{AppID: request.ClientInput}
 	if !hasClientOutput(request) {
-		return Result{ID: IDAppIDExclude, Outputs: map[string]any{IDAppIDExclude: output}}, nil
+		return Verification[AppIDExcludeResult]{Output: output}, nil
 	}
 
-	actedUpon, ok := request.ClientOutput.(bool)
+	actedUpon, ok := As[bool](request.ClientOutput)
 	if !ok || !actedUpon {
-		return Result{}, invalidRequest("appidExclude client output must be true")
+		return Verification[AppIDExcludeResult]{}, invalidRequest("appidExclude client output must be true")
 	}
 	output.ActedUpon = actedUpon
 
-	return Result{ID: IDAppIDExclude, Accepted: true, Outputs: map[string]any{IDAppIDExclude: output}}, nil
+	return Verification[AppIDExcludeResult]{Accepted: true, Output: output}, nil
 }
 
 // CredentialPropertiesResult is the parsed credential properties output.
@@ -159,43 +157,48 @@ func (CredPropsHandler) ID() string {
 }
 
 // ValidateInput validates credential properties input at ceremony start.
-func (CredPropsHandler) ValidateInput(request InputRequest) (any, error) {
+func (CredPropsHandler) ValidateInput(request InputRequest) (bool, error) {
 	if err := requireInputOperation(request, OperationRegistration); err != nil {
-		return nil, err
+		return false, err
 	}
-	if err := requiredTrueValue(request.Input, IDCredProps); err != nil {
-		return nil, err
+	input, err := rawValue(request.Input)
+	if err != nil {
+		return false, err
+	}
+	if err := requiredTrueValue(input, IDCredProps); err != nil {
+		return false, err
 	}
 	return true, nil
 }
 
 // VerifyOutput validates and parses credential properties output after core verification.
-func (handler CredPropsHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (CredPropsHandler) VerifyOutput(_ context.Context, request OutputRequest[bool]) (Verification[CredentialPropertiesResult], error) {
 	if err := requireOperation(request, OperationRegistration); err != nil {
-		return Result{}, err
+		return Verification[CredentialPropertiesResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest(IDCredProps + " must be requested")
-	}
-	if _, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput}); err != nil {
-		return Result{}, err
+		return Verification[CredentialPropertiesResult]{}, invalidRequest(IDCredProps + " must be requested")
 	}
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("credProps has no authenticator output")
+		return Verification[CredentialPropertiesResult]{}, invalidRequest("credProps has no authenticator output")
 	}
 
 	if !hasClientOutput(request) {
-		return Result{ID: IDCredProps, Outputs: map[string]any{IDCredProps: CredentialPropertiesResult{}}}, nil
+		return Verification[CredentialPropertiesResult]{Output: CredentialPropertiesResult{}}, nil
 	}
-	output, err := parseCredentialPropertiesOutput(request.ClientOutput)
+	raw, err := request.ClientOutput.Clone()
 	if err != nil {
-		return Result{}, err
+		return Verification[CredentialPropertiesResult]{}, err
+	}
+	output, err := parseCredentialPropertiesOutput(raw)
+	if err != nil {
+		return Verification[CredentialPropertiesResult]{}, err
 	}
 
-	return Result{ID: IDCredProps, Accepted: true, Outputs: map[string]any{IDCredProps: output}}, nil
+	return Verification[CredentialPropertiesResult]{Accepted: true, Output: output}, nil
 }
 
-func requireOperation(request OutputRequest, allowed ...Operation) error {
+func requireOperation[I any](request OutputRequest[I], allowed ...Operation) error {
 	if slices.Contains(allowed, request.Operation) {
 		return nil
 	}

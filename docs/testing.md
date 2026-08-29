@@ -209,6 +209,10 @@ Required coverage:
   restoration;
 - opt-in Editor's Draft `remoteClientDataJSON` challenge and byte binding;
 - deprecated `uvm` result metadata;
+- generic custom-handler registration, typed dispatch, and `Find` result
+  inference without output type assertions;
+- `RawValue` absent/null/type behavior plus defensive copying of typed
+  `Clone() T` values;
 - unknown extension policy and recursively copied composite values with
   non-string comparable CBOR map keys.
 

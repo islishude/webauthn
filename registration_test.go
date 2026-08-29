@@ -610,13 +610,9 @@ func TestRegistrationLevel2CredPropsExtension(t *testing.T) {
 		t.Fatalf("FinishRegistration() error = %v", err)
 	}
 
-	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDCredProps)
-	output, ok := extensionResult.Outputs[extension.IDCredProps].(extension.CredentialPropertiesResult)
-	if !ok {
-		t.Fatalf("credProps output = %T, want CredentialPropertiesResult", extensionResult.Outputs[extension.IDCredProps])
-	}
-	if !extensionResult.Accepted || output.ResidentKey == nil || !*output.ResidentKey {
-		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	typed, ok := extension.Find(result.Extensions, extension.CredPropsHandler{})
+	if !ok || !typed.Accepted || typed.Output.ResidentKey == nil || !*typed.Output.ResidentKey {
+		t.Fatalf("extension result = %+v", typed)
 	}
 }
 
@@ -634,9 +630,10 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FinishRegistration() error = %v", err)
 		}
-		extensionResult := mustExtensionResult(t, result.Extensions, "future")
-		if extensionResult.Accepted || extensionResult.Outputs["clientOutput"] != true {
-			t.Fatalf("extension result = %+v, want untrusted raw output", extensionResult)
+		raw, ok := extension.FindRaw(result.Extensions, "future")
+		clientOutput, outputOK := extension.As[bool](raw.Output.ClientOutput)
+		if !ok || raw.Accepted || !outputOK || !clientOutput {
+			t.Fatalf("extension result = %+v, want untrusted raw output", raw)
 		}
 	})
 
@@ -651,10 +648,9 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FinishRegistration() error = %v", err)
 		}
-		extensionResult := mustExtensionResult(t, result.Extensions, "future")
-		clientOutput, ok := extensionResult.Outputs["clientOutput"]
-		if !ok || clientOutput != nil {
-			t.Fatalf("extension result = %+v, want explicit nil client output", extensionResult)
+		raw, ok := extension.FindRaw(result.Extensions, "future")
+		if !ok || !raw.Output.ClientOutput.Present() || !raw.Output.ClientOutput.Null() {
+			t.Fatalf("extension result = %+v, want explicit nil client output", raw)
 		}
 	})
 
@@ -706,7 +702,7 @@ func TestRegistrationExtensionOutputRunsAfterAttestationVerification(t *testing.
 	fixture := newRegistrationFixture(t)
 	called := false
 	handler := trackingExtensionHandler{id: "track", called: &called}
-	registry, err := extension.NewRegistry(handler)
+	registry, err := extension.NewRegistry(extension.Register(handler))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -745,15 +741,15 @@ func TestRegistrationUnrequestedKnownExtensionOutputIsUntrusted(t *testing.T) {
 		t.Fatalf("FinishRegistration() error = %v", err)
 	}
 
-	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDCredProps)
-	if extensionResult.Accepted {
+	raw, ok := extension.FindRaw(result.Extensions, extension.IDCredProps)
+	if !ok {
+		t.Fatal("raw credProps result missing")
+	}
+	if raw.Accepted {
 		t.Fatalf("Accepted = true, want unrequested output to remain untrusted")
 	}
-	if _, ok := extensionResult.Outputs[extension.IDCredProps]; ok {
-		t.Fatalf("Outputs[%s] unexpectedly contains typed trusted output: %+v", extension.IDCredProps, extensionResult.Outputs)
-	}
-	if _, ok := extensionResult.Outputs["clientOutput"]; !ok {
-		t.Fatalf("extension result = %+v, want raw client output", extensionResult)
+	if !raw.Output.ClientOutput.Present() {
+		t.Fatalf("extension result = %+v, want raw client output", raw)
 	}
 }
 
@@ -1276,18 +1272,26 @@ func (h trackingExtensionHandler) ID() string {
 	return h.id
 }
 
-func (h trackingExtensionHandler) ValidateInput(request extension.InputRequest) (any, error) {
-	return extension.CloneValue(request.Input)
+func (h trackingExtensionHandler) ValidateInput(request extension.InputRequest) (bool, error) {
+	value, ok := extension.As[bool](request.Input)
+	if !ok {
+		return false, extension.ErrInvalidRequest
+	}
+	return value, nil
 }
 
-func (h trackingExtensionHandler) VerifyOutput(_ context.Context, request extension.OutputRequest) (extension.Result, error) {
+func (h trackingExtensionHandler) VerifyOutput(_ context.Context, request extension.OutputRequest[bool]) (extension.Verification[map[string]any], error) {
 	if h.called != nil {
 		*h.called = true
 	}
-	return extension.Result{ID: h.id, Accepted: true, Outputs: map[string]any{"value": request.ClientOutput}}, nil
+	value, err := request.ClientOutput.Clone()
+	if err != nil {
+		return extension.Verification[map[string]any]{}, err
+	}
+	return extension.Verification[map[string]any]{Accepted: true, Output: map[string]any{"value": value}}, nil
 }
 
-var _ extension.Handler = trackingExtensionHandler{}
+var _ extension.Handler[bool, map[string]any] = trackingExtensionHandler{}
 
 type registrationCertificateVerifier struct {
 	result webcrypto.CertificateVerification
@@ -1348,17 +1352,4 @@ func mustLevel3Registry(t *testing.T) *extension.Registry {
 	}
 
 	return registry
-}
-
-func mustExtensionResult(t *testing.T, results []extension.Result, id string) extension.Result {
-	t.Helper()
-
-	for _, result := range results {
-		if result.ID == id {
-			return result
-		}
-	}
-
-	t.Fatalf("extension result %q missing from %+v", id, results)
-	return extension.Result{}
 }

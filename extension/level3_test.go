@@ -25,23 +25,23 @@ func TestLevel3Registries(t *testing.T) {
 		extension.IDLargeBlob,
 		extension.IDPRF,
 	} {
-		if _, ok := registry.Lookup(id); !ok {
-			t.Fatalf("Lookup(%s) = false, want true", id)
+		if !registry.Contains(id) {
+			t.Fatalf("Contains(%s) = false, want true", id)
 		}
 	}
-	if _, ok := registry.Lookup(extension.IDUVM); ok {
-		t.Fatal("Lookup(uvm) = true, want false for default Level 3 registry")
+	if registry.Contains(extension.IDUVM) {
+		t.Fatal("Contains(uvm) = true, want false for default Level 3 registry")
 	}
-	if _, ok := registry.Lookup(extension.IDRemoteClientDataJSON); ok {
-		t.Fatal("Lookup(remoteClientDataJSON) = true, want opt-in Editor's Draft handler")
+	if registry.Contains(extension.IDRemoteClientDataJSON) {
+		t.Fatal("Contains(remoteClientDataJSON) = true, want opt-in Editor's Draft handler")
 	}
 
 	withDeprecated, err := extension.NewLevel3RegistryWithDeprecated()
 	if err != nil {
 		t.Fatalf("NewLevel3RegistryWithDeprecated() error = %v", err)
 	}
-	if _, ok := withDeprecated.Lookup(extension.IDUVM); !ok {
-		t.Fatal("Lookup(uvm) = false, want true in deprecated registry")
+	if !withDeprecated.Contains(extension.IDUVM) {
+		t.Fatal("Contains(uvm) = false, want true in deprecated registry")
 	}
 }
 
@@ -56,24 +56,24 @@ func TestPRFHandler(t *testing.T) {
 		t.Parallel()
 
 		enabled := true
-		result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation:   extension.OperationRegistration,
 			ID:          extension.IDPRF,
 			Requested:   true,
 			ClientInput: extension.PRFInput{Eval: &extension.PRFValues{First: []byte("salt-1"), Second: []byte("salt-2")}},
-			ClientOutput: map[string]any{
+			ClientOutput: rawValue(t, map[string]any{
 				"enabled": enabled,
 				"results": map[string]any{
 					"first":  first,
 					"second": second,
 				},
-			},
+			}),
 		})
 
 		if err != nil {
 			t.Fatalf("VerifyOutput() error = %v", err)
 		}
-		output := typedOutput[extension.PRFResult](t, result, extension.IDPRF)
+		output := result.Output
 		if !result.Accepted || output.Enabled == nil || !*output.Enabled ||
 			output.Results == nil || !bytes.Equal(output.Results.First, first) || !bytes.Equal(output.Results.Second, second) {
 			t.Fatalf("result = %+v output = %+v", result, output)
@@ -84,7 +84,7 @@ func TestPRFHandler(t *testing.T) {
 		t.Parallel()
 
 		credential := base64.RawURLEncoding.EncodeToString([]byte("credential-1"))
-		result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation: extension.OperationAuthentication,
 			ID:        extension.IDPRF,
 			Requested: true,
@@ -99,7 +99,7 @@ func TestPRFHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("VerifyOutput() error = %v", err)
 		}
-		output := typedOutput[extension.PRFResult](t, result, extension.IDPRF)
+		output := result.Output
 		if result.Accepted || len(output.EvalByCredential) != 1 {
 			t.Fatalf("result = %+v output = %+v", result, output)
 		}
@@ -108,13 +108,12 @@ func TestPRFHandler(t *testing.T) {
 	t.Run("reject registration evalByCredential", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.ValidateInput(extension.InputRequest{
 			Operation: extension.OperationRegistration,
 			ID:        extension.IDPRF,
-			Requested: true,
-			ClientInput: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
+			Input: rawValue(t, extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
 				base64.RawURLEncoding.EncodeToString([]byte("credential-1")): {First: []byte("salt")},
-			}},
+			}}),
 		})
 
 		if !errors.Is(err, extension.ErrInvalidRequest) {
@@ -129,11 +128,10 @@ func TestPRFHandler(t *testing.T) {
 			extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{}},
 			map[string]any{"evalByCredential": map[string]any{}},
 		} {
-			_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
-				Operation:   extension.OperationRegistration,
-				ID:          extension.IDPRF,
-				Requested:   true,
-				ClientInput: input,
+			_, err := handler.ValidateInput(extension.InputRequest{
+				Operation: extension.OperationRegistration,
+				ID:        extension.IDPRF,
+				Input:     rawValue(t, input),
 			})
 			if !errors.Is(err, extension.ErrInvalidRequest) {
 				t.Fatalf("VerifyOutput(%T) error = %v, want ErrInvalidRequest", input, err)
@@ -144,13 +142,12 @@ func TestPRFHandler(t *testing.T) {
 	t.Run("reject unallowed evalByCredential", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.ValidateInput(extension.InputRequest{
 			Operation: extension.OperationAuthentication,
 			ID:        extension.IDPRF,
-			Requested: true,
-			ClientInput: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
+			Input: rawValue(t, extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{
 				base64.RawURLEncoding.EncodeToString([]byte("credential-1")): {First: []byte("salt")},
-			}},
+			}}),
 		})
 
 		if !errors.Is(err, extension.ErrInvalidRequest) {
@@ -162,16 +159,15 @@ func TestPRFHandler(t *testing.T) {
 		t.Parallel()
 
 		credential := "_x"
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.ValidateInput(extension.InputRequest{
 			Operation: extension.OperationAuthentication,
 			ID:        extension.IDPRF,
-			Requested: true,
-			ClientInput: extension.PRFInput{
+			Input: rawValue(t, extension.PRFInput{
 				EvalByCredential: map[string]extension.PRFValues{
 					credential: {First: []byte("salt")},
 				},
 				AllowCredentials: []string{credential},
-			},
+			}),
 		})
 
 		if !errors.Is(err, extension.ErrInvalidRequest) {
@@ -182,14 +178,14 @@ func TestPRFHandler(t *testing.T) {
 	t.Run("reject short result", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation:   extension.OperationAuthentication,
 			ID:          extension.IDPRF,
 			Requested:   true,
 			ClientInput: extension.PRFInput{Eval: &extension.PRFValues{First: []byte("salt")}},
-			ClientOutput: map[string]any{
+			ClientOutput: rawValue(t, map[string]any{
 				"results": map[string]any{"first": []byte("short")},
-			},
+			}),
 		})
 
 		if !errors.Is(err, extension.ErrInvalidRequest) {
@@ -199,12 +195,12 @@ func TestPRFHandler(t *testing.T) {
 
 	t.Run("reject missing registration enabled", func(t *testing.T) {
 		t.Parallel()
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation:    extension.OperationRegistration,
 			ID:           extension.IDPRF,
 			Requested:    true,
 			ClientInput:  extension.PRFInput{},
-			ClientOutput: map[string]any{},
+			ClientOutput: rawValue(t, map[string]any{}),
 		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
@@ -213,12 +209,12 @@ func TestPRFHandler(t *testing.T) {
 
 	t.Run("reject authentication enabled", func(t *testing.T) {
 		t.Parallel()
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation:    extension.OperationAuthentication,
 			ID:           extension.IDPRF,
 			Requested:    true,
 			ClientInput:  extension.PRFInput{},
-			ClientOutput: map[string]any{"enabled": true},
+			ClientOutput: rawValue(t, map[string]any{"enabled": true}),
 		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
@@ -227,15 +223,15 @@ func TestPRFHandler(t *testing.T) {
 
 	t.Run("reject result cardinality mismatch", func(t *testing.T) {
 		t.Parallel()
-		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+		_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 			Operation:   extension.OperationAuthentication,
 			ID:          extension.IDPRF,
 			Requested:   true,
 			ClientInput: extension.PRFInput{Eval: &extension.PRFValues{First: []byte("salt")}},
-			ClientOutput: map[string]any{"results": map[string]any{
+			ClientOutput: rawValue(t, map[string]any{"results": map[string]any{
 				"first":  first,
 				"second": second,
-			}},
+			}}),
 		})
 		if !errors.Is(err, extension.ErrInvalidRequest) {
 			t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)
@@ -301,13 +297,13 @@ func TestPRFHandler(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+				_, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 					Operation:            extension.OperationAuthentication,
 					ID:                   extension.IDPRF,
 					Requested:            true,
 					SelectedCredentialID: tt.selected,
 					ClientInput:          input,
-					ClientOutput:         map[string]any{"results": tt.results},
+					ClientOutput:         rawValue(t, map[string]any{"results": tt.results}),
 				})
 				if tt.wantErr && !errors.Is(err, extension.ErrInvalidRequest) {
 					t.Fatalf("VerifyOutput() error = %v, want ErrInvalidRequest", err)

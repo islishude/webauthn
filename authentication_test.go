@@ -462,19 +462,12 @@ func TestAuthenticationAppIDOutputBindsExpectedRPIDHash(t *testing.T) {
 			if tt.wantErr != nil {
 				return
 			}
-			found := false
-			for _, extensionResult := range result.Extensions {
-				if extensionResult.ID != extension.IDAppID {
-					continue
-				}
-				found = true
-				output := extensionResult.Outputs[extension.IDAppID].(extension.AppIDResult)
-				if output.Used != tt.wantAppID {
-					t.Fatalf("AppIDResult.Used = %t, want %t", output.Used, tt.wantAppID)
-				}
-			}
+			typed, found := extension.Find(result.Extensions, extension.AppIDHandler{})
 			if !found {
 				t.Fatal("AppID result missing")
+			}
+			if typed.Output.Used != tt.wantAppID {
+				t.Fatalf("AppIDResult.Used = %t, want %t", typed.Output.Used, tt.wantAppID)
 			}
 		})
 	}
@@ -577,7 +570,7 @@ func TestAuthenticationExtensionOutputRunsAfterSignatureVerification(t *testing.
 
 	fixture := newAuthenticationFixture(t, true)
 	called := false
-	registry, err := extension.NewRegistry(trackingExtensionHandler{id: "track", called: &called})
+	registry, err := extension.NewRegistry(extension.Register(trackingExtensionHandler{id: "track", called: &called}))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -599,7 +592,7 @@ func TestAuthenticationExtensionOutputDoesNotRunBeforeCloneRiskRejection(t *test
 
 	fixture := newAuthenticationFixture(t, true)
 	called := false
-	registry, err := extension.NewRegistry(trackingExtensionHandler{id: "track", called: &called})
+	registry, err := extension.NewRegistry(extension.Register(trackingExtensionHandler{id: "track", called: &called}))
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
@@ -649,10 +642,13 @@ func TestAuthenticationPreservesUnknownCompositeExtensionOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FinishAuthentication() error = %v", err)
 	}
-	extensionResult := mustExtensionResult(t, result.Extensions, "future")
-	clientOutput, ok := extensionResult.Outputs["clientOutput"].(map[any]any)
+	raw, ok := extension.FindRaw(result.Extensions, "future")
 	if !ok {
-		t.Fatalf("client output = %T, want map[any]any", extensionResult.Outputs["clientOutput"])
+		t.Fatal("raw future result missing")
+	}
+	clientOutput, ok := extension.As[map[any]any](raw.Output.ClientOutput)
+	if !ok {
+		t.Fatal("client output is not map[any]any")
 	}
 	nested, ok := clientOutput[int64(1)].(map[any]any)
 	if !ok {
@@ -692,14 +688,10 @@ func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 		t.Fatalf("FinishAuthentication() error = %v", err)
 	}
 
-	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDUVM)
 	//nolint:staticcheck // UVM is intentionally tested as deprecated Level 3 support.
-	output, ok := extensionResult.Outputs[extension.IDUVM].(extension.UVMResult)
-	if !ok {
-		t.Fatalf("uvm output = %T, want UVMResult", extensionResult.Outputs[extension.IDUVM])
-	}
-	if !extensionResult.Accepted || !extensionResult.Deprecated || len(output.Entries) != 1 || output.Entries[0].KeyProtectionType != 4 {
-		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	typed, ok := extension.Find(result.Extensions, extension.UVMHandler{})
+	if !ok || !typed.Accepted || !typed.Deprecated || len(typed.Output.Entries) != 1 || typed.Output.Entries[0].KeyProtectionType != 4 {
+		t.Fatalf("extension result = %+v", typed)
 	}
 }
 
@@ -722,13 +714,9 @@ func TestAuthenticationLevel2LargeBlobExtension(t *testing.T) {
 		t.Fatalf("FinishAuthentication() error = %v", err)
 	}
 
-	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDLargeBlob)
-	output, ok := extensionResult.Outputs[extension.IDLargeBlob].(extension.LargeBlobResult)
-	if !ok {
-		t.Fatalf("largeBlob output = %T, want LargeBlobResult", extensionResult.Outputs[extension.IDLargeBlob])
-	}
-	if !extensionResult.Accepted || string(output.Blob) != "blob" || output.Read == nil || !*output.Read {
-		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	typed, ok := extension.Find(result.Extensions, extension.LargeBlobHandler{})
+	if !ok || !typed.Accepted || string(typed.Output.Blob) != "blob" || typed.Output.Read == nil || !*typed.Output.Read {
+		t.Fatalf("extension result = %+v", typed)
 	}
 }
 
@@ -755,13 +743,9 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 		t.Fatalf("FinishAuthentication() error = %v", err)
 	}
 
-	extensionResult := mustExtensionResult(t, result.Extensions, extension.IDPRF)
-	output, ok := extensionResult.Outputs[extension.IDPRF].(extension.PRFResult)
-	if !ok {
-		t.Fatalf("prf output = %T, want PRFResult", extensionResult.Outputs[extension.IDPRF])
-	}
-	if !extensionResult.Accepted || output.Results == nil || len(output.EvalByCredential) != 1 {
-		t.Fatalf("extension result = %+v output = %+v", extensionResult, output)
+	typed, ok := extension.Find(result.Extensions, extension.PRFHandler{})
+	if !ok || !typed.Accepted || typed.Output.Results == nil || len(typed.Output.EvalByCredential) != 1 {
+		t.Fatalf("extension result = %+v", typed)
 	}
 
 	options.State.RequestedExtensions = protocol.ExtensionInputs{

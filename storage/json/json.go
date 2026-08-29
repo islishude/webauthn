@@ -424,15 +424,19 @@ func validateAuthenticationState(state webauthn.AuthenticationState) error {
 		}
 	}
 	if value, ok := state.RequestedExtensions[extension.IDLargeBlob]; ok {
+		raw, err := extension.NewRawValue(value)
+		if err != nil {
+			return invalid(err)
+		}
 		normalized, err := (extension.LargeBlobHandler{}).ValidateInput(extension.InputRequest{
 			Operation: extension.OperationAuthentication,
 			ID:        extension.IDLargeBlob,
-			Input:     value,
+			Input:     raw,
 		})
 		if err != nil {
 			return invalid(err)
 		}
-		if largeBlob := normalized.(extension.LargeBlobInput); largeBlob.Write != nil && len(state.AllowCredentials) != 1 {
+		if normalized.Write != nil && len(state.AllowCredentials) != 1 {
 			return fmt.Errorf("%w: largeBlob write requires exactly one allowed credential", ErrInvalidEnvelope)
 		}
 	}

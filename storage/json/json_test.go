@@ -75,7 +75,11 @@ func TestAuthenticationStateRoundTrip(t *testing.T) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
-	if _, err := (extension.PRFHandler{}).ValidateInput(extension.InputRequest{Operation: extension.OperationAuthentication, ID: extension.IDPRF, Input: decoded.RequestedExtensions[extension.IDPRF]}); err != nil {
+	raw, err := extension.NewRawValue(decoded.RequestedExtensions[extension.IDPRF])
+	if err != nil {
+		t.Fatalf("NewRawValue(prf) error = %v", err)
+	}
+	if _, err := (extension.PRFHandler{}).ValidateInput(extension.InputRequest{Operation: extension.OperationAuthentication, ID: extension.IDPRF, Input: raw}); err != nil {
 		t.Fatalf("restored PRF input validation error = %v", err)
 	}
 }

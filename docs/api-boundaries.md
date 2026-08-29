@@ -231,10 +231,17 @@ trusted-state restoration, and storage validation apply the same semantics.
 Custom handlers must be deterministic and side-effect-free because
 caller-owned uniqueness and persistence decisions remain outside the root.
 
-`extension.OutputRequest.ClientOutputPresent` and
-`AuthenticatorOutputPresent` distinguish an absent extension member from an
-explicit null value, so built-in handlers can reject malformed null outputs.
-For authentication, `extension.OutputRequest.SelectedCredentialID` contains the
+Handlers implement `extension.Handler[I, O]`: `ValidateInput` converts an
+untrusted `RawValue` into normalized `I`, and `VerifyOutput` receives that typed
+input and returns `Verification[O]`. `extension.Register` is the sole explicit
+type-erasure point needed by the heterogeneous registry. Registry dispatch
+revalidates restored inputs before constructing `OutputRequest[I]`.
+
+`RawValue.Present` and `RawValue.Null` distinguish an absent extension member
+from an explicit null value, so built-in handlers can reject malformed null
+outputs without exposing `any` in the Handler contract.
+`extension.As[T](RawValue)` and result lookup return defensive copies. For authentication,
+`extension.OutputRequest.SelectedCredentialID` contains the
 credential that passed the core credential/user binding checks; it is zero for
 registration. The PRF handler uses this trusted context to select an exact
 `evalByCredential` entry before falling back to `eval`, and never accepts a
@@ -258,6 +265,11 @@ order. `RejectUnknown` applies only when an unknown output exists; a requested
 extension with no output remains valid. Unrequested outputs can be rejected with
 `RejectUnrequested`. Preserved raw values are recursively copied, including
 nested maps with non-string comparable CBOR keys, with bounded nesting.
+Known outputs are retrieved with `extension.Find(results, handler)`, which
+infers `O` from the handler and returns `TypedResult[O]`; unknown and
+unrequested values are retrieved with `extension.FindRaw`. `Result` exposes
+only identifier, acceptance, deprecation, and warning metadata and never an
+untyped output map.
 
 ## Storage boundary
 

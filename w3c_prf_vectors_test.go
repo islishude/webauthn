@@ -24,14 +24,13 @@ func TestW3CLevel3PRFWebAPIVectors(t *testing.T) {
 			input := w3cPRFInput(t, vector.Input, vector.AllowCredentials)
 			selectedCredentialID := w3cPRFSelectedCredential(t, vector.SelectedCredential)
 			clientOutput, wantFirst, wantSecond := w3cPRFClientOutput(t, vector)
-			result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest{
+			result, err := handler.VerifyOutput(context.Background(), extension.OutputRequest[extension.PRFInput]{
 				Operation:            operation,
 				ID:                   extension.IDPRF,
 				Requested:            true,
 				SelectedCredentialID: selectedCredentialID,
 				ClientInput:          input,
-				ClientOutput:         clientOutput,
-				ClientOutputPresent:  true,
+				ClientOutput:         mustRawExtensionValue(t, clientOutput),
 			})
 			if err != nil {
 				t.Fatalf("VerifyOutput() error = %v", err)
@@ -39,10 +38,7 @@ func TestW3CLevel3PRFWebAPIVectors(t *testing.T) {
 			if !result.Accepted {
 				t.Fatalf("result = %+v, want accepted", result)
 			}
-			output, ok := result.Outputs[extension.IDPRF].(extension.PRFResult)
-			if !ok {
-				t.Fatalf("PRF output = %T, want PRFResult", result.Outputs[extension.IDPRF])
-			}
+			output := result.Output
 			if (output.Enabled != nil) != vector.Output.EnabledPresent ||
 				(output.Enabled != nil && *output.Enabled != vector.Output.Enabled) {
 				t.Fatalf("enabled = %v, fixture = %+v", output.Enabled, vector.Output)

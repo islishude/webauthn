@@ -29,60 +29,54 @@ func (RemoteClientDataJSONHandler) ID() string {
 }
 
 // ValidateInput validates the remote serialized client data and ceremony type.
-func (RemoteClientDataJSONHandler) ValidateInput(request InputRequest) (any, error) {
+func (RemoteClientDataJSONHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return nil, err
+		return "", err
 	}
-	input, ok := request.Input.(string)
+	input, ok := As[string](request.Input)
 	if !ok || input == "" || !utf8.ValidString(input) {
-		return nil, invalidRequest("remoteClientDataJSON input must be a non-empty UTF-8 string")
+		return "", invalidRequest("remoteClientDataJSON input must be a non-empty UTF-8 string")
 	}
 	raw, err := protocol.NewClientDataJSON([]byte(input))
 	if err != nil {
-		return nil, invalidRequest("remoteClientDataJSON input is invalid")
+		return "", invalidRequest("remoteClientDataJSON input is invalid")
 	}
 	clientData, err := protocol.ParseCollectedClientData(raw)
 	if err != nil {
-		return nil, invalidRequest("remoteClientDataJSON input must contain valid client data")
+		return "", invalidRequest("remoteClientDataJSON input must contain valid client data")
 	}
 	expectedType := protocol.ClientDataTypeCreate
 	if request.Operation == OperationAuthentication {
 		expectedType = protocol.ClientDataTypeGet
 	}
 	if err := clientData.ValidateType(expectedType); err != nil {
-		return nil, invalidRequest("remoteClientDataJSON ceremony type is invalid")
+		return "", invalidRequest("remoteClientDataJSON ceremony type is invalid")
 	}
 	return input, nil
 }
 
 // VerifyOutput requires the client-only output to be present and true.
-func (handler RemoteClientDataJSONHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (RemoteClientDataJSONHandler) VerifyOutput(_ context.Context, request OutputRequest[string]) (Verification[RemoteClientDataJSONResult], error) {
 	if err := requireOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return Result{}, err
+		return Verification[RemoteClientDataJSONResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest("remoteClientDataJSON must be requested")
-	}
-	if _, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput}); err != nil {
-		return Result{}, err
+		return Verification[RemoteClientDataJSONResult]{}, invalidRequest("remoteClientDataJSON must be requested")
 	}
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("remoteClientDataJSON has no authenticator output")
+		return Verification[RemoteClientDataJSONResult]{}, invalidRequest("remoteClientDataJSON has no authenticator output")
 	}
 	if !hasClientOutput(request) {
-		return Result{}, invalidRequest("remoteClientDataJSON client output must be true")
+		return Verification[RemoteClientDataJSONResult]{}, invalidRequest("remoteClientDataJSON client output must be true")
 	}
-	used, ok := request.ClientOutput.(bool)
+	used, ok := As[bool](request.ClientOutput)
 	if !ok || !used {
-		return Result{}, invalidRequest("remoteClientDataJSON client output must be true")
+		return Verification[RemoteClientDataJSONResult]{}, invalidRequest("remoteClientDataJSON client output must be true")
 	}
-	return Result{
-		ID:       IDRemoteClientDataJSON,
+	return Verification[RemoteClientDataJSONResult]{
 		Accepted: true,
-		Outputs: map[string]any{
-			IDRemoteClientDataJSON: RemoteClientDataJSONResult{Used: true},
-		},
+		Output:   RemoteClientDataJSONResult{Used: true},
 	}, nil
 }
 
-var _ Handler = RemoteClientDataJSONHandler{}
+var _ Handler[string, RemoteClientDataJSONResult] = RemoteClientDataJSONHandler{}

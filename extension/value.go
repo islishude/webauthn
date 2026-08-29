@@ -9,7 +9,8 @@ import (
 const maxCloneDepth = 32
 
 // CloneValue returns a recursive defensive copy of supported extension input
-// and output values. Unsupported application-specific structs fail explicitly.
+// and output values. Application-specific types may provide Clone() T;
+// unsupported structs fail explicitly.
 func CloneValue(value any) (any, error) {
 	return cloneValueAt(value, 0)
 }
@@ -50,34 +51,29 @@ func cloneValueAt(value any, depth int) (any, error) {
 	case RemoteClientDataJSONResult:
 		return typed, nil
 	}
+	if cloned, ok, err := cloneWithMethod(value); ok {
+		return cloned, err
+	}
 
 	reflected := reflect.ValueOf(value)
 	switch reflected.Kind() {
 	case reflect.Slice, reflect.Array:
-		out := make([]any, reflected.Len())
+		out := reflect.New(reflected.Type()).Elem()
+		if reflected.Kind() == reflect.Slice {
+			out = reflect.MakeSlice(reflected.Type(), reflected.Len(), reflected.Len())
+		}
 		for i := range reflected.Len() {
 			item, err := cloneValueAt(reflected.Index(i).Interface(), depth+1)
 			if err != nil {
 				return nil, err
 			}
-			out[i] = item
-		}
-		return out, nil
-	case reflect.Map:
-		if reflected.Type().Key().Kind() == reflect.String {
-			out := make(map[string]any, reflected.Len())
-			iterator := reflected.MapRange()
-			for iterator.Next() {
-				item, err := cloneValueAt(iterator.Value().Interface(), depth+1)
-				if err != nil {
-					return nil, err
-				}
-				out[iterator.Key().String()] = item
+			if err := setClonedValue(out.Index(i), item); err != nil {
+				return nil, err
 			}
-			return out, nil
 		}
-
-		out := make(map[any]any, reflected.Len())
+		return out.Interface(), nil
+	case reflect.Map:
+		out := reflect.MakeMapWithSize(reflected.Type(), reflected.Len())
 		iterator := reflected.MapRange()
 		for iterator.Next() {
 			key, err := cloneMapKey(iterator.Key())
@@ -88,12 +84,55 @@ func cloneValueAt(value any, depth int) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			out[key] = item
+			keyValue := reflect.ValueOf(key)
+			if key == nil {
+				keyValue = reflect.Zero(reflected.Type().Key())
+			}
+			valueTarget := reflect.New(reflected.Type().Elem()).Elem()
+			if err := setClonedValue(valueTarget, item); err != nil {
+				return nil, err
+			}
+			out.SetMapIndex(keyValue, valueTarget)
 		}
-		return out, nil
+		return out.Interface(), nil
 	default:
 		return nil, fmt.Errorf("%w: extension value type %T", ErrInvalidRequest, value)
 	}
+}
+
+func cloneWithMethod(value any) (cloned any, ok bool, err error) {
+	reflected := reflect.ValueOf(value)
+	if nilLike(value) {
+		return nil, false, nil
+	}
+	method := reflected.MethodByName("Clone")
+	if !method.IsValid() {
+		return nil, false, nil
+	}
+	methodType := method.Type()
+	if methodType.NumIn() != 0 || methodType.NumOut() != 1 || methodType.Out(0) != reflected.Type() {
+		return nil, false, nil
+	}
+	result := method.Call(nil)
+	return result[0].Interface(), true, nil
+}
+
+func setClonedValue(target reflect.Value, value any) error {
+	if value == nil {
+		switch target.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+			target.SetZero()
+			return nil
+		default:
+			return fmt.Errorf("%w: nil cannot populate %s", ErrInvalidRequest, target.Type())
+		}
+	}
+	reflected := reflect.ValueOf(value)
+	if !reflected.Type().AssignableTo(target.Type()) {
+		return fmt.Errorf("%w: cloned type %s cannot populate %s", ErrInvalidRequest, reflected.Type(), target.Type())
+	}
+	target.Set(reflected)
+	return nil
 }
 
 func cloneMapKey(value reflect.Value) (any, error) {
@@ -129,20 +168,4 @@ func immutableMapKeyType(value reflect.Type) bool {
 	default:
 		return false
 	}
-}
-
-// CloneResult returns a defensive copy of an extension result.
-func CloneResult(result Result) (Result, error) {
-	outputs, err := CloneValue(result.Outputs)
-	if err != nil {
-		return Result{}, err
-	}
-	clonedOutputs, _ := outputs.(map[string]any)
-	return Result{
-		ID:         result.ID,
-		Accepted:   result.Accepted,
-		Deprecated: result.Deprecated,
-		Outputs:    clonedOutputs,
-		Warnings:   slices.Clone(result.Warnings),
-	}, nil
 }

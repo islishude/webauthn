@@ -14,6 +14,7 @@ func TestCloneValuePreservesComparableMapKeysAndCopiesValues(t *testing.T) {
 	bytes := []byte{0x01, 0x02}
 	source := map[any]any{
 		int64(1): map[any]any{"bytes": bytes},
+		nil:      map[string]any{"present": true},
 	}
 	clonedValue, err := extension.CloneValue(source)
 	if err != nil {
@@ -34,6 +35,10 @@ func TestCloneValuePreservesComparableMapKeysAndCopiesValues(t *testing.T) {
 	bytes[0] = 0xff
 	if clonedBytes[0] != 0x01 {
 		t.Fatal("CloneValue() retained source byte slice alias")
+	}
+	nullKey, ok := cloned[nil].(map[string]any)
+	if !ok || nullKey["present"] != true {
+		t.Fatalf("nil-keyed clone = %#v, want preserved nested value", cloned[nil])
 	}
 }
 
@@ -67,5 +72,71 @@ func TestCloneValueRejectsReferenceMapKeysAndCycles(t *testing.T) {
 	cycle["self"] = cycle
 	if _, err := extension.CloneValue(cycle); !errors.Is(err, extension.ErrInvalidRequest) {
 		t.Fatalf("CloneValue(cycle) error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestRawValueDistinguishesAbsenceNullAndType(t *testing.T) {
+	t.Parallel()
+
+	var absent extension.RawValue
+	if absent.Present() || absent.Null() {
+		t.Fatalf("absent = %+v, want absent and non-null", absent)
+	}
+	if _, ok := extension.As[bool](absent); ok {
+		t.Fatal("As[bool](absent) = true, want false")
+	}
+
+	null := rawValue(t, nil)
+	if !null.Present() || !null.Null() {
+		t.Fatalf("null = %+v, want present null", null)
+	}
+	if _, ok := extension.As[any](null); ok {
+		t.Fatal("As[any](null) = true, want false")
+	}
+
+	boolean := rawValue(t, true)
+	if value, ok := extension.As[bool](boolean); !ok || !value {
+		t.Fatalf("As[bool]() = %t, %t, want true, true", value, ok)
+	}
+	if _, ok := extension.As[string](boolean); ok {
+		t.Fatal("As[string](bool) = true, want false")
+	}
+}
+
+func TestRawValueAndAsDefensivelyCopy(t *testing.T) {
+	t.Parallel()
+
+	bytes := []byte{0x01}
+	raw := rawValue(t, map[string]any{"bytes": bytes})
+	bytes[0] = 0xff
+
+	first, ok := extension.As[map[string]any](raw)
+	if !ok || first["bytes"].([]byte)[0] != 0x01 {
+		t.Fatalf("first copy = %#v, want original byte", first)
+	}
+	first["bytes"].([]byte)[0] = 0xee
+	second, ok := extension.As[map[string]any](raw)
+	if !ok || second["bytes"].([]byte)[0] != 0x01 {
+		t.Fatalf("second copy = %#v, want independent original byte", second)
+	}
+}
+
+type cloneableValue struct {
+	Bytes []byte
+}
+
+func (value cloneableValue) Clone() cloneableValue {
+	return cloneableValue{Bytes: append([]byte{}, value.Bytes...)}
+}
+
+func TestRawValueSupportsTypedCloneMethod(t *testing.T) {
+	t.Parallel()
+
+	bytes := []byte{0x01}
+	raw := rawValue(t, cloneableValue{Bytes: bytes})
+	bytes[0] = 0xff
+	value, ok := extension.As[cloneableValue](raw)
+	if !ok || value.Bytes[0] != 0x01 {
+		t.Fatalf("As[cloneableValue]() = %+v, %t", value, ok)
 	}
 }

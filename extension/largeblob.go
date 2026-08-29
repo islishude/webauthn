@@ -41,46 +41,50 @@ func (LargeBlobHandler) ID() string {
 }
 
 // ValidateInput validates and normalizes largeBlob input at ceremony start.
-func (LargeBlobHandler) ValidateInput(request InputRequest) (any, error) {
+func (LargeBlobHandler) ValidateInput(request InputRequest) (LargeBlobInput, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return nil, err
+		return LargeBlobInput{}, err
 	}
-	input, presence, err := parseLargeBlobInput(request.Input)
+	raw, err := rawValue(request.Input)
 	if err != nil {
-		return nil, err
+		return LargeBlobInput{}, err
+	}
+	input, presence, err := parseLargeBlobInput(raw)
+	if err != nil {
+		return LargeBlobInput{}, err
 	}
 	if err := validateLargeBlobInput(request.Operation, input, presence); err != nil {
-		return nil, err
+		return LargeBlobInput{}, err
 	}
 	return input, nil
 }
 
 // VerifyOutput validates and parses largeBlob output after core verification.
-func (handler LargeBlobHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (LargeBlobHandler) VerifyOutput(_ context.Context, request OutputRequest[LargeBlobInput]) (Verification[LargeBlobResult], error) {
 	if err := requireOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return Result{}, err
+		return Verification[LargeBlobResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest("largeBlob must be requested")
+		return Verification[LargeBlobResult]{}, invalidRequest("largeBlob must be requested")
 	}
-	normalized, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput})
-	if err != nil {
-		return Result{}, err
-	}
-	input := normalized.(LargeBlobInput)
+	input := request.ClientInput
 	presence := largeBlobInputPresence{support: input.Support != "", read: input.Read != nil, write: input.Write != nil}
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("largeBlob has no authenticator output")
+		return Verification[LargeBlobResult]{}, invalidRequest("largeBlob has no authenticator output")
 	}
 
 	output := largeBlobResultFromInput(input)
 	if !hasClientOutput(request) {
-		return Result{ID: IDLargeBlob, Outputs: map[string]any{IDLargeBlob: output}}, nil
+		return Verification[LargeBlobResult]{Output: output}, nil
 	}
-	if err := parseLargeBlobOutput(request.Operation, input, presence, request.ClientOutput, &output); err != nil {
-		return Result{}, err
+	raw, err := request.ClientOutput.Clone()
+	if err != nil {
+		return Verification[LargeBlobResult]{}, err
 	}
-	return Result{ID: IDLargeBlob, Accepted: true, Outputs: map[string]any{IDLargeBlob: output}}, nil
+	if err := parseLargeBlobOutput(request.Operation, input, presence, raw, &output); err != nil {
+		return Verification[LargeBlobResult]{}, err
+	}
+	return Verification[LargeBlobResult]{Accepted: true, Output: output}, nil
 }
 
 type largeBlobInputPresence struct {

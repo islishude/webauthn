@@ -15,26 +15,26 @@ const (
 )
 
 // Level3Handlers returns handlers for WebAuthn Level 3 recommended extensions.
-func Level3Handlers() []Handler {
-	return []Handler{
-		AppIDHandler{},
-		AppIDExcludeHandler{},
-		CredPropsHandler{},
-		LargeBlobHandler{},
-		PRFHandler{},
+func Level3Handlers() []HandlerEntry {
+	return []HandlerEntry{
+		Register(AppIDHandler{}),
+		Register(AppIDExcludeHandler{}),
+		Register(CredPropsHandler{}),
+		Register(LargeBlobHandler{}),
+		Register(PRFHandler{}),
 	}
 }
 
 // Level3HandlersWithDeprecated returns Level 3 handlers plus deprecated
 // extensions that remain supported.
-func Level3HandlersWithDeprecated() []Handler {
-	return []Handler{
-		AppIDHandler{},
-		AppIDExcludeHandler{},
-		CredPropsHandler{},
-		LargeBlobHandler{},
-		PRFHandler{},
-		UVMHandler{},
+func Level3HandlersWithDeprecated() []HandlerEntry {
+	return []HandlerEntry{
+		Register(AppIDHandler{}),
+		Register(AppIDExcludeHandler{}),
+		Register(CredPropsHandler{}),
+		Register(LargeBlobHandler{}),
+		Register(PRFHandler{}),
+		Register(UVMHandler{}),
 	}
 }
 
@@ -79,29 +79,33 @@ func (PRFHandler) ID() string {
 }
 
 // ValidateInput validates and normalizes PRF input at ceremony start.
-func (PRFHandler) ValidateInput(request InputRequest) (any, error) {
+func (PRFHandler) ValidateInput(request InputRequest) (PRFInput, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return nil, err
+		return PRFInput{}, err
 	}
-	input, err := parsePRFInput(request.Input)
+	raw, err := rawValue(request.Input)
 	if err != nil {
-		return nil, err
+		return PRFInput{}, err
+	}
+	input, err := parsePRFInput(raw)
+	if err != nil {
+		return PRFInput{}, err
 	}
 	if request.Operation == OperationRegistration && input.EvalByCredential != nil {
-		return nil, invalidRequest("prf evalByCredential is authentication-only")
+		return PRFInput{}, invalidRequest("prf evalByCredential is authentication-only")
 	}
 	if request.Operation == OperationAuthentication && len(input.EvalByCredential) != 0 {
 		if len(input.AllowCredentials) == 0 {
-			return nil, invalidRequest("prf evalByCredential requires allowCredentials")
+			return PRFInput{}, invalidRequest("prf evalByCredential requires allowCredentials")
 		}
 		encoding := base64.RawURLEncoding.Strict()
 		for id := range input.EvalByCredential {
 			if id == "" || !slices.Contains(input.AllowCredentials, id) {
-				return nil, invalidRequest("prf evalByCredential credential is not allowed")
+				return PRFInput{}, invalidRequest("prf evalByCredential credential is not allowed")
 			}
 			decoded, err := encoding.DecodeString(id)
 			if err != nil || encoding.EncodeToString(decoded) != id {
-				return nil, invalidRequest("prf evalByCredential credential must be base64url")
+				return PRFInput{}, invalidRequest("prf evalByCredential credential must be base64url")
 			}
 		}
 	}
@@ -109,35 +113,34 @@ func (PRFHandler) ValidateInput(request InputRequest) (any, error) {
 }
 
 // VerifyOutput validates and parses PRF output after core verification.
-func (handler PRFHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (PRFHandler) VerifyOutput(_ context.Context, request OutputRequest[PRFInput]) (Verification[PRFResult], error) {
 	if err := requireOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return Result{}, err
+		return Verification[PRFResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest("prf must be requested")
+		return Verification[PRFResult]{}, invalidRequest("prf must be requested")
 	}
 	if hasAuthenticatorOutput(request) {
-		return Result{}, invalidRequest("prf has no authenticator output")
+		return Verification[PRFResult]{}, invalidRequest("prf has no authenticator output")
 	}
-
-	normalized, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput})
-	if err != nil {
-		return Result{}, err
-	}
-	input := normalized.(PRFInput)
+	input := request.ClientInput
 
 	output := PRFResult{
 		Eval:             clonePRFValuesPtr(input.Eval),
 		EvalByCredential: clonePRFValuesMap(input.EvalByCredential),
 	}
 	if !hasClientOutput(request) {
-		return Result{ID: IDPRF, Outputs: map[string]any{IDPRF: output}}, nil
+		return Verification[PRFResult]{Output: output}, nil
 	}
-	if err := parsePRFOutput(request.Operation, input, request.SelectedCredentialID, request.ClientOutput, &output); err != nil {
-		return Result{}, err
+	raw, err := request.ClientOutput.Clone()
+	if err != nil {
+		return Verification[PRFResult]{}, err
+	}
+	if err := parsePRFOutput(request.Operation, input, request.SelectedCredentialID, raw, &output); err != nil {
+		return Verification[PRFResult]{}, err
 	}
 
-	return Result{ID: IDPRF, Accepted: true, Outputs: map[string]any{IDPRF: output}}, nil
+	return Verification[PRFResult]{Accepted: true, Output: output}, nil
 }
 
 func parsePRFInput(value any) (PRFInput, error) {

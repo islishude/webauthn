@@ -35,52 +35,61 @@ func (UVMHandler) ID() string {
 }
 
 // ValidateInput validates UVM input at ceremony start.
-func (UVMHandler) ValidateInput(request InputRequest) (any, error) {
+func (UVMHandler) ValidateInput(request InputRequest) (bool, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return nil, err
+		return false, err
 	}
-	if err := requiredTrueValue(request.Input, IDUVM); err != nil {
-		return nil, err
+	input, err := rawValue(request.Input)
+	if err != nil {
+		return false, err
+	}
+	if err := requiredTrueValue(input, IDUVM); err != nil {
+		return false, err
 	}
 	return true, nil
 }
 
 // VerifyOutput validates and parses UVM output after core verification.
-func (handler UVMHandler) VerifyOutput(_ context.Context, request OutputRequest) (Result, error) {
+func (UVMHandler) VerifyOutput(_ context.Context, request OutputRequest[bool]) (Verification[UVMResult], error) {
 	if err := requireOperation(request, OperationRegistration, OperationAuthentication); err != nil {
-		return Result{}, err
+		return Verification[UVMResult]{}, err
 	}
 	if !request.Requested {
-		return Result{}, invalidRequest(IDUVM + " must be requested")
-	}
-	if _, err := handler.ValidateInput(InputRequest{Operation: request.Operation, ID: request.ID, Input: request.ClientInput}); err != nil {
-		return Result{}, err
+		return Verification[UVMResult]{}, invalidRequest(IDUVM + " must be requested")
 	}
 
 	var entries []UVMEntry
 	var haveOutput bool
 	if hasClientOutput(request) {
-		parsed, err := parseUVMEntries(request.ClientOutput)
+		raw, err := request.ClientOutput.Clone()
 		if err != nil {
-			return Result{}, err
+			return Verification[UVMResult]{}, err
+		}
+		parsed, err := parseUVMEntries(raw)
+		if err != nil {
+			return Verification[UVMResult]{}, err
 		}
 		entries = parsed
 		haveOutput = true
 	}
 	if hasAuthenticatorOutput(request) {
-		parsed, err := parseUVMEntries(request.AuthenticatorOutput)
+		raw, err := request.AuthenticatorOutput.Clone()
 		if err != nil {
-			return Result{}, err
+			return Verification[UVMResult]{}, err
+		}
+		parsed, err := parseUVMEntries(raw)
+		if err != nil {
+			return Verification[UVMResult]{}, err
 		}
 		if haveOutput && !uvmEntriesEqual(entries, parsed) {
-			return Result{}, invalidRequest("uvm client and authenticator outputs differ")
+			return Verification[UVMResult]{}, invalidRequest("uvm client and authenticator outputs differ")
 		}
 		entries = parsed
 		haveOutput = true
 	}
 
 	output := UVMResult{Entries: cloneUVMEntries(entries)}
-	return Result{ID: IDUVM, Accepted: haveOutput, Deprecated: true, Outputs: map[string]any{IDUVM: output}}, nil
+	return Verification[UVMResult]{Accepted: haveOutput, Deprecated: true, Output: output}, nil
 }
 
 func parseUVMEntries(value any) ([]UVMEntry, error) {

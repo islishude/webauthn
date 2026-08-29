@@ -17,6 +17,14 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 ## Release notes
 
+2026-08-28: Replaced the extension Handler's untyped return values with generic
+normalized input and output types. `Register` is now the explicit registry
+type-erasure boundary, raw output presence and null are represented by
+`RawValue`, and ceremony callers retrieve known results with typed `Find` rather
+than `Result.Outputs` assertions. Unknown and unrequested results remain
+available through `FindRaw`. Browser/CBOR wire values and storage JSON envelopes
+did not change, and no dependency was added.
+
 2026-08-28: Closed the section-by-section Recommendation audit. Restricted
 enrollment now demonstrates trusted-root and certificate-status policy; RSA
 keys enforce RFC 8230 encoding and 2048–16384 bit bounds; AppID output is bound
@@ -103,8 +111,17 @@ added.
   field was removed.
 - Pass the selected immutable extension registry to start options whenever
   extension inputs are non-empty. Custom handlers now implement `ValidateInput`
-  and side-effect-free `VerifyOutput`; post-construction `Register` mutation was
-  removed.
+  and side-effect-free `VerifyOutput` as `Handler[I, O]`. Wrap each custom
+  handler with `extension.Register(handler)` when constructing a registry; this
+  replaces passing the handler directly and is not mutable post-construction.
+- `ValidateInput` now returns normalized `I`; `VerifyOutput` accepts
+  `OutputRequest[I]` and returns `Verification[O]`. Raw client and authenticator
+  outputs are `RawValue`s, whose zero value is absent and whose present nil
+  value is explicit null. Direct handler callers must validate the input first.
+- `RegistrationResult.Extensions` and `AuthenticationResult.Extensions` are
+  `extension.Results`. Replace `result.Outputs[id].(T)` with
+  `extension.Find(results, handler)`; use `extension.FindRaw(results, id)` only
+  for unknown or unrequested evidence.
 - Register a `largeBlob` handler whenever requesting that authentication
   extension. It is not accepted as an unknown pass-through because restored
   state must reapply its single-credential write constraint.
@@ -126,12 +143,11 @@ added.
   `androidsafetynet.Policy`; the prior policy-free constructor no longer exists.
 - Rename `AppIDExcludeResult.Excluded` to `ActedUpon`; a successful `true`
   output means the extension ran, not that a credential was found and excluded.
-- Authentication `extension.OutputRequest` now includes
-  `SelectedCredentialID`. Root ceremony callers receive this automatically;
-  callers that invoke `PRFHandler.VerifyOutput` directly with
-  `evalByCredential` results must supply the credential that produced the
-  assertion. Missing context fails closed when credential-specific selection
-  could change the expected output.
+- Authentication `extension.OutputRequest[I]` includes `SelectedCredentialID`.
+  Root ceremony callers receive this automatically; callers that invoke
+  `PRFHandler.VerifyOutput` directly with `evalByCredential` results must supply
+  the credential that produced the assertion. Missing context fails closed when
+  credential-specific selection could change the expected output.
 - Remove `RegistrationFinishOptions.CredentialAlreadyRegistered`,
   `RegistrationResult.DuplicateCredential`, and `ErrDuplicateCredential`.
   Insert the verified credential under an application-owned atomic uniqueness

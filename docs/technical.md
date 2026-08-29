@@ -231,6 +231,13 @@ handlers validate inputs at start and verify outputs after core cryptographic
 checks; registries are immutable and outputs deterministic. Standard signature
 verification and storage JSON remain optional subpackages outside the root graph.
 
+The extension type cleanup adds no dependency. Handlers use generic normalized
+input and output types, while `RawValue` confines dynamic data to browser/CBOR
+and unknown-extension boundaries. `Register` performs the one internal erasure
+needed by a heterogeneous registry, and ceremony results expose typed `Find`
+and untrusted `FindRaw` access instead of `map[string]any`. Browser wire values,
+protocol extension maps, and storage JSON envelopes remain unchanged.
+
 The post-audit Recommendation remediation adds no dependency. It binds
 `appid=true` in both directions to the AppID hash, performs clone-risk policy
 before extension handlers, requires extension handlers to be side-effect-free,
