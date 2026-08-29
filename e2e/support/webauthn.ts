@@ -13,7 +13,7 @@ export type VirtualAuthenticator = {
   getCredentials(): Promise<unknown[]>;
   setUserVerified(value: boolean): Promise<void>;
   setBadSignature(value: boolean): Promise<void>;
-  dispose(): Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
 };
 
 export async function addVirtualAuthenticator(
@@ -57,7 +57,7 @@ export async function addVirtualAuthenticator(
         isBogusSignature: value,
       });
     },
-    async dispose() {
+    async [Symbol.asyncDispose]() {
       await cdp.send("WebAuthn.removeVirtualAuthenticator", {
         authenticatorId,
       });
