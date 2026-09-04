@@ -5,18 +5,20 @@ relying-party library.
 
 The core package is intentionally framework-neutral. It creates and verifies
 registration and authentication ceremonies, then returns credential records,
-conditional credential updates, attestation results, extension results, and policy outcomes for
-the application to persist in its own storage.
+conditional credential updates, attestation results, extension results, and
+policy outcomes for the application to persist in its own storage.
 
 Current status: implementation is complete. The repository has
 transport-neutral registration and authentication APIs, optional attestation
 format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
-with deprecated `uvm` retained, a separately opt-in non-normative
+with persisted semantic bindings and deprecated `uvm` retained, a separately opt-in non-normative
 `remoteClientDataJSON` preview handler, optional browser JSON and
-standard-library HTTP helpers, RFC 8230 RSA key bounds, compile-checked examples, a complete 45-case W3C
-Level 3 vector inventory, real-browser conformance tests, fuzz smoke targets,
-import graph checks, dependency license checks, and release documentation.
+standard-library HTTP helpers, bounded untrusted-input work, RFC 8230 RSA key
+bounds, compile-checked examples, a complete 45-case W3C Level 3 vector
+inventory, real-browser conformance tests, fuzz smoke targets, minimum-Go and
+TypeScript checks, import graph checks, dependency license checks, and release
+documentation.
 
 The release checklist is tracked in `docs/release.md`.
 
@@ -42,9 +44,9 @@ Implemented areas:
 | Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.                             |
 | HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                                       |
 | Signature verifier  | Optional standard-library verifier for common EC, RFC 8230-bounded RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters.    |
-| Server storage JSON | Optional versioned, bounded encoding for trusted server-side ceremony state and typed credential records; v2 reads legacy v1 envelopes.             |
+| Server storage JSON | Optional v3 bounded encoding with extension-handler bindings; credential reads retain v1/v2 compatibility.                                          |
 | Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                                                    |
-| Quality gates       | Formatting, linting, unit tests, race tests, fuzz smoke tests, examples, import graph checks, and license checks.                                   |
+| Quality gates       | Formatting, TypeScript, linting, unit/race/fuzz tests, minimum Go, examples, import graph, and license checks.                                      |
 
 ## Design Principles
 
@@ -56,6 +58,8 @@ The library is built around a few constraints that are enforced by tests and CI:
   bindings, credential storage, rate limits, sessions, and audit behavior;
 - finish operations reject caller-stored state that omits its expiry or resolved
   user-verification policy;
+- extension handlers publish stable revisions, and finish operations require the
+  exact start-time handler bindings for every known or reserved built-in input;
 - WebAuthn byte values stay byte-oriented in the core API, while browser JSON
   conversion lives in optional packages;
 - attestation formats are selected explicitly by the caller and are not imported
@@ -143,6 +147,9 @@ Safe behavior is the default shape:
 - the five-minute browser timeout hint is separate from the default ten-minute
   trusted challenge-state lifetime;
 - origins and RP IDs are explicit policy inputs;
+- origins use canonical HTTPS or loopback-HTTP serialization and are scoped to
+  the RP ID unless `AllowRelatedOrigins` explicitly delegates related-origin
+  validation to the caller;
 - cross-origin `topOrigin` checks are explicit `OriginPolicy` inputs;
 - a present `topOrigin` cannot be collapsed into an absent value;
 - user presence is required except for ceremony state explicitly bound to
@@ -153,11 +160,15 @@ Safe behavior is the default shape:
 - signature counter rollback is surfaced as clone risk;
 - clone-risk counters are preserved unless explicit policy authorizes updating;
 - incomplete caller-stored ceremony state fails closed;
+- caller-stored credentials validate their type, key, ownership fields,
+  attestation type, attachment, and BE/BS invariants before authentication;
 - unsupported algorithms and formats are rejected;
 - RSA credential keys require minimally encoded parameters and a 2048–16384 bit
   modulus;
 - extension and attestation identifiers and concrete CBOR/COSE encodings are
   validated against their Level 3 grammar and canonical form;
+- browser JSON, CBOR containers, compound statements, extension maps, recursive
+  extension copies, and storage envelopes have explicit work or size limits;
 - attestation acceptance requires caller-supplied trust policy such as
   `attestation.AcceptNone()` for consumer passkey `none` attestation;
 - unknown, unsolicited, or unrequested extensions are ignored or rejected
@@ -189,9 +200,9 @@ make ci
 ```
 
 `make ci` is the required local readiness gate. It runs documentation checks,
-README checks, formatting checks, linting, unit tests, race tests, bounded fuzz
-smoke tests, example builds, root import graph checks, dependency license checks,
-and module tidy verification.
+README checks, formatting and strict TypeScript checks, linting, unit tests, race
+tests, bounded fuzz smoke tests, example builds, root import graph checks,
+dependency license checks, and module tidy verification.
 
 Useful narrower targets:
 
@@ -201,11 +212,14 @@ Useful narrower targets:
 - `make test` runs unit tests.
 - `make test-race` runs race-enabled tests.
 - `make test-fuzz-smoke` runs bounded fuzz targets.
+- `make benchmark` runs allocation-reporting Go benchmarks without unit tests.
+- `make e2e-typecheck` runs strict TypeScript checking for the E2E suite.
 - `make example-build` builds public examples.
 - `make import-graph-check` verifies root package dependency boundaries.
 - `make license-check` verifies dependency manifest coverage.
 - `make readme-check` verifies README example references.
-- `make browser-fixtures` regenerates virtual-authenticator browser fixtures.
+- `make browser-fixtures` writes a reviewable `fixtures.next.json` by default;
+  set `BROWSER_FIXTURE_OUTPUT` only when deliberately selecting another path.
 - `make e2e` runs Chromium native-CDP and Playwright Credentials passkey tests.
 - `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
 

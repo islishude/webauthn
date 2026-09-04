@@ -70,10 +70,11 @@ func TestStoreAppliesAuthenticatorAttachmentUpdate(t *testing.T) {
 		t.Fatal("insertCredential() = false")
 	}
 	if !store.updateCredential(webauthn.CredentialUpdate{
-		ID:                             credentialID,
-		PreviousSignCount:              0,
-		AuthenticatorAttachment:        protocol.AuthenticatorAttachmentCrossPlatform,
-		AuthenticatorAttachmentChanged: true,
+		ID:                              credentialID,
+		PreviousSignCount:               0,
+		PreviousAuthenticatorAttachment: protocol.AuthenticatorAttachmentPlatform,
+		AuthenticatorAttachment:         protocol.AuthenticatorAttachmentCrossPlatform,
+		AuthenticatorAttachmentChanged:  true,
 	}) {
 		t.Fatal("updateCredential() = false")
 	}

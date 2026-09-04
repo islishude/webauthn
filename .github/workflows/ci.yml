@@ -57,6 +57,10 @@ jobs:
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -76,8 +80,8 @@ jobs:
       - name: Lint check
         run: make lint
 
-      - name: Format check
-        run: make format-check
+      - name: Format and TypeScript checks
+        run: make format-check e2e-typecheck
 
   test:
     name: test

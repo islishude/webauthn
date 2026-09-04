@@ -23,6 +23,17 @@ var (
 	ErrMalformedCBOR = errors.New("malformed cbor")
 )
 
+const (
+	// MaxCBORBytes bounds a single WebAuthn CBOR value before decoding.
+	MaxCBORBytes = 1 << 20
+	// MaxNestedLevels bounds recursive CBOR containers.
+	MaxNestedLevels = 16
+	// MaxArrayElements bounds array work, including compound attestations.
+	MaxArrayElements = 64
+	// MaxMapPairs bounds map work, including extension maps.
+	MaxMapPairs = 64
+)
+
 // Decoder decodes WebAuthn CBOR structures using strict duplicate-key checks.
 type Decoder struct {
 	mode          fxcbor.DecMode
@@ -32,10 +43,13 @@ type Decoder struct {
 // NewDecoder creates a decoder with duplicate map-key rejection.
 func NewDecoder() (*Decoder, error) {
 	mode, err := fxcbor.DecOptions{
-		DupMapKey:   fxcbor.DupMapKeyEnforcedAPF,
-		IndefLength: fxcbor.IndefLengthForbidden,
-		TagsMd:      fxcbor.TagsForbidden,
-		UTF8:        fxcbor.UTF8RejectInvalid,
+		DupMapKey:        fxcbor.DupMapKeyEnforcedAPF,
+		MaxNestedLevels:  MaxNestedLevels,
+		MaxArrayElements: MaxArrayElements,
+		MaxMapPairs:      MaxMapPairs,
+		IndefLength:      fxcbor.IndefLengthForbidden,
+		TagsMd:           fxcbor.TagsForbidden,
+		UTF8:             fxcbor.UTF8RejectInvalid,
 	}.DecMode()
 	if err != nil {
 		return nil, err
@@ -62,76 +76,76 @@ func MustNewDecoder() *Decoder {
 
 // DecodeAttestationObject decodes a WebAuthn attestationObject CBOR map.
 func (d *Decoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {
-	var fields map[string]fxcbor.RawMessage
-	if err := d.decode(raw.Bytes(), &fields); err != nil {
+	data := raw.Bytes()
+	decodedValue, err := d.validateCanonical(data)
+	if err != nil {
 		return codec.DecodedAttestationObject{}, err
 	}
-	if len(fields) != 3 || fields["fmt"] == nil || fields["authData"] == nil || fields["attStmt"] == nil {
+	fields, ok := stringMap(decodedValue)
+	if !ok || len(fields) != 3 {
 		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
 	}
-
-	var decoded struct {
-		Format            string            `cbor:"fmt"`
-		AuthenticatorData []byte            `cbor:"authData"`
-		Statement         fxcbor.RawMessage `cbor:"attStmt"`
-	}
-
-	if err := d.decode(raw.Bytes(), &decoded); err != nil {
-		return codec.DecodedAttestationObject{}, err
-	}
-	if !protocolidentifier.Valid(decoded.Format) || len(decoded.AuthenticatorData) == 0 || decoded.Statement == nil {
+	format, ok := fields["fmt"].(string)
+	if !ok || !protocolidentifier.Valid(format) {
 		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
 	}
-	statement, err := d.decodeAttestationStatement(decoded.Format, decoded.Statement)
+	authenticatorData, ok := fields["authData"].([]byte)
+	if !ok || len(authenticatorData) == 0 {
+		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
+	}
+	statementValue, ok := fields["attStmt"]
+	if !ok || statementValue == nil {
+		return codec.DecodedAttestationObject{}, ErrMalformedCBOR
+	}
+	statement, err := decodeAttestationStatement(format, statementValue)
 	if err != nil {
 		return codec.DecodedAttestationObject{}, err
 	}
 
-	authData, err := protocol.NewAuthenticatorData(decoded.AuthenticatorData)
+	authData, err := protocol.NewAuthenticatorData(authenticatorData)
 	if err != nil {
 		return codec.DecodedAttestationObject{}, err
 	}
 
 	return codec.DecodedAttestationObject{
-		Format:            decoded.Format,
+		Format:            format,
 		AuthenticatorData: authData,
 		Statement:         statement,
 		Raw:               raw,
 	}, nil
 }
 
-func (d *Decoder) decodeAttestationStatement(format string, raw fxcbor.RawMessage) (codec.AttestationStatement, error) {
+func decodeAttestationStatement(format string, value any) (codec.AttestationStatement, error) {
 	if format != "compound" {
-		var statement codec.AttestationStatement
-		if err := d.decode(raw, &statement); err != nil {
-			return nil, err
-		}
-		if statement == nil {
+		statement, ok := stringMap(value)
+		if !ok {
 			return nil, ErrMalformedCBOR
 		}
-
-		return statement, nil
+		return codec.AttestationStatement(statement), nil
 	}
 
-	var rawStatements []struct {
-		Format    string                     `cbor:"fmt"`
-		Statement codec.AttestationStatement `cbor:"attStmt"`
-	}
-	if err := d.decode(raw, &rawStatements); err != nil {
-		return nil, err
-	}
-	if len(rawStatements) < 2 {
+	rawStatements, ok := value.([]any)
+	if !ok || len(rawStatements) < 2 {
 		return nil, ErrMalformedCBOR
 	}
 
 	statements := make([]codec.CompoundSubStatement, 0, len(rawStatements))
 	for _, rawStatement := range rawStatements {
-		if !protocolidentifier.Valid(rawStatement.Format) || rawStatement.Format == "compound" || rawStatement.Statement == nil {
+		fields, ok := stringMap(rawStatement)
+		if !ok {
+			return nil, ErrMalformedCBOR
+		}
+		format, ok := fields["fmt"].(string)
+		if !ok || !protocolidentifier.Valid(format) || format == "compound" {
+			return nil, ErrMalformedCBOR
+		}
+		statement, ok := stringMap(fields["attStmt"])
+		if !ok {
 			return nil, ErrMalformedCBOR
 		}
 		statements = append(statements, codec.CompoundSubStatement{
-			Format:    rawStatement.Format,
-			Statement: rawStatement.Statement,
+			Format:    format,
+			Statement: codec.AttestationStatement(statement),
 		})
 	}
 
@@ -147,6 +161,12 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.Credentia
 			err = fmt.Errorf("%w: malformed cose key", ErrMalformedCBOR)
 		}
 	}()
+	if d == nil || d.mode == nil || d.canonicalMode == nil {
+		return codec.CredentialPublicKey{}, errors.New("nil cbor decoder")
+	}
+	if len(raw) == 0 || len(raw) > MaxCBORBytes {
+		return codec.CredentialPublicKey{}, ErrMalformedCBOR
+	}
 
 	var key cosekey.Key
 	rest, err := d.mode.UnmarshalFirst(raw, &key)
@@ -155,14 +175,15 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.Credentia
 	}
 
 	consumed := len(raw) - len(rest)
-	if consumed <= 0 || key == nil {
+	if consumed <= 0 || consumed > codec.MaxCredentialPublicKeyBytes || key == nil {
 		return codec.CredentialPublicKey{}, ErrMalformedCBOR
 	}
 	encodedKey := raw[:consumed]
-	if err := d.validateCanonical(encodedKey); err != nil {
+	canonicalValue, err := d.validateCanonical(encodedKey)
+	if err != nil {
 		return codec.CredentialPublicKey{}, err
 	}
-	if err := d.validateCredentialPublicKeyParameters(encodedKey, key.Kty()); err != nil {
+	if err := validateCredentialPublicKeyParameters(canonicalValue, key.Kty()); err != nil {
 		return codec.CredentialPublicKey{}, err
 	}
 
@@ -180,55 +201,48 @@ func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.Credentia
 
 // DecodeExtensionMap decodes authenticator extension output CBOR.
 func (d *Decoder) DecodeExtensionMap(raw []byte) (codec.ExtensionMap, error) {
-	var extensions codec.ExtensionMap
-	if err := d.decode(raw, &extensions); err != nil {
+	decodedValue, err := d.validateCanonical(raw)
+	if err != nil {
 		return nil, err
 	}
-	if extensions == nil {
+	extensions, ok := stringMap(decodedValue)
+	if !ok {
 		return nil, ErrMalformedCBOR
 	}
 
-	return extensions, nil
+	return codec.ExtensionMap(extensions), nil
 }
 
-func (d *Decoder) decode(data []byte, out any) error {
-	if d == nil {
-		return errors.New("nil cbor decoder")
-	}
-	if err := d.validateCanonical(data); err != nil {
-		return err
-	}
-	if err := d.mode.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
-	}
-
-	return nil
-}
-
-func (d *Decoder) validateCanonical(data []byte) error {
+func (d *Decoder) validateCanonical(data []byte) (any, error) {
 	if d == nil || d.mode == nil || d.canonicalMode == nil {
-		return errors.New("nil cbor decoder")
+		return nil, errors.New("nil cbor decoder")
+	}
+	if len(data) == 0 || len(data) > MaxCBORBytes {
+		return nil, ErrMalformedCBOR
 	}
 	var decoded any
 	if err := d.mode.Unmarshal(data, &decoded); err != nil {
-		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
 	}
 	encoded, err := d.canonicalMode.Marshal(decoded)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
 	}
 	if !bytes.Equal(encoded, data) {
-		return ErrMalformedCBOR
+		return nil, ErrMalformedCBOR
 	}
-	return nil
+	return decoded, nil
 }
 
-func (d *Decoder) validateCredentialPublicKeyParameters(raw []byte, keyType int) error {
-	var parameters map[int64]fxcbor.RawMessage
-	if err := d.mode.Unmarshal(raw, &parameters); err != nil {
-		return fmt.Errorf("%w: %w", ErrMalformedCBOR, err)
+func validateCredentialPublicKeyParameters(value any, keyType int) error {
+	parameters, ok := integerMap(value)
+	if !ok {
+		return ErrMalformedCBOR
 	}
-	if parameters[1] == nil || parameters[3] == nil {
+	if _, ok := parameters[1]; !ok {
+		return ErrMalformedCBOR
+	}
+	if _, ok := parameters[3]; !ok {
 		return ErrMalformedCBOR
 	}
 
@@ -240,7 +254,7 @@ func (d *Decoder) validateCredentialPublicKeyParameters(raw []byte, keyType int)
 		allowed = keySet(1, 3, -1, -2)
 	default:
 		for _, optional := range []int64{2, 4, 5} {
-			if parameters[optional] != nil {
+			if _, present := parameters[optional]; present {
 				return ErrMalformedCBOR
 			}
 		}
@@ -255,6 +269,62 @@ func (d *Decoder) validateCredentialPublicKeyParameters(raw []byte, keyType int)
 		}
 	}
 	return nil
+}
+
+func stringMap(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case map[any]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			name, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			out[name] = item
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func integerMap(value any) (map[int64]any, bool) {
+	typed, ok := value.(map[any]any)
+	if !ok {
+		return nil, false
+	}
+	out := make(map[int64]any, len(typed))
+	for key, item := range typed {
+		integer, ok := integerKey(key)
+		if !ok {
+			return nil, false
+		}
+		out[integer] = item
+	}
+	return out, true
+}
+
+func integerKey(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int64:
+		return typed, true
+	case uint64:
+		if typed > uint64(^uint64(0)>>1) {
+			return 0, false
+		}
+		return int64(typed), true
+	case int:
+		return int64(typed), true
+	case uint:
+		if uint64(typed) > uint64(^uint64(0)>>1) {
+			return 0, false
+		}
+		return int64(typed), true
+	default:
+		return 0, false
+	}
 }
 
 func keySet(keys ...int64) map[int64]struct{} {

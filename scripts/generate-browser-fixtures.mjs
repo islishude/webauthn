@@ -6,13 +6,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const outputPath = path.join(
-  repoRoot,
-  "testdata",
-  "browser",
-  "virtual-authenticator",
-  "fixtures.json",
-);
+const outputPath = process.env.BROWSER_FIXTURE_OUTPUT
+  ? path.resolve(repoRoot, process.env.BROWSER_FIXTURE_OUTPUT)
+  : path.join(
+      repoRoot,
+      "testdata",
+      "browser",
+      "virtual-authenticator",
+      "fixtures.next.json",
+    );
 const rpID = "webauthn.test";
 const origin = `https://${rpID}`;
 const { chromium, playwrightPackage } = await loadPlaywright();
@@ -348,11 +350,11 @@ async function main() {
       metadata: {
         source:
           "Generated specifically for github.com/islishude/webauthn by scripts/generate-browser-fixtures.mjs.",
-        generatedAt: "2026-06-01",
+        generatedAt: new Date().toISOString().slice(0, 10),
         generator: `Playwright ${playwrightPackage.version} with Chrome DevTools WebAuthn virtual authenticators`,
         browserVersion: browser.version(),
         normativeContext:
-          "W3C Web Authentication Level 2 relying-party registration and authentication operations.",
+          "25 August 2026 W3C Web Authentication Level 3 Recommendation relying-party registration and authentication operations.",
         sensitivity:
           "test-only synthetic credentials; no production account, credential, authenticator, or private-key material is included intentionally.",
         externalConformanceData: "none",
@@ -361,7 +363,12 @@ async function main() {
     };
 
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
+    const temporaryPath = `${outputPath}.partial-${process.pid}`;
+    await fs.writeFile(temporaryPath, `${JSON.stringify(output, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await fs.rename(temporaryPath, outputPath);
+    console.log(`browser fixtures written to ${outputPath}`);
   } finally {
     await browser.close();
   }

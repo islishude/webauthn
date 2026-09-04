@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"io/fs"
 	"math/big"
 	"net"
@@ -207,5 +209,21 @@ func decodeJSON(request *http.Request, target any) error {
 	defer func() {
 		_ = request.Body.Close()
 	}()
-	return json.NewDecoder(request.Body).Decode(target)
+	reader := &io.LimitedReader{R: request.Body, N: webauthnhttp.DefaultMaxBodyBytes + 1}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) > webauthnhttp.DefaultMaxBodyBytes {
+		return webauthnhttp.ErrRequestBodyTooLarge
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("trailing json data")
+	}
+	return nil
 }

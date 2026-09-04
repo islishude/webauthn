@@ -17,21 +17,23 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
 const (
 	// EnvelopeVersion is the current storage envelope version.
-	EnvelopeVersion = 2
+	EnvelopeVersion = 3
 	// MaxEnvelopeBytes bounds storage input before JSON decoding.
 	MaxEnvelopeBytes = 1 << 20
 	// MaxStoredPublicKeyBytes bounds a persisted raw COSE credential key.
-	MaxStoredPublicKeyBytes = 64 << 10
+	MaxStoredPublicKeyBytes = codec.MaxCredentialPublicKeyBytes
 
 	kindRegistrationState   = "registration-state"
 	kindAuthenticationState = "authentication-state"
 	kindCredentialRecord    = "credential-record" //nolint:gosec // Public envelope discriminator, not a credential secret.
 	legacyEnvelopeVersion   = 1
+	previousEnvelopeVersion = 2
 )
 
 var (
@@ -55,6 +57,7 @@ type originPolicyDTO struct {
 	AllowedOrigins                   []string `json:"allowedOrigins"`
 	AllowedTopOrigins                []string `json:"allowedTopOrigins,omitempty"`
 	AllowCrossOriginWithoutTopOrigin bool     `json:"allowCrossOriginWithoutTopOrigin,omitempty"`
+	AllowRelatedOrigins              bool     `json:"allowRelatedOrigins,omitempty"`
 }
 
 type registrationStateDTO struct {
@@ -65,6 +68,7 @@ type registrationStateDTO struct {
 	UserHandle                string                  `json:"userHandle"`
 	RequestedUserVerification string                  `json:"requestedUserVerification"`
 	RequestedExtensions       map[string]encodedValue `json:"requestedExtensions,omitempty"`
+	ExtensionBindings         []extensionBindingDTO   `json:"extensionBindings,omitempty"`
 	AllowedAlgorithms         []int64                 `json:"allowedAlgorithms"`
 	Attestation               string                  `json:"attestation"`
 	ExpiresAt                 string                  `json:"expiresAt"`
@@ -82,9 +86,15 @@ type authenticationStateDTO struct {
 	OriginPolicy              originPolicyDTO           `json:"originPolicy"`
 	RequestedUserVerification string                    `json:"requestedUserVerification"`
 	RequestedExtensions       map[string]encodedValue   `json:"requestedExtensions,omitempty"`
+	ExtensionBindings         []extensionBindingDTO     `json:"extensionBindings,omitempty"`
 	AllowCredentials          []credentialDescriptorDTO `json:"allowCredentials,omitempty"`
 	ExpectedUserHandle        string                    `json:"expectedUserHandle,omitempty"`
 	ExpiresAt                 string                    `json:"expiresAt"`
+}
+
+type extensionBindingDTO struct {
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
 }
 
 type credentialRecordDTO struct {
@@ -124,6 +134,7 @@ func MarshalRegistrationState(state webauthn.RegistrationState) ([]byte, error) 
 		UserHandle:                encodeBytes(state.UserHandle.Bytes()),
 		RequestedUserVerification: string(state.RequestedUserVerification),
 		RequestedExtensions:       extensions,
+		ExtensionBindings:         extensionBindingsToDTO(state.ExtensionBindings),
 		AllowedAlgorithms:         algorithms,
 		Attestation:               string(state.Attestation),
 		ExpiresAt:                 formatTime(state.ExpiresAt),
@@ -154,6 +165,9 @@ func UnmarshalRegistrationState(data []byte) (webauthn.RegistrationState, error)
 	if err != nil {
 		return webauthn.RegistrationState{}, err
 	}
+	if envelope.Version < EnvelopeVersion && (len(extensions) != 0 || len(payload.ExtensionBindings) != 0 || payload.OriginPolicy.AllowRelatedOrigins) {
+		return webauthn.RegistrationState{}, fmt.Errorf("%w: legacy state contains v3-only policy or extension bindings", ErrInvalidEnvelope)
+	}
 	algorithms := make([]protocol.COSEAlgorithmIdentifier, len(payload.AllowedAlgorithms))
 	for i, algorithm := range payload.AllowedAlgorithms {
 		algorithms[i] = protocol.COSEAlgorithmIdentifier(algorithm)
@@ -166,6 +180,7 @@ func UnmarshalRegistrationState(data []byte) (webauthn.RegistrationState, error)
 		UserHandle:                userHandle,
 		RequestedUserVerification: protocol.UserVerificationRequirement(payload.RequestedUserVerification),
 		RequestedExtensions:       protocol.ExtensionInputs(extensions),
+		ExtensionBindings:         extensionBindingsFromDTO(payload.ExtensionBindings),
 		AllowedAlgorithms:         algorithms,
 		Attestation:               protocol.AttestationConveyancePreference(payload.Attestation),
 		ExpiresAt:                 expiresAt,
@@ -191,6 +206,7 @@ func MarshalAuthenticationState(state webauthn.AuthenticationState) ([]byte, err
 		OriginPolicy:              originPolicyToDTO(state.OriginPolicy),
 		RequestedUserVerification: string(state.RequestedUserVerification),
 		RequestedExtensions:       extensions,
+		ExtensionBindings:         extensionBindingsToDTO(state.ExtensionBindings),
 		AllowCredentials:          descriptorsToDTO(state.AllowCredentials),
 		ExpiresAt:                 formatTime(state.ExpiresAt),
 	}
@@ -223,6 +239,9 @@ func UnmarshalAuthenticationState(data []byte) (webauthn.AuthenticationState, er
 	if err != nil {
 		return webauthn.AuthenticationState{}, err
 	}
+	if envelope.Version < EnvelopeVersion && (len(extensions) != 0 || len(payload.ExtensionBindings) != 0 || payload.OriginPolicy.AllowRelatedOrigins) {
+		return webauthn.AuthenticationState{}, fmt.Errorf("%w: legacy state contains v3-only policy or extension bindings", ErrInvalidEnvelope)
+	}
 	descriptors, err := descriptorsFromDTO(payload.AllowCredentials)
 	if err != nil {
 		return webauthn.AuthenticationState{}, err
@@ -233,6 +252,7 @@ func UnmarshalAuthenticationState(data []byte) (webauthn.AuthenticationState, er
 		OriginPolicy:              originPolicyFromDTO(payload.OriginPolicy),
 		RequestedUserVerification: protocol.UserVerificationRequirement(payload.RequestedUserVerification),
 		RequestedExtensions:       protocol.ExtensionInputs(extensions),
+		ExtensionBindings:         extensionBindingsFromDTO(payload.ExtensionBindings),
 		AllowCredentials:          descriptors,
 		ExpectedUserHandle:        expectedUserHandle,
 		ExpiresAt:                 expiresAt,
@@ -273,7 +293,7 @@ func MarshalCredentialRecord(record webauthn.CredentialRecord) ([]byte, error) {
 // UnmarshalCredentialRecord decodes a credential record and reconstructs its
 // typed public key with decoder.
 func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webauthn.CredentialRecord, error) {
-	if decoder == nil {
+	if interfaceutil.IsNil(decoder) {
 		return webauthn.CredentialRecord{}, fmt.Errorf("%w: credential key decoder is required", ErrInvalidEnvelope)
 	}
 	envelope, err := unmarshalEnvelope(data, kindCredentialRecord)
@@ -372,7 +392,7 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return envelope{}, fmt.Errorf("%w: trailing data", ErrInvalidEnvelope)
 	}
-	if value.Version != EnvelopeVersion && value.Version != legacyEnvelopeVersion {
+	if value.Version != EnvelopeVersion && value.Version != previousEnvelopeVersion && value.Version != legacyEnvelopeVersion {
 		return envelope{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, value.Version)
 	}
 	if value.Kind != expectedKind {
@@ -393,72 +413,45 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	return value, nil
 }
 
+func extensionBindingsToDTO(bindings []extension.Binding) []extensionBindingDTO {
+	if bindings == nil {
+		return nil
+	}
+	out := make([]extensionBindingDTO, len(bindings))
+	for i, binding := range bindings {
+		out[i] = extensionBindingDTO{ID: binding.ID, Revision: binding.Revision}
+	}
+	return out
+}
+
+func extensionBindingsFromDTO(bindings []extensionBindingDTO) []extension.Binding {
+	if bindings == nil {
+		return nil
+	}
+	out := make([]extension.Binding, len(bindings))
+	for i, binding := range bindings {
+		out[i] = extension.Binding{ID: binding.ID, Revision: binding.Revision}
+	}
+	return out
+}
+
 func validateRegistrationState(state webauthn.RegistrationState) error {
-	if state.Challenge.Len() < protocol.MinChallengeLength || state.RPID == "" || state.UserHandle.Len() == 0 || len(state.AllowedAlgorithms) == 0 || state.ExpiresAt.IsZero() {
-		return fmt.Errorf("%w: registration state required fields", ErrInvalidEnvelope)
-	}
-	if err := validateOrigin(state.OriginPolicy); err != nil {
-		return err
-	}
-	if !state.RequestedUserVerification.Known() || !state.Attestation.Known() {
-		return fmt.Errorf("%w: registration state policy", ErrInvalidEnvelope)
-	}
-	for _, algorithm := range state.AllowedAlgorithms {
-		if err := algorithm.Validate(); err != nil {
-			return invalid(err)
-		}
+	if err := state.Validate(); err != nil {
+		return invalid(err)
 	}
 	return nil
 }
 
 func validateAuthenticationState(state webauthn.AuthenticationState) error {
-	if state.Challenge.Len() < protocol.MinChallengeLength || state.RPID == "" || state.ExpiresAt.IsZero() || !state.RequestedUserVerification.Known() {
-		return fmt.Errorf("%w: authentication state required fields", ErrInvalidEnvelope)
-	}
-	if err := validateOrigin(state.OriginPolicy); err != nil {
-		return err
-	}
-	for _, descriptor := range state.AllowCredentials {
-		if err := descriptor.Validate(); err != nil {
-			return invalid(err)
-		}
-	}
-	if value, ok := state.RequestedExtensions[extension.IDLargeBlob]; ok {
-		raw, err := extension.NewRawValue(value)
-		if err != nil {
-			return invalid(err)
-		}
-		normalized, err := (extension.LargeBlobHandler{}).ValidateInput(extension.InputRequest{
-			Operation: extension.OperationAuthentication,
-			ID:        extension.IDLargeBlob,
-			Input:     raw,
-		})
-		if err != nil {
-			return invalid(err)
-		}
-		if normalized.Write != nil && len(state.AllowCredentials) != 1 {
-			return fmt.Errorf("%w: largeBlob write requires exactly one allowed credential", ErrInvalidEnvelope)
-		}
+	if err := state.Validate(); err != nil {
+		return invalid(err)
 	}
 	return nil
 }
 
 func validateCredentialRecord(record webauthn.CredentialRecord) error {
-	if record.Type.Validate() != nil || record.ID.Len() == 0 || record.UserHandle.Len() == 0 || record.RPID == "" || record.PublicKey.Algorithm == 0 || len(record.PublicKey.Raw()) == 0 || len(record.PublicKey.Raw()) > MaxStoredPublicKeyBytes || record.AttestationType == "" {
-		return fmt.Errorf("%w: credential required fields", ErrInvalidEnvelope)
-	}
-	if err := record.PublicKey.Algorithm.Validate(); err != nil {
+	if err := record.Validate(); err != nil {
 		return invalid(err)
-	}
-	if record.BackupState && !record.BackupEligible {
-		return fmt.Errorf("%w: backup state", ErrInvalidEnvelope)
-	}
-	return nil
-}
-
-func validateOrigin(policy webauthn.OriginPolicy) error {
-	if len(policy.AllowedOrigins) == 0 || slices.Contains(policy.AllowedOrigins, "") || slices.Contains(policy.AllowedTopOrigins, "") {
-		return fmt.Errorf("%w: origin policy", ErrInvalidEnvelope)
 	}
 	return nil
 }
@@ -468,6 +461,7 @@ func originPolicyToDTO(policy webauthn.OriginPolicy) originPolicyDTO {
 		AllowedOrigins:                   slices.Clone(policy.AllowedOrigins),
 		AllowedTopOrigins:                slices.Clone(policy.AllowedTopOrigins),
 		AllowCrossOriginWithoutTopOrigin: policy.AllowCrossOriginWithoutTopOrigin,
+		AllowRelatedOrigins:              policy.AllowRelatedOrigins,
 	}
 }
 
@@ -476,6 +470,7 @@ func originPolicyFromDTO(policy originPolicyDTO) webauthn.OriginPolicy {
 		AllowedOrigins:                   slices.Clone(policy.AllowedOrigins),
 		AllowedTopOrigins:                slices.Clone(policy.AllowedTopOrigins),
 		AllowCrossOriginWithoutTopOrigin: policy.AllowCrossOriginWithoutTopOrigin,
+		AllowRelatedOrigins:              policy.AllowRelatedOrigins,
 	}
 }
 

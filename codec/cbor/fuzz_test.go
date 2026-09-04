@@ -12,6 +12,7 @@ import (
 )
 
 func FuzzDecodeAttestationObject(f *testing.F) {
+	decoder := codeccbor.MustNewDecoder()
 	f.Add(seedCBOR(map[string]any{
 		"fmt":      "none",
 		"authData": seedRegistrationAuthenticatorData(),
@@ -26,11 +27,12 @@ func FuzzDecodeAttestationObject(f *testing.F) {
 			return
 		}
 
-		_, _ = codeccbor.MustNewDecoder().DecodeAttestationObject(raw)
+		_, _ = decoder.DecodeAttestationObject(raw)
 	})
 }
 
 func FuzzDecodeCredentialPublicKey(f *testing.F) {
+	decoder := codeccbor.MustNewDecoder()
 	f.Add(seedCBOR(map[int]any{
 		1:  2,
 		3:  -7,
@@ -48,18 +50,19 @@ func FuzzDecodeCredentialPublicKey(f *testing.F) {
 	f.Add([]byte{0xff})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = codeccbor.MustNewDecoder().DecodeCredentialPublicKey(data)
+		_, _ = decoder.DecodeCredentialPublicKey(data)
 	})
 }
 
 func FuzzDecodeExtensionMap(f *testing.F) {
+	decoder := codeccbor.MustNewDecoder()
 	f.Add(seedCBOR(map[string]any{"credProps": map[string]any{"rk": true}}))
 	f.Add(seedCBOR(map[string]any{"uvm": []any{[]any{1, 2, 3}}}))
 	f.Add([]byte{0xa2, 0x61, 0x61, 0x01, 0x61, 0x61, 0x02})
 	f.Add([]byte{0xff})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = codeccbor.MustNewDecoder().DecodeExtensionMap(data)
+		_, _ = decoder.DecodeExtensionMap(data)
 	})
 }
 

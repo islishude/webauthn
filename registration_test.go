@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/attestation"
 	attnone "github.com/islishude/webauthn/attestation/none"
+	"github.com/islishude/webauthn/codec"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/extension"
@@ -46,6 +48,40 @@ func TestRegistrationWithNoneAttestation(t *testing.T) {
 	}
 	if result.Attestation.Type != attestation.TypeNone || !result.AttestationTrust.Accepted {
 		t.Fatalf("attestation result = %+v trust = %+v", result.Attestation, result.AttestationTrust)
+	}
+}
+
+func TestRegistrationRejectsCredentialDecoderSourceMismatchAndTypedNil(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.CredentialPublicKeyDecoder = mismatchedSourceKeyDecoder{}
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrMalformedResponse) {
+		t.Fatalf("source mismatch error = %v, want ErrMalformedResponse", err)
+	}
+
+	options = fixture.finishOptions()
+	options.CredentialPublicKeyDecoder = invalidAlgorithmKeyDecoder{}
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrMalformedResponse) {
+		t.Fatalf("invalid decoded key error = %v, want ErrMalformedResponse", err)
+	}
+
+	var typedNil *mismatchedSourceKeyDecoder
+	options.CredentialPublicKeyDecoder = typedNil
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("typed-nil decoder error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestRegistrationRejectsAttestationDecoderSourceMismatch(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.AttestationObjectDecoder = mismatchedAttestationObjectDecoder{inner: fixture.decoder}
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrMalformedResponse) {
+		t.Fatalf("source mismatch error = %v, want ErrMalformedResponse", err)
 	}
 }
 
@@ -200,6 +236,12 @@ func TestRegistrationStartRejectsInvalidTimeAndChallengeConfiguration(t *testing
 	if _, err := webauthn.StartRegistration(context.Background(), shortChallenge); err == nil {
 		t.Fatal("negative challenge length accepted")
 	}
+	var typedNil *pointerChallengeGenerator
+	typedNilGenerator := base
+	typedNilGenerator.ChallengeGenerator = typedNil
+	if _, err := webauthn.StartRegistration(context.Background(), typedNilGenerator); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("typed-nil challenge generator error = %v, want ErrInvalidConfiguration", err)
+	}
 }
 
 func TestRegistrationStartUsesSpecificationAlgorithmDefaults(t *testing.T) {
@@ -271,6 +313,21 @@ func TestRegistrationStartValidatesAndCopiesExtensionInputs(t *testing.T) {
 	emptyRegistry, err := extension.NewRegistry()
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	reservedUnknown := missingRegistry
+	reservedUnknown.ExtensionRegistry = emptyRegistry
+	if _, err := webauthn.StartRegistration(context.Background(), reservedUnknown); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("unregistered built-in error = %v, want ErrInvalidConfiguration", err)
+	}
+
+	tooMany := base
+	tooMany.Extensions = make(protocol.ExtensionInputs, extension.MaxEntries+1)
+	for i := range extension.MaxEntries + 1 {
+		tooMany.Extensions[fmt.Sprintf("x%02d", i)] = true
+	}
+	tooMany.ExtensionRegistry = emptyRegistry
+	if _, err := webauthn.StartRegistration(context.Background(), tooMany); !errors.Is(err, extension.ErrTooManyEntries) {
+		t.Fatalf("too many extensions error = %v, want ErrTooManyEntries", err)
 	}
 	nested := map[string]any{"bytes": []byte{0x01}}
 	unknown := base
@@ -514,8 +571,9 @@ func TestRegistrationTopOriginPolicy(t *testing.T) {
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
 		options.State.OriginPolicy = webauthn.OriginPolicy{
-			AllowedOrigins:    []string{"https://frame.example"},
-			AllowedTopOrigins: []string{"https://top.example"},
+			AllowedOrigins:      []string{"https://frame.example"},
+			AllowedTopOrigins:   []string{"https://top.example"},
+			AllowRelatedOrigins: true,
 		}
 		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
 			t,
@@ -536,8 +594,9 @@ func TestRegistrationTopOriginPolicy(t *testing.T) {
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
 		options.State.OriginPolicy = webauthn.OriginPolicy{
-			AllowedOrigins:    []string{"https://frame.example"},
-			AllowedTopOrigins: []string{"https://top.example"},
+			AllowedOrigins:      []string{"https://frame.example"},
+			AllowedTopOrigins:   []string{"https://top.example"},
+			AllowRelatedOrigins: true,
 		}
 		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
 			t,
@@ -559,8 +618,9 @@ func TestRegistrationTopOriginPolicy(t *testing.T) {
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
 		options.State.OriginPolicy = webauthn.OriginPolicy{
-			AllowedOrigins:    []string{"https://frame.example"},
-			AllowedTopOrigins: []string{"https://top.example"},
+			AllowedOrigins:      []string{"https://frame.example"},
+			AllowedTopOrigins:   []string{"https://top.example"},
+			AllowRelatedOrigins: true,
 		}
 		options.Response.ClientDataJSON = mustClientDataJSON(t, registrationClientDataWithTopOrigin(
 			t,
@@ -581,7 +641,7 @@ func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(
 	t.Parallel()
 
 	requested := newRegistrationFixture(t)
-	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"credProps": true}
+	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
 	if _, err := webauthn.FinishRegistration(context.Background(), requested.finishOptions()); err != nil {
 		t.Fatalf("FinishRegistration() with absent requested extension error = %v", err)
 	}
@@ -591,6 +651,27 @@ func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(
 	options.Response.ClientExtensionResults = map[string]any{"credProps": true}
 	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
 		t.Fatalf("FinishRegistration() with ignored unrequested extension error = %v", err)
+	}
+}
+
+func TestRegistrationRejectsUnboundBuiltInAndExcessOutputs(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: true}
+	options.ExtensionRegistry = mustLevel3Registry(t)
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidCeremonyState) {
+		t.Fatalf("unbound built-in error = %v, want ErrInvalidCeremonyState", err)
+	}
+
+	options = fixture.finishOptions()
+	options.Response.ClientExtensionResults = make(map[string]any, extension.MaxEntries+1)
+	for i := range extension.MaxEntries + 1 {
+		options.Response.ClientExtensionResults[fmt.Sprintf("x%02d", i)] = true
+	}
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, extension.ErrTooManyEntries) {
+		t.Fatalf("too many outputs error = %v, want ErrTooManyEntries", err)
 	}
 }
 
@@ -604,6 +685,7 @@ func TestRegistrationLevel2CredPropsExtension(t *testing.T) {
 		extension.IDCredProps: map[string]any{"rk": true},
 	}
 	options.ExtensionRegistry = mustLevel2Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDCredProps)
 
 	result, err := webauthn.FinishRegistration(context.Background(), options)
 	if err != nil {
@@ -715,6 +797,7 @@ func TestRegistrationExtensionOutputRunsAfterAttestationVerification(t *testing.
 	}
 	options := fixture.finishOptions()
 	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
 	options.Response.ClientExtensionResults = map[string]any{"track": true}
 	options.ExtensionRegistry = registry
 	options.AttestationRegistry = attesters
@@ -789,6 +872,40 @@ func TestRegistrationAttestationTrustPolicyAcceptsNonNoneAttestation(t *testing.
 	}
 }
 
+func TestRegistrationRejectsUnknownAttestationTypeFromVerifier(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.AttestationRegistry = mustRegistrationRegistry(t, fakeRegistrationAttestationVerifier{
+		format: "none",
+		result: attestation.VerificationResult{
+			CryptographicallyValid: true,
+		},
+	})
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidAttestation) {
+		t.Fatalf("FinishRegistration() error = %v, want ErrInvalidAttestation", err)
+	}
+}
+
+func TestRegistrationRejectsUnknownAttestationTrustPathFromVerifier(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.AttestationRegistry = mustRegistrationRegistry(t, fakeRegistrationAttestationVerifier{
+		format: "none",
+		result: attestation.VerificationResult{
+			Type:                   attestation.TypeNone,
+			TrustPath:              attestation.TrustPath{Kind: "future"},
+			CryptographicallyValid: true,
+		},
+	})
+	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidAttestation) {
+		t.Fatalf("FinishRegistration() error = %v, want ErrInvalidAttestation", err)
+	}
+}
+
 func TestRegistrationAttestationTrustPolicyRejectsNonNoneAttestation(t *testing.T) {
 	t.Parallel()
 
@@ -801,6 +918,7 @@ func TestRegistrationAttestationTrustPolicyRejectsNonNoneAttestation(t *testing.
 		format: "packed",
 		result: attestation.VerificationResult{
 			Type:                   attestation.TypeSelf,
+			TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathNone},
 			CryptographicallyValid: true,
 		},
 	})
@@ -829,6 +947,7 @@ func TestRegistrationRejectsNonNoneAttestationWithoutTrustPolicy(t *testing.T) {
 		format: "packed",
 		result: attestation.VerificationResult{
 			Type:                   attestation.TypeSelf,
+			TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathNone},
 			CryptographicallyValid: true,
 		},
 	})
@@ -885,6 +1004,7 @@ func TestRegistrationBuiltInAttestationTrustPolicies(t *testing.T) {
 			format: "packed",
 			result: attestation.VerificationResult{
 				Type:                   attestation.TypeSelf,
+				TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathNone},
 				CryptographicallyValid: true,
 			},
 		})
@@ -1264,12 +1384,20 @@ func (v fakeRegistrationAttestationVerifier) VerifyAttestation(context.Context, 
 var _ attestation.Verifier = fakeRegistrationAttestationVerifier{}
 
 type trackingExtensionHandler struct {
-	id     string
-	called *bool
+	id       string
+	revision string
+	called   *bool
 }
 
 func (h trackingExtensionHandler) ID() string {
 	return h.id
+}
+
+func (h trackingExtensionHandler) Revision() string {
+	if h.revision != "" {
+		return h.revision
+	}
+	return "test-v1"
 }
 
 func (h trackingExtensionHandler) ValidateInput(request extension.InputRequest) (bool, error) {
@@ -1292,6 +1420,43 @@ func (h trackingExtensionHandler) VerifyOutput(_ context.Context, request extens
 }
 
 var _ extension.Handler[bool, map[string]any] = trackingExtensionHandler{}
+
+type mismatchedSourceKeyDecoder struct{}
+
+func (mismatchedSourceKeyDecoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicKey, error) {
+	changed := bytes.Clone(raw)
+	if len(changed) != 0 {
+		changed[0] ^= 0xff
+	}
+	return codec.NewCredentialPublicKey(protocol.AlgorithmES256, changed, codec.CredentialPublicKeyMaterial{}), nil
+}
+
+type invalidAlgorithmKeyDecoder struct{}
+
+func (invalidAlgorithmKeyDecoder) DecodeCredentialPublicKey(raw []byte) (codec.CredentialPublicKey, error) {
+	return codec.NewCredentialPublicKey(0, raw, codec.CredentialPublicKeyMaterial{}), nil
+}
+
+type mismatchedAttestationObjectDecoder struct {
+	inner codec.AttestationObjectDecoder
+}
+
+func (decoder mismatchedAttestationObjectDecoder) DecodeAttestationObject(raw protocol.AttestationObject) (codec.DecodedAttestationObject, error) {
+	decoded, err := decoder.inner.DecodeAttestationObject(raw)
+	if err != nil {
+		return codec.DecodedAttestationObject{}, err
+	}
+	changed := decoded.Raw.Bytes()
+	changed[0] ^= 0xff
+	decoded.Raw, err = protocol.NewAttestationObject(changed)
+	return decoded, err
+}
+
+type pointerChallengeGenerator struct{}
+
+func (*pointerChallengeGenerator) GenerateChallenge(context.Context) (protocol.Challenge, error) {
+	return protocol.Challenge{}, nil
+}
 
 type registrationCertificateVerifier struct {
 	result webcrypto.CertificateVerification

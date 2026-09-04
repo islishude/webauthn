@@ -28,6 +28,11 @@ func (RemoteClientDataJSONHandler) ID() string {
 	return IDRemoteClientDataJSON
 }
 
+// Revision returns the opt-in preview semantic revision.
+func (RemoteClientDataJSONHandler) Revision() string {
+	return RevisionRemoteClientDataJSON
+}
+
 // ValidateInput validates the remote serialized client data and ceremony type.
 func (RemoteClientDataJSONHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {

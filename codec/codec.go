@@ -2,10 +2,23 @@
 package codec
 
 import (
+	"errors"
 	"math/bits"
 	"slices"
 
 	"github.com/islishude/webauthn/protocol"
+)
+
+const (
+	// MaxCredentialPublicKeyBytes bounds raw COSE credential keys accepted from
+	// caller-owned storage and codec adapters.
+	MaxCredentialPublicKeyBytes = 64 << 10
+)
+
+var (
+	// ErrInvalidCredentialPublicKey reports an incomplete or internally
+	// inconsistent decoded credential public key.
+	ErrInvalidCredentialPublicKey = errors.New("invalid credential public key")
 )
 
 // AttestationStatement is the decoded attestation statement map for a format.
@@ -83,6 +96,18 @@ func (k CredentialPublicKey) U2FPublicKey() []byte {
 // format binding checks.
 func (k CredentialPublicKey) PublicKeyMaterial() CredentialPublicKeyMaterial {
 	return k.material.clone()
+}
+
+// Validate checks the algorithm and raw COSE representation required at
+// ceremony and storage boundaries.
+func (k CredentialPublicKey) Validate() error {
+	if k.Algorithm == 0 || len(k.raw) == 0 || len(k.raw) > MaxCredentialPublicKeyBytes {
+		return ErrInvalidCredentialPublicKey
+	}
+	if err := k.Algorithm.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // CredentialPublicKeyMaterial contains codec-derived public key values for

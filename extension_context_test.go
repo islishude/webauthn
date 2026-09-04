@@ -26,7 +26,7 @@ func TestStartRegistrationValidatesRemoteClientDataChallenge(t *testing.T) {
 	options := webauthn.RegistrationStartOptions{
 		RP:           protocol.RPEntity{ID: "example.com", Name: "Example"},
 		User:         protocol.UserEntity{ID: userHandle, Name: "remote-user", DisplayName: ""},
-		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://remote.example"}},
+		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://remote.example"}, AllowRelatedOrigins: true},
 		Challenge:    challenge,
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmES256},
@@ -56,6 +56,7 @@ func TestFinishRegistrationBindsRemoteClientDataBytes(t *testing.T) {
 	}
 	serialized := string(fixture.response.ClientDataJSON.Bytes())
 	fixture.start.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDRemoteClientDataJSON: serialized}
+	fixture.start.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDRemoteClientDataJSON)
 	fixture.response.ClientExtensionResults = map[string]any{extension.IDRemoteClientDataJSON: true}
 	options := fixture.finishOptions()
 	options.ExtensionRegistry = registry
@@ -74,6 +75,19 @@ func TestFinishRegistrationBindsRemoteClientDataBytes(t *testing.T) {
 	options.Response.ClientDataJSON = mustClientDataJSON(t, changed)
 	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrExtensionPolicy) {
 		t.Fatalf("FinishRegistration() changed remote data error = %v, want ErrExtensionPolicy", err)
+	}
+}
+
+func TestFinishRegistrationStopsExtensionWorkWhenContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	fixture := newRegistrationFixture(t)
+	options := fixture.finishOptions()
+	options.Response.ClientExtensionResults = map[string]any{"future": true}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := webauthn.FinishRegistration(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("FinishRegistration() error = %v, want context.Canceled", err)
 	}
 }
 
@@ -142,6 +156,7 @@ func TestFinishAuthenticationRevalidatesLargeBlobCredentialContext(t *testing.T)
 			extension.IDLargeBlob: extension.LargeBlobInput{Write: []byte("blob")},
 		}
 		options.ExtensionRegistry = registry
+		options.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDLargeBlob)
 		if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidCeremonyState) {
 			t.Fatalf("FinishAuthentication(%d credentials) error = %v, want ErrInvalidCeremonyState", len(descriptors), err)
 		}

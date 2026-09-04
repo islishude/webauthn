@@ -1,6 +1,6 @@
 # Security and privacy model
 
-Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-08-28.
+Status: Level 3 ceremony state, extension handling, attestation trust policy, standard verification, storage encoding, and optional transport helpers implemented, revised 2026-09-04.
 
 This document records security and privacy decisions that implementation must preserve.
 
@@ -22,6 +22,14 @@ accepts mismatches.
 ## Origin and RP ID policy
 
 The core library must not infer trusted origins from HTTP request headers. The caller supplies allowed origins and RP ID policy explicitly.
+
+Configuration accepts only canonical scheme-and-authority origins: HTTPS is
+required except for loopback HTTP, hostnames and IP literals must use canonical
+lowercase serialization, explicit default or malformed ports are rejected, and
+RP IDs must be lowercase DNS names. Allowed origin hosts are scoped to the RP ID
+by default. `AllowRelatedOrigins` is an explicit delegation point: the caller
+must validate the related-origin relationship independently and still list each
+accepted origin exactly.
 
 Registration and authentication verification must compare `CollectedClientData.origin` to the configured origin policy. `topOrigin` presence is tracked separately: present null, empty, or non-string values are malformed, while a valid present value must be explicitly allowed and paired with `crossOrigin`. Authenticator data `rpIdHash` must match SHA-256 of the expected RP ID, except when authentication explicitly uses the AppID extension and the client output indicates AppID was used.
 
@@ -55,6 +63,13 @@ registration and must remain identical on every assertion; only `backupState`
 is mutable. Applications receive changed flags separately so persistence can use
 conditional updates.
 
+Authentication validates caller-stored credential type, ID, user handle, RP ID,
+raw public key, attestation type, attachment, and the stored BE/BS invariant
+before using it. Conditional persistence must compare the previous counter,
+backup state, UV-initialization state, and authenticator attachment together;
+checking only a nonzero counter does not prevent lost updates for zero-counter
+authenticators.
+
 ## Credential ownership and user handle policy
 
 Username-first authentication and discoverable-credential authentication have different ownership checks.
@@ -80,6 +95,9 @@ indefinite lengths, duplicate or extra attestation-object keys, and optional or
 private COSE key parameters. RSA values must be minimally encoded and use a
 2048–16384 bit modulus. Authenticator RFU flag bits are rejected. These
 checks occur before decoded material reaches signature or trust policy.
+Each CBOR value is additionally bounded to 1 MiB, 16 levels, 64 array elements,
+and 64 map pairs. Compound attestation verifies at most 16 statements by
+default; a caller may configure 2 through 64, but cannot remove the hard bound.
 
 ## Signature counter policy
 
@@ -106,6 +124,9 @@ Android hardware-enforced authorization lists, and Apple nonce ASN.1 structure
 are validated before trust evaluation.
 TPM statement signatures remain fail-closed to the normative `TPMT_SIGNATURE`
 shape; a raw DER ECDSA signature is not accepted as a compatibility form.
+Format verifiers must also return a known attestation type and one of the
+package's explicit `none`, `x5c`, or raw trust-path representations; unknown
+result classifications are rejected before relying-party trust policy runs.
 
 The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration rejects every attestation after format verification. Callers that accept consumer passkey `none` attestation must pass an explicit policy such as `attestation.AcceptNone()`. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
 
@@ -156,6 +177,15 @@ does not mark that evidence accepted.
 Custom extension handlers must be deterministic and side-effect-free because a
 later caller-owned atomic insert or persistence conflict can still reject an
 otherwise verified registration result.
+
+Every handler supplies a stable semantic revision. Ceremony state persists the
+sorted ID/revision binding from start, and finish rejects missing, added, or
+changed known bindings before output interpretation. Package-reserved built-in
+IDs cannot use unknown-extension fallback. Registries and each ceremony's
+combined extension ID set are limited to 64. Defensive raw-value copies are
+limited to depth 32, 4096 nodes, and 1 MiB, and output dispatch observes context
+cancellation between handlers. Typed result lookup also requires the querying
+handler's current ID and revision to match the frozen result.
 
 The AppID extension selects exactly one expected hash: `appid=true` requires the
 AppID hash and request/policy agreement, while false or absent output requires
@@ -238,6 +268,11 @@ fixed clock.
 
 The optional `browser` package only converts between browser JSON DTOs and transport-neutral protocol values. It treats browser JSON as attacker-controlled, requires Level 3 `toJSON()` members, binds canonical `id` to `rawId`, rejects malformed JSON and invalid base64url encodings, validates decoded byte-oriented protocol values, and preserves unknown extension results as untrusted values for later policy handling.
 
+Browser response JSON has a fixed 1 MiB decoder limit. The redundant unsigned
+registration `response.publicKey` is syntax-checked when present but is not
+carried into the root response; the signed authenticator-data COSE key remains
+authoritative.
+
 The optional `transport/http` package only reads bounded JSON request bodies and
 writes JSON responses. It serializes a response before committing HTTP headers,
 does not infer trusted origins from request headers, does not create sessions or
@@ -255,6 +290,7 @@ Before stable release, defaults should be:
 - five-minute browser timeout, ten-minute challenge lifetime, and exact-deadline
   rejection;
 - explicit allowed origins;
+- canonical origin/RP-ID configuration, with related origins opt-in only;
 - explicit allowed top origins for cross-origin ceremonies;
 - explicit RP ID;
 - user presence required except for explicitly bound conditional registration;
@@ -266,6 +302,7 @@ Before stable release, defaults should be:
 - malformed/non-canonical CBOR, optional/private COSE parameters, RFU flags,
   and invalid identifier grammar rejected;
 - unsolicited extensions ignored or rejected by configured policy;
+- exact start/finish handler bindings and bounded extension/CBOR/browser work;
 - Editor's Draft extensions absent from default Level 3 registries;
 - counter rollback surfaced as clone risk;
 - stored counter preserved on clone risk unless explicit policy updates it;

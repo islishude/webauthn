@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/islishude/webauthn"
+	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/codec"
 	codeccbor "github.com/islishude/webauthn/codec/cbor"
 	webcrypto "github.com/islishude/webauthn/crypto"
@@ -46,6 +47,65 @@ func TestAuthenticationDiscoverable(t *testing.T) {
 	}
 	if !bytes.Equal(result.AuthenticatedAs.Bytes(), fixture.userHandle.Bytes()) {
 		t.Fatalf("AuthenticatedAs = %x, want %x", result.AuthenticatedAs.Bytes(), fixture.userHandle.Bytes())
+	}
+}
+
+func TestAuthenticationRejectsInvalidStoredBackupStateAndCopiesRecord(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	options.Credential.BackupState = true
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidBackupState) {
+		t.Fatalf("invalid stored backup state error = %v, want ErrInvalidBackupState", err)
+	}
+
+	options = fixture.finishOptions()
+	options.Credential.Transports = []protocol.AuthenticatorTransport{protocol.TransportUSB}
+	result, err := webauthn.FinishAuthentication(context.Background(), options)
+	if err != nil {
+		t.Fatalf("FinishAuthentication() error = %v", err)
+	}
+	result.Credential.Transports[0] = protocol.TransportNFC
+	if options.Credential.Transports[0] != protocol.TransportUSB {
+		t.Fatal("result credential transports alias caller-owned record")
+	}
+}
+
+func TestAuthenticationRejectsTypedNilVerifier(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	options := fixture.finishOptions()
+	var verifier *pointerSignatureVerifier
+	options.SignatureVerifier = verifier
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("typed-nil verifier error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestAuthenticationRequiresMatchingStartHandlerBinding(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAuthenticationFixture(t, true)
+	startRegistry, err := extension.NewRegistry(extension.Register(trackingExtensionHandler{id: "track", revision: "test-v1"}))
+	if err != nil {
+		t.Fatalf("NewRegistry(start) error = %v", err)
+	}
+	finishRegistry, err := extension.NewRegistry(extension.Register(trackingExtensionHandler{id: "track", revision: "test-v2"}))
+	if err != nil {
+		t.Fatalf("NewRegistry(finish) error = %v", err)
+	}
+	options := fixture.finishOptions()
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.ExtensionBindings = mustExtensionBindings(t, startRegistry, "track")
+	options.ExtensionRegistry = finishRegistry
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("revision mismatch error = %v, want ErrInvalidConfiguration", err)
+	}
+	options.ExtensionRegistry = nil
+	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
+		t.Fatalf("missing registry error = %v, want ErrInvalidConfiguration", err)
 	}
 }
 
@@ -393,9 +453,11 @@ func TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput(t *testing.T) {
 	fixture := newAuthenticationFixture(t, true)
 	options := fixture.finishOptions()
 	appID := "https://legacy.example/appid"
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"appid": appID}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+	options.ExtensionRegistry = mustLevel3Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDAppID)
 	options.ExtensionPolicy.AppID = appID
-	options.Response.ClientExtensionResults = map[string]any{"appid": true}
+	options.Response.ClientExtensionResults = map[string]any{extension.IDAppID: true}
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, appID, authenticationFlagUP, 8, nil))
 
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); err != nil {
@@ -410,6 +472,8 @@ func TestAuthenticationAppIDRejectsPolicyMismatch(t *testing.T) {
 	options := fixture.finishOptions()
 	appID := "https://legacy.example/appid"
 	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+	options.ExtensionRegistry = mustLevel3Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDAppID)
 	options.ExtensionPolicy.AppID = "https://other.example/appid"
 	options.Response.ClientExtensionResults = map[string]any{extension.IDAppID: true}
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, appID, authenticationFlagUP, 8, nil))
@@ -452,6 +516,7 @@ func TestAuthenticationAppIDOutputBindsExpectedRPIDHash(t *testing.T) {
 			options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
 			options.ExtensionPolicy.AppID = appID
 			options.ExtensionRegistry = registry
+			options.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDAppID)
 			options.Response.ClientExtensionResults = tt.output
 			options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, tt.hashInput, authenticationFlagUP, 8, nil))
 
@@ -576,6 +641,7 @@ func TestAuthenticationExtensionOutputRunsAfterSignatureVerification(t *testing.
 	}
 	options := fixture.finishOptions()
 	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
 	options.Response.ClientExtensionResults = map[string]any{"track": true}
 	options.ExtensionRegistry = registry
 	options.SignatureVerifier = failingSignatureVerifier{}
@@ -598,6 +664,7 @@ func TestAuthenticationExtensionOutputDoesNotRunBeforeCloneRiskRejection(t *test
 	}
 	options := fixture.finishOptions()
 	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
 	options.Response.ClientExtensionResults = map[string]any{"track": true}
 	options.ExtensionRegistry = registry
 	options.Credential.SignCount = 8
@@ -616,7 +683,7 @@ func TestAuthenticationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtension
 	t.Parallel()
 
 	requested := newAuthenticationFixture(t, true)
-	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"credProps": true}
+	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
 	if _, err := webauthn.FinishAuthentication(context.Background(), requested.finishOptions()); err != nil {
 		t.Fatalf("FinishAuthentication() with absent requested extension error = %v", err)
 	}
@@ -682,6 +749,7 @@ func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 	}))
 	options.ExtensionMapDecoder = codeccbor.MustNewDecoder()
 	options.ExtensionRegistry = mustLevel2Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDUVM)
 
 	result, err := webauthn.FinishAuthentication(context.Background(), options)
 	if err != nil {
@@ -708,6 +776,7 @@ func TestAuthenticationLevel2LargeBlobExtension(t *testing.T) {
 		extension.IDLargeBlob: map[string]any{"blob": []byte("blob")},
 	}
 	options.ExtensionRegistry = mustLevel2Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDLargeBlob)
 
 	result, err := webauthn.FinishAuthentication(context.Background(), options)
 	if err != nil {
@@ -737,6 +806,7 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 		},
 	}
 	options.ExtensionRegistry = mustLevel3Registry(t)
+	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDPRF)
 
 	result, err := webauthn.FinishAuthentication(context.Background(), options)
 	if err != nil {
@@ -846,12 +916,13 @@ func newAuthenticationFixture(t *testing.T, usernameFirst bool) *authenticationF
 	}
 
 	credential := webauthn.CredentialRecord{
-		Type:       protocol.CredentialTypePublicKey,
-		ID:         mustCredentialID(t, credentialID),
-		PublicKey:  codec.NewCredentialPublicKey(-7, []byte("raw-key"), codec.CredentialPublicKeyMaterial{}),
-		UserHandle: userHandle,
-		RPID:       "example.com",
-		SignCount:  7,
+		Type:            protocol.CredentialTypePublicKey,
+		ID:              mustCredentialID(t, credentialID),
+		PublicKey:       codec.NewCredentialPublicKey(-7, []byte("raw-key"), codec.CredentialPublicKeyMaterial{}),
+		UserHandle:      userHandle,
+		RPID:            "example.com",
+		SignCount:       7,
+		AttestationType: attestation.TypeNone,
 	}
 	response := webauthn.AuthenticationResponse{
 		Type:              protocol.CredentialTypePublicKey,
@@ -973,6 +1044,12 @@ type failingSignatureVerifier struct{}
 
 func (failingSignatureVerifier) VerifySignature(context.Context, webcrypto.SignatureInput) error {
 	return errors.New("signature rejected")
+}
+
+type pointerSignatureVerifier struct{}
+
+func (*pointerSignatureVerifier) VerifySignature(context.Context, webcrypto.SignatureInput) error {
+	return nil
 }
 
 type algorithmPolicyFunc func(protocol.COSEAlgorithmIdentifier) bool

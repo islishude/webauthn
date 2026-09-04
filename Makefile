@@ -1,14 +1,13 @@
 SHELL := /bin/sh
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
-PRETTIER ?= npx -y prettier
+PRETTIER ?= ./e2e/node_modules/.bin/prettier
+TSC ?= ./e2e/node_modules/.bin/tsc
 GOFLAGS ?=
 FUZZTIME ?= 10s
 PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
-GO_FILES := $(shell find . -type f -name '*.go' -not -path './.git/*' -not -path './vendor/*')
-
-.PHONY: help format format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci
+.PHONY: help node-deps format format-check lint test test-race test-fuzz-smoke benchmark e2e-typecheck example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci
 
 help:
 	@echo 'Targets:'
@@ -18,6 +17,8 @@ help:
 	@echo '  make test             - run go test ./...'
 	@echo '  make test-race        - run go test -race ./...'
 	@echo '  make test-fuzz-smoke  - run each bounded fuzz target separately'
+	@echo '  make benchmark        - run allocation-reporting Go benchmarks'
+	@echo '  make e2e-typecheck    - run strict TypeScript checking'
 	@echo '  make example-build    - build public examples'
 	@echo '  make import-graph-check - verify root import graph boundaries'
 	@echo '  make license-check    - verify dependency license manifest coverage'
@@ -28,11 +29,14 @@ help:
 	@echo '  make mod-check        - run go mod tidy and verify go.mod/go.sum are clean'
 	@echo '  make ci               - run the local CI gate'
 
-format:
-	$(GOLANGCI_LINT) fmt ./...
-	$(PRETTIER) --ignore-path .gitignore  --write .
+node-deps:
+	npm --prefix e2e ci
 
-format-check:
+format: node-deps
+	$(GOLANGCI_LINT) fmt ./...
+	$(PRETTIER) --ignore-path .gitignore --write .
+
+format-check: node-deps
 	$(GOLANGCI_LINT) fmt -d ./...
 	$(PRETTIER) --ignore-path .gitignore --check .
 
@@ -58,6 +62,12 @@ test-fuzz-smoke:
 			$(GO) test $(GOFLAGS) "$$pkg" -run '^$$' -fuzz "^$$name$$" -timeout 15m -fuzztime=$(FUZZTIME) || exit $$?; \
 		done; \
 	fi
+
+benchmark:
+	$(GO) test $(GOFLAGS) -run '^$$' -bench . -benchmem ./...
+
+e2e-typecheck: node-deps
+	$(TSC) --noEmit -p e2e/tsconfig.json
 
 example-build:
 	$(GO) test $(GOFLAGS) ./examples/...
@@ -90,17 +100,14 @@ readme-check:
 	fi
 	@echo 'readme-check: README references compile-checked examples and release notes'
 
-browser-fixtures:
-	npm --prefix e2e ci
+browser-fixtures: node-deps
 	PLAYWRIGHT_MODULE_DIR="$(CURDIR)/e2e/node_modules" PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(PLAYWRIGHT_CHROMIUM_EXECUTABLE)" node scripts/generate-browser-fixtures.mjs
 
-e2e:
-	npm --prefix e2e ci
+e2e: node-deps
 	npx --prefix e2e playwright install --with-deps chromium
 	npm --prefix e2e test
 
-e2e-headed:
-	npm --prefix e2e ci
+e2e-headed: node-deps
 	npm --prefix e2e run test:headed
 
 mod-check:
@@ -123,4 +130,4 @@ ci-docs:
 	@test -f .gitattributes
 	@echo 'ci-docs: required docs and quality configuration are present'
 
-ci: ci-docs readme-check format-check lint test test-race test-fuzz-smoke example-build import-graph-check license-check mod-check
+ci: ci-docs readme-check format-check e2e-typecheck lint test test-race test-fuzz-smoke example-build import-graph-check license-check mod-check

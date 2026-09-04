@@ -24,7 +24,7 @@ type registrationExtensionInputs struct {
 }
 
 func verifyRegistrationExtensions(ctx context.Context, inputs registrationExtensionInputs) (extension.Results, error) {
-	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.registry, inputs.clientDataJSON); err != nil {
+	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.state.ExtensionBindings, inputs.clientDataJSON); err != nil {
 		return nil, err
 	}
 	return verifyExtensions(ctx, extensionVerificationInputs{
@@ -72,12 +72,9 @@ func validateRemoteClientDataInput(operation extension.Operation, inputs protoco
 	return nil
 }
 
-func verifyRemoteClientDataBinding(inputs protocol.ExtensionInputs, registry *extension.Registry, raw protocol.ClientDataJSON) error {
+func verifyRemoteClientDataBinding(inputs protocol.ExtensionInputs, bindings []extension.Binding, raw protocol.ClientDataJSON) error {
 	value, requested := inputs[extension.IDRemoteClientDataJSON]
-	if !requested || registry == nil {
-		return nil
-	}
-	if !registry.Contains(extension.IDRemoteClientDataJSON) {
+	if !requested || !hasExtensionBinding(bindings, extension.IDRemoteClientDataJSON) {
 		return nil
 	}
 	serialized, ok := value.(string)
@@ -148,28 +145,19 @@ type extensionVerificationInputs struct {
 }
 
 func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (extension.Results, error) {
-	ids := map[string]struct{}{}
-	for id := range inputs.requestedExtensions {
-		if !protocolidentifier.Valid(id) {
-			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
-		}
-		ids[id] = struct{}{}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 	}
-	for id := range inputs.clientExtensionResults {
-		if !protocolidentifier.Valid(id) {
-			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
-		}
-		ids[id] = struct{}{}
-	}
-	for id := range inputs.authenticatorExtensions {
-		if !protocolidentifier.Valid(id) {
-			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
-		}
-		ids[id] = struct{}{}
+	ids, err := validateExtensionWork(inputs.requestedExtensions, inputs.clientExtensionResults, inputs.authenticatorExtensions)
+	if err != nil {
+		return nil, err
 	}
 
 	results := make(extension.Results, 0, len(ids))
 	for _, id := range slices.Sorted(maps.Keys(ids)) {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+		}
 		clientInput, requested := inputs.requestedExtensions[id]
 		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
 		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
@@ -242,50 +230,117 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 	return results, nil
 }
 
+func validateExtensionWork(requested protocol.ExtensionInputs, client map[string]any, authenticator codec.ExtensionMap) (map[string]struct{}, error) {
+	if len(requested) > extension.MaxEntries || len(client) > extension.MaxEntries || len(authenticator) > extension.MaxEntries {
+		return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
+	}
+	ids := make(map[string]struct{}, len(requested)+len(client)+len(authenticator))
+	for _, values := range []map[string]any{requested, client, authenticator} {
+		for id := range values {
+			if !protocolidentifier.Valid(id) {
+				return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+			}
+			ids[id] = struct{}{}
+		}
+	}
+	if len(ids) > extension.MaxEntries {
+		return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
+	}
+	return ids, nil
+}
+
+func validateClientExtensionResults(results map[string]any) error {
+	if len(results) > extension.MaxEntries {
+		return fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
+	}
+	for id := range results {
+		if !protocolidentifier.Valid(id) {
+			return fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
+	}
+	return nil
+}
+
 type extensionInputTransform func(string, any) any
 
-func prepareExtensionInputs(operation extension.Operation, inputs protocol.ExtensionInputs, registry *extension.Registry, policy ExtensionInputPolicy, transform extensionInputTransform) (protocol.ExtensionInputs, error) {
+func prepareExtensionInputs(operation extension.Operation, inputs protocol.ExtensionInputs, registry *extension.Registry, policy ExtensionInputPolicy, transform extensionInputTransform) (protocol.ExtensionInputs, []extension.Binding, error) {
 	if len(inputs) == 0 {
-		return nil, nil
+		return nil, nil, nil
+	}
+	if len(inputs) > extension.MaxEntries {
+		return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
 	}
 	if registry == nil {
-		return nil, fmt.Errorf("%w: extension registry is required when extensions are requested", ErrExtensionPolicy)
+		return nil, nil, fmt.Errorf("%w: extension registry is required when extensions are requested", ErrExtensionPolicy)
 	}
 	out := make(protocol.ExtensionInputs, len(inputs))
+	bindings := make([]extension.Binding, 0, len(inputs))
 	for _, id := range slices.Sorted(maps.Keys(inputs)) {
 		if !protocolidentifier.Valid(id) {
-			return nil, fmt.Errorf("%w: extension id is invalid", ErrExtensionPolicy)
+			return nil, nil, fmt.Errorf("%w: extension id is invalid", ErrExtensionPolicy)
 		}
 		value, err := extension.CloneValue(inputs[id])
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 		if transform != nil {
 			value = transform(id, value)
 		}
 		known := registry.Contains(id)
 		if !known {
+			if _, builtIn := extension.BuiltInBinding(id); builtIn {
+				return nil, nil, fmt.Errorf("%w: built-in extension %s requires its registered handler", ErrExtensionPolicy, id)
+			}
 			if policy.RejectUnknown {
-				return nil, fmt.Errorf("%w: unknown extension input %s", ErrExtensionPolicy, id)
+				return nil, nil, fmt.Errorf("%w: unknown extension input %s", ErrExtensionPolicy, id)
 			}
 			out[id] = value
 			continue
 		}
 		raw, err := extension.NewRawValue(value)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 		normalized, err := registry.ValidateInput(extension.InputRequest{Operation: operation, ID: id, Input: raw})
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 		cloned, err := normalized.Clone()
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 		out[id] = cloned
+		binding, ok := registry.Binding(id)
+		if !ok {
+			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrBindingMismatch)
+		}
+		bindings = append(bindings, binding)
 	}
-	return out, nil
+	return out, bindings, nil
+}
+
+func validateFinishExtensionBindings(requested protocol.ExtensionInputs, bindings []extension.Binding, registry *extension.Registry) error {
+	bound := make(map[string]extension.Binding, len(bindings))
+	for _, binding := range bindings {
+		bound[binding.ID] = binding
+	}
+	for id := range requested {
+		binding, wasKnown := bound[id]
+		current, knownNow := registry.Binding(id)
+		switch {
+		case wasKnown && (!knownNow || current != binding):
+			return fmt.Errorf("%w: %s", extension.ErrBindingMismatch, id)
+		case !wasKnown && knownNow:
+			return fmt.Errorf("%w: %s was not bound at ceremony start", extension.ErrBindingMismatch, id)
+		}
+	}
+	return nil
+}
+
+func hasExtensionBinding(bindings []extension.Binding, id string) bool {
+	return slices.ContainsFunc(bindings, func(binding extension.Binding) bool {
+		return binding.ID == id
+	})
 }
 
 func cloneExtensionInputs(inputs protocol.ExtensionInputs) (protocol.ExtensionInputs, error) {

@@ -16,6 +16,10 @@ const (
 	// Format is the WebAuthn attestation format identifier for compound
 	// attestation.
 	Format = "compound"
+	// DefaultMaxStatements bounds cryptographic work for attacker-controlled
+	// compound attestation arrays.
+	DefaultMaxStatements    = 16
+	maxConfiguredStatements = 64
 )
 
 var (
@@ -36,6 +40,9 @@ type Policy struct {
 	// RequireAll forces all sub-statements to verify even when
 	// MinimumSuccessful is set.
 	RequireAll bool
+	// MaxStatements bounds the number of sub-statements evaluated. Zero uses
+	// DefaultMaxStatements.
+	MaxStatements int
 }
 
 // Verifier verifies the exact "compound" attestation format.
@@ -62,6 +69,9 @@ func (Verifier) Format() string {
 
 // VerifyAttestation verifies the configured number of sub-statements.
 func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.VerificationRequest) (attestation.VerificationResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if request.Format != Format {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
@@ -82,6 +92,11 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	warnings := make([]string, 0)
 	successes := 0
 	for _, statement := range statements {
+		select {
+		case <-ctx.Done():
+			return attestation.VerificationResult{}, ctx.Err()
+		default:
+		}
 		if statement.Format == Format {
 			return attestation.VerificationResult{}, ErrInvalidStatement
 		}
@@ -104,12 +119,12 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 			warnings = append(warnings, "compound sub-statement failed: "+statement.Format)
 			continue
 		}
-		if !result.CryptographicallyValid {
+		if !result.CryptographicallyValid || !result.Type.Known() || !result.TrustPath.Kind.Known() {
 			warnings = append(warnings, "compound sub-statement invalid: "+statement.Format)
 			continue
 		}
 		successes++
-		results = append(results, result)
+		results = append(results, result.Clone())
 	}
 
 	if successes < required {
@@ -152,6 +167,13 @@ func compoundSubStatements(statement codec.AttestationStatement) ([]codec.Compou
 
 func (v Verifier) requiredSuccesses(total int) (int, error) {
 	if total < 2 {
+		return 0, ErrInvalidStatement
+	}
+	maximum := v.policy.MaxStatements
+	if maximum == 0 {
+		maximum = DefaultMaxStatements
+	}
+	if maximum < 2 || maximum > maxConfiguredStatements || total > maximum {
 		return 0, ErrInvalidStatement
 	}
 	if v.policy.RequireAll || v.policy.MinimumSuccessful == 0 {

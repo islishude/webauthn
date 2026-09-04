@@ -15,6 +15,7 @@ import (
 	"github.com/islishude/webauthn/attestation"
 	"github.com/islishude/webauthn/attestation/internal/attcrypto"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -86,7 +87,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if request.Format != format || v.jwsVerifier == nil {
+	if request.Format != format || interfaceutil.IsNil(v.jwsVerifier) {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 	if err := validatePolicy(v.policy); err != nil {

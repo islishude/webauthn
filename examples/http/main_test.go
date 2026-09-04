@@ -130,6 +130,17 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 	if !ok || updated.SignCount != 8 || !updated.BackupState || !updated.UVInitialized || updated.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform {
 		t.Fatalf("updated credential = %+v", updated)
 	}
+	if h.applyCredentialUpdate(webauthn.CredentialUpdate{
+		ID:                              credentialID,
+		PreviousSignCount:               8,
+		PreviousBackupState:             false,
+		PreviousUVInitialized:           true,
+		PreviousAuthenticatorAttachment: protocol.AuthenticatorAttachmentCrossPlatform,
+		BackupState:                     false,
+		BackupStateChanged:              true,
+	}) {
+		t.Fatal("stale zero-counter-style state predicate succeeded")
+	}
 }
 
 func TestHTTPExampleUsesOpaqueHandleAndExistingCredentialExclusions(t *testing.T) {

@@ -2,7 +2,7 @@
 
 Status: 25 August 2026 Level 3 Recommendation ceremony APIs, strict protocol
 decoding, opt-in Editor's Draft extension handling, attestation trust policy,
-optional browser/HTTP adapters, and examples implemented, revised 2026-08-28.
+optional browser/HTTP adapters, and examples implemented, revised 2026-09-04.
 
 This document defines public API boundaries. Plans 10 through 14 upgraded the
 previous Level 2 surface to WebAuthn Level 3 while preserving the root package's
@@ -71,7 +71,8 @@ It returns creation options and caller-stored ceremony state. The core does not
 persist ceremony state. `ConditionalMediation` does not wrap the returned public
 key options: the caller must first check the client's `conditionalCreate`
 capability and set `CredentialCreationOptions.mediation` to `"conditional"` in
-the browser call.
+the browser call. For each registered extension input, state also contains the
+sorted handler `Binding` captured at start; callers must persist it unchanged.
 
 ### Registration finish
 
@@ -93,6 +94,11 @@ User presence remains required by default. It is not required only when the
 trusted registration state records conditional mediation, as specified by the
 Level 3 registration relying-party operation.
 
+The root `RegistrationResponse` no longer contains `PublicKey`. The decoded
+COSE key inside signed authenticator data is authoritative. The optional browser
+adapter still validates an offered Level 3 `response.publicKey` base64url value,
+but deliberately discards that redundant unsigned copy.
+
 ### Authentication start
 
 `StartAuthentication(ctx, AuthenticationStartOptions)` accepts RP ID,
@@ -103,7 +109,9 @@ for deterministic timeout state; zero values mean a five-minute browser hint and
 a ten-minute server challenge lifetime.
 
 It returns request options and caller-stored ceremony state. Empty
-`allowCredentials` is supported for discoverable/passkey flows.
+`allowCredentials` is supported for discoverable/passkey flows. As with
+registration, every known extension input carries its exact start-time handler
+binding.
 
 ### Authentication finish
 
@@ -117,13 +125,25 @@ UV initialization status, conditional credential update fields, backup state,
 authenticator attachment, ordered extension results, and warnings. Backup
 eligibility is checked against registration state and never updated.
 Known authentication-time attachment changes are included in the conditional
-credential update together with an explicit changed flag.
+credential update together with an explicit changed flag. The update's
+compare-and-swap predicate consists of `PreviousSignCount`,
+`PreviousBackupState`, `PreviousUVInitialized`, and
+`PreviousAuthenticatorAttachment`; stores must compare all four before applying
+any changed fields.
 
 ## Origin boundary
 
 `OriginPolicy` is the single root ceremony origin configuration. It contains
 allowed origins, allowed top origins, and an explicit escape hatch for legacy
-cross-origin responses without `topOrigin`.
+cross-origin responses without `topOrigin`. Allowed origins must be canonical
+scheme-and-authority values using HTTPS, or HTTP on `localhost`/a canonical
+loopback IP. Default ports, non-canonical hosts, paths, queries, fragments, and
+userinfo are rejected. RP IDs are lowercase canonical DNS names.
+
+By default every allowed origin host must equal the RP ID or be a subdomain of
+it. `AllowRelatedOrigins` permits an explicitly listed origin outside that
+relationship only when the caller has independently performed the
+Recommendation's related-origins validation; it does not add wildcard matching.
 
 `CollectedClientData.origin` must match `AllowedOrigins`. Presence of
 `topOrigin` is tracked independently of its value: a present null, empty, or
@@ -149,7 +169,8 @@ The browser DTOs cover:
 
 - creation/request options, including hints and attestation formats;
 - credential descriptors;
-- registration responses, including Level 3 `authenticatorData`, `publicKey`,
+- registration responses, including Level 3 `authenticatorData`, validated but
+  discarded `publicKey`,
   `publicKeyAlgorithm`, and authenticator attachment;
 - authentication responses, including authenticator attachment;
 - known Level 3 PRF and largeBlob byte fields while preserving unknown
@@ -165,6 +186,10 @@ The optional `transport/http` package reads bounded request bodies, decodes
 browser JSON responses, writes browser JSON options, and writes generic JSON
 errors. It does not own routing, sessions, cookies, CSRF, persistence, account
 lookup, credential lookup, or ceremony-state storage.
+
+Direct browser response decoding and the HTTP adapter both cap response JSON at
+1 MiB. A custom HTTP body limit may be smaller but cannot raise this fixed
+decoder budget.
 
 ## Codec and crypto boundary
 
@@ -233,9 +258,15 @@ caller-owned uniqueness and persistence decisions remain outside the root.
 
 Handlers implement `extension.Handler[I, O]`: `ValidateInput` converts an
 untrusted `RawValue` into normalized `I`, and `VerifyOutput` receives that typed
-input and returns `Verification[O]`. `extension.Register` is the sole explicit
-type-erasure point needed by the heterogeneous registry. Registry dispatch
-revalidates restored inputs before constructing `OutputRequest[I]`.
+input and returns `Verification[O]`. `Revision` returns a stable semantic
+identifier and must change whenever older persisted normalized state is not safe
+under the new implementation. `extension.Register` is the sole explicit
+type-erasure point needed by the heterogeneous registry. Registry construction
+freezes IDs and revisions, and finish requires exact equality with each
+persisted `Binding` before dispatch. Reserved built-in IDs require a registered
+handler claiming the package-defined revision and cannot be treated as unknown;
+custom handler revision claims remain trusted caller configuration. Registry
+dispatch revalidates restored inputs before constructing `OutputRequest[I]`.
 
 `RawValue.Present` and `RawValue.Null` distinguish an absent extension member
 from an explicit null value, so built-in handlers can reject malformed null
@@ -266,10 +297,15 @@ extension with no output remains valid. Unrequested outputs can be rejected with
 `RejectUnrequested`. Preserved raw values are recursively copied, including
 nested maps with non-string comparable CBOR keys, with bounded nesting.
 Known outputs are retrieved with `extension.Find(results, handler)`, which
-infers `O` from the handler and returns `TypedResult[O]`; unknown and
-unrequested values are retrieved with `extension.FindRaw`. `Result` exposes
-only identifier, acceptance, deprecation, and warning metadata and never an
-untyped output map.
+infers `O` from the handler and returns `TypedResult[O]` only when the result's
+frozen ID and revision also match; unknown and unrequested values are retrieved
+with `extension.FindRaw`. `Result` exposes only identifier, acceptance,
+deprecation, and warning metadata and never an untyped output map.
+
+Registry entries, requested inputs, and the combined input/output ID set are
+limited to 64. Recursive raw-value copies default to depth 32, 4096 nodes, and
+1 MiB of aggregate strings/bytes. Invalid, negative, or exceeded budgets fail
+closed, and verification checks context cancellation between handlers.
 
 ## Storage boundary
 
@@ -280,9 +316,14 @@ authentication, cookie sealing, or replay prevention and is only for trusted
 server-side storage. Registration state serialization preserves the
 conditional-mediation binding and treats its absent zero value as ordinary,
 UP-required registration.
-Envelope v2 persists credential type explicitly and continues to read v1
-records by interpreting an absent type member as `public-key`; an explicitly
-empty or null type remains malformed.
+Envelope v3 persists extension handler bindings and
+`OriginPolicy.AllowRelatedOrigins`. Credential record decoding remains
+compatible with v1 and v2: an absent type in a v1 credential is interpreted as
+`public-key`, while explicit empty/null values and invalid records remain
+malformed. A v1 or v2 ceremony state containing extension inputs has no safe
+semantic binding and is rejected; legacy state without extensions remains
+readable for short-term migration only when it also contains no v3-only
+related-origin policy.
 Finish rejects a missing expiry or unresolved user-verification policy whether
 state was restored with `storage/json` or a caller-owned schema.
 

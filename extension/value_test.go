@@ -1,6 +1,7 @@
 package extension_test
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -72,6 +73,24 @@ func TestCloneValueRejectsReferenceMapKeysAndCycles(t *testing.T) {
 	cycle["self"] = cycle
 	if _, err := extension.CloneValue(cycle); !errors.Is(err, extension.ErrInvalidRequest) {
 		t.Fatalf("CloneValue(cycle) error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestCloneValueEnforcesAggregateBudgets(t *testing.T) {
+	t.Parallel()
+
+	if _, err := extension.CloneValue(bytes.Repeat([]byte{0x01}, extension.DefaultMaxCloneBytes+1)); !errors.Is(err, extension.ErrInvalidRequest) {
+		t.Fatalf("oversized bytes error = %v, want ErrInvalidRequest", err)
+	}
+	values := make([]any, extension.DefaultMaxCloneNodes+1)
+	if _, err := extension.CloneValue(values); !errors.Is(err, extension.ErrInvalidRequest) {
+		t.Fatalf("oversized node tree error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := extension.CloneValueWithLimits([]any{true, false}, extension.CloneLimits{MaxNodes: 2}); !errors.Is(err, extension.ErrInvalidRequest) {
+		t.Fatalf("custom node budget error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := extension.CloneValueWithLimits(true, extension.CloneLimits{MaxBytes: -1}); !errors.Is(err, extension.ErrInvalidRequest) {
+		t.Fatalf("negative budget error = %v, want ErrInvalidRequest", err)
 	}
 }
 

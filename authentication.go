@@ -14,6 +14,7 @@ import (
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -67,6 +68,7 @@ type AuthenticationState struct {
 	OriginPolicy              OriginPolicy
 	RequestedUserVerification protocol.UserVerificationRequirement
 	RequestedExtensions       protocol.ExtensionInputs
+	ExtensionBindings         []extension.Binding
 	AllowCredentials          []protocol.CredentialDescriptor
 	ExpectedUserHandle        protocol.UserHandle
 	ExpiresAt                 time.Time
@@ -83,6 +85,9 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	if err := validateRPIDOriginPolicy(options.RPID, options.OriginPolicy); err != nil {
+		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	for _, descriptor := range options.AllowCredentials {
 		if err := descriptor.Validate(); err != nil {
 			return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
@@ -94,6 +99,8 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		generator := options.ChallengeGenerator
 		if generator == nil {
 			generator = RandomChallengeGenerator{}
+		} else if interfaceutil.IsNil(generator) {
+			return AuthenticationStartResult{}, fmt.Errorf("%w: challenge generator is typed nil", ErrInvalidConfiguration)
 		}
 		generated, err := generator.GenerateChallenge(ctx)
 		if err != nil {
@@ -109,7 +116,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if err := validateUserVerification(userVerification); err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
-	preparedExtensions, err := prepareExtensionInputs(extension.OperationAuthentication, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, func(id string, value any) any {
+	preparedExtensions, extensionBindings, err := prepareExtensionInputs(extension.OperationAuthentication, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, func(id string, value any) any {
 		if id == extension.IDPRF {
 			return attachAllowedCredentialIDsToPRFInput(value, options.AllowCredentials)
 		}
@@ -157,6 +164,7 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 		OriginPolicy:              options.OriginPolicy.clone(),
 		RequestedUserVerification: userVerification,
 		RequestedExtensions:       stateExtensions,
+		ExtensionBindings:         slices.Clone(extensionBindings),
 		AllowCredentials:          cloneCredentialDescriptors(options.AllowCredentials),
 		ExpectedUserHandle:        options.ExpectedUserHandle,
 		ExpiresAt:                 expiresAt,
@@ -235,16 +243,19 @@ type AuthenticationFinishOptions struct {
 
 // CredentialUpdate is a conditional storage update after authentication.
 type CredentialUpdate struct {
-	ID                             protocol.CredentialID
-	PreviousSignCount              uint32
-	SignCount                      uint32
-	SignCountChanged               bool
-	BackupState                    bool
-	BackupStateChanged             bool
-	UVInitialized                  bool
-	UVInitializedChanged           bool
-	AuthenticatorAttachment        protocol.AuthenticatorAttachment
-	AuthenticatorAttachmentChanged bool
+	ID                              protocol.CredentialID
+	PreviousSignCount               uint32
+	PreviousBackupState             bool
+	PreviousUVInitialized           bool
+	PreviousAuthenticatorAttachment protocol.AuthenticatorAttachment
+	SignCount                       uint32
+	SignCountChanged                bool
+	BackupState                     bool
+	BackupStateChanged              bool
+	UVInitialized                   bool
+	UVInitializedChanged            bool
+	AuthenticatorAttachment         protocol.AuthenticatorAttachment
+	AuthenticatorAttachmentChanged  bool
 }
 
 // AuthenticationResult is the verified authentication ceremony output.
@@ -271,7 +282,13 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 	if err := validateAuthenticationState(options.State, options.now()); err != nil {
 		return AuthenticationResult{}, err
 	}
+	if err := validateFinishExtensionBindings(options.State.RequestedExtensions, options.State.ExtensionBindings, options.ExtensionRegistry); err != nil {
+		return AuthenticationResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	if err := validateAuthenticationResponseShape(options.Response); err != nil {
+		return AuthenticationResult{}, err
+	}
+	if err := validateClientExtensionResults(options.Response.ClientExtensionResults); err != nil {
 		return AuthenticationResult{}, err
 	}
 	if err := verifyAuthenticationCredentialBinding(options.State, options.Response, options.Credential); err != nil {
@@ -322,7 +339,7 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		return AuthenticationResult{}, err
 	}
 
-	credential := options.Credential
+	credential := options.Credential.Clone()
 	nextSignCount := options.Credential.SignCount
 	if counter.Status == CounterStatusIncremented || (counter.CloneRisk && options.CounterPolicy.UpdateOnCloneRisk) {
 		nextSignCount = parsedAuthData.SignCount
@@ -347,16 +364,19 @@ func FinishAuthentication(ctx context.Context, options AuthenticationFinishOptio
 		AuthenticatedAs: credential.UserHandle,
 		Counter:         counter,
 		Update: CredentialUpdate{
-			ID:                             credential.ID,
-			PreviousSignCount:              options.Credential.SignCount,
-			SignCount:                      nextSignCount,
-			SignCountChanged:               nextSignCount != options.Credential.SignCount,
-			BackupState:                    nextBackupState,
-			BackupStateChanged:             nextBackupState != options.Credential.BackupState,
-			UVInitialized:                  nextUVInitialized,
-			UVInitializedChanged:           nextUVInitialized != options.Credential.UVInitialized,
-			AuthenticatorAttachment:        nextAuthenticatorAttachment,
-			AuthenticatorAttachmentChanged: nextAuthenticatorAttachment != options.Credential.AuthenticatorAttachment,
+			ID:                              credential.ID,
+			PreviousSignCount:               options.Credential.SignCount,
+			PreviousBackupState:             options.Credential.BackupState,
+			PreviousUVInitialized:           options.Credential.UVInitialized,
+			PreviousAuthenticatorAttachment: options.Credential.AuthenticatorAttachment,
+			SignCount:                       nextSignCount,
+			SignCountChanged:                nextSignCount != options.Credential.SignCount,
+			BackupState:                     nextBackupState,
+			BackupStateChanged:              nextBackupState != options.Credential.BackupState,
+			UVInitialized:                   nextUVInitialized,
+			UVInitializedChanged:            nextUVInitialized != options.Credential.UVInitialized,
+			AuthenticatorAttachment:         nextAuthenticatorAttachment,
+			AuthenticatorAttachmentChanged:  nextAuthenticatorAttachment != options.Credential.AuthenticatorAttachment,
 		},
 		Extensions:              extensionResults,
 		Warnings:                authenticationWarnings(counter),
@@ -375,11 +395,24 @@ func (o AuthenticationFinishOptions) now() time.Time {
 }
 
 func validateAuthenticationDependencies(options AuthenticationFinishOptions) error {
-	if options.SignatureVerifier == nil {
+	if interfaceutil.IsNil(options.SignatureVerifier) {
 		return fmt.Errorf("%w: signature verifier is required", ErrInvalidConfiguration)
+	}
+	if options.AlgorithmPolicy != nil && interfaceutil.IsNil(options.AlgorithmPolicy) {
+		return fmt.Errorf("%w: algorithm policy is typed nil", ErrInvalidConfiguration)
 	}
 	if options.Credential.Type.Validate() != nil || options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
 		return ErrCredentialNotAllowed
+	}
+	if err := options.Credential.Validate(); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidBackupState):
+			return ErrInvalidBackupState
+		case options.Credential.PublicKey.Validate() != nil:
+			return ErrUnsupportedAlgorithm
+		default:
+			return ErrCredentialNotAllowed
+		}
 	}
 	if options.CounterPolicy.RejectCloneRisk && options.CounterPolicy.UpdateOnCloneRisk {
 		return fmt.Errorf("%w: clone-risk counter policy cannot reject and update", ErrInvalidConfiguration)
@@ -389,28 +422,11 @@ func validateAuthenticationDependencies(options AuthenticationFinishOptions) err
 }
 
 func validateAuthenticationState(state AuthenticationState, now time.Time) error {
-	if state.Challenge.Len() == 0 || state.RPID == "" {
-		return ErrInvalidCeremonyState
-	}
-	if err := validateOriginPolicy(state.OriginPolicy); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
-	}
-	if state.ExpiresAt.IsZero() {
-		return fmt.Errorf("%w: expiry is required", ErrInvalidCeremonyState)
-	}
-	if err := validateUserVerification(state.RequestedUserVerification); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
-	}
-	for _, descriptor := range state.AllowCredentials {
-		if err := descriptor.Validate(); err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
-		}
-	}
-	if err := validateStoredAuthenticationExtensionContext(state.RequestedExtensions, state.AllowCredentials); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, err)
-	}
-	if !now.Before(state.ExpiresAt) {
+	if !state.ExpiresAt.IsZero() && !now.Before(state.ExpiresAt) {
 		return ErrCeremonyExpired
+	}
+	if err := state.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -493,9 +509,6 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 	if parsed.Flags.BackupEligible() != credential.BackupEligible {
 		return protocol.ParsedAuthenticatorData{}, ErrBackupEligibilityMismatch
 	}
-	if credential.PublicKey.Algorithm == 0 || credential.PublicKey.Algorithm.Validate() != nil {
-		return protocol.ParsedAuthenticatorData{}, ErrUnsupportedAlgorithm
-	}
 
 	return parsed, nil
 }
@@ -520,7 +533,7 @@ func decodeAuthenticationExtensions(decoder codec.ExtensionMapDecoder, parsed pr
 	if !parsed.Flags.HasExtensionData() {
 		return nil, nil
 	}
-	if decoder == nil {
+	if interfaceutil.IsNil(decoder) {
 		return nil, fmt.Errorf("%w: authentication extension map decoder is required for authenticator extensions", ErrInvalidConfiguration)
 	}
 
@@ -543,7 +556,7 @@ type authenticationExtensionInputs struct {
 }
 
 func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationExtensionInputs) (extension.Results, error) {
-	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.registry, inputs.clientDataJSON); err != nil {
+	if err := verifyRemoteClientDataBinding(inputs.state.RequestedExtensions, inputs.state.ExtensionBindings, inputs.clientDataJSON); err != nil {
 		return nil, err
 	}
 	return verifyExtensions(ctx, extensionVerificationInputs{

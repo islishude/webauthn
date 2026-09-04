@@ -6,18 +6,75 @@ import (
 	"slices"
 )
 
-const maxCloneDepth = 32
+const (
+	// DefaultMaxCloneDepth bounds recursive extension value nesting.
+	DefaultMaxCloneDepth = 32
+	// DefaultMaxCloneNodes bounds aggregate container and scalar work.
+	DefaultMaxCloneNodes = 4096
+	// DefaultMaxCloneBytes bounds aggregate string and byte-slice data.
+	DefaultMaxCloneBytes = 1 << 20
+)
+
+// CloneLimits bounds recursive defensive-copy work.
+type CloneLimits struct {
+	MaxDepth int
+	MaxNodes int
+	MaxBytes int
+}
+
+type cloneBudget struct {
+	limits CloneLimits
+	nodes  int
+	bytes  int
+}
 
 // CloneValue returns a recursive defensive copy of supported extension input
 // and output values. Application-specific types may provide Clone() T;
 // unsupported structs fail explicitly.
 func CloneValue(value any) (any, error) {
-	return cloneValueAt(value, 0)
+	return CloneValueWithLimits(value, CloneLimits{})
 }
 
-func cloneValueAt(value any, depth int) (any, error) {
-	if depth > maxCloneDepth {
+// CloneValueWithLimits returns a recursive defensive copy using limits. Zero
+// fields select the package defaults.
+func CloneValueWithLimits(value any, limits CloneLimits) (any, error) {
+	if limits.MaxDepth < 0 || limits.MaxNodes < 0 || limits.MaxBytes < 0 {
+		return nil, fmt.Errorf("%w: clone limits must not be negative", ErrInvalidRequest)
+	}
+	limits = normalizeCloneLimits(limits)
+	budget := &cloneBudget{limits: limits}
+	return cloneValueAt(value, 0, budget)
+}
+
+func normalizeCloneLimits(limits CloneLimits) CloneLimits {
+	if limits.MaxDepth == 0 {
+		limits.MaxDepth = DefaultMaxCloneDepth
+	}
+	if limits.MaxNodes == 0 {
+		limits.MaxNodes = DefaultMaxCloneNodes
+	}
+	if limits.MaxBytes == 0 {
+		limits.MaxBytes = DefaultMaxCloneBytes
+	}
+	return limits
+}
+
+func (budget *cloneBudget) consume(nodes int, bytes int) error {
+	if nodes < 0 || bytes < 0 || budget.nodes > budget.limits.MaxNodes-nodes || budget.bytes > budget.limits.MaxBytes-bytes {
+		return fmt.Errorf("%w: extension value exceeds clone budget", ErrInvalidRequest)
+	}
+	budget.nodes += nodes
+	budget.bytes += bytes
+	return nil
+}
+
+func cloneValueAt(value any, depth int, budget *cloneBudget) (any, error) {
+	if depth > budget.limits.MaxDepth {
 		return nil, fmt.Errorf("%w: extension value nesting too deep", ErrInvalidRequest)
+	}
+	nodes, byteCount := directCloneCost(value)
+	if err := budget.consume(nodes, byteCount); err != nil {
+		return nil, err
 	}
 	if value == nil {
 		return nil, nil
@@ -63,7 +120,7 @@ func cloneValueAt(value any, depth int) (any, error) {
 			out = reflect.MakeSlice(reflected.Type(), reflected.Len(), reflected.Len())
 		}
 		for i := range reflected.Len() {
-			item, err := cloneValueAt(reflected.Index(i).Interface(), depth+1)
+			item, err := cloneValueAt(reflected.Index(i).Interface(), depth+1, budget)
 			if err != nil {
 				return nil, err
 			}
@@ -76,11 +133,14 @@ func cloneValueAt(value any, depth int) (any, error) {
 		out := reflect.MakeMapWithSize(reflected.Type(), reflected.Len())
 		iterator := reflected.MapRange()
 		for iterator.Next() {
+			if err := budget.consume(1, mapKeyByteSize(iterator.Key())); err != nil {
+				return nil, err
+			}
 			key, err := cloneMapKey(iterator.Key())
 			if err != nil {
 				return nil, err
 			}
-			item, err := cloneValueAt(iterator.Value().Interface(), depth+1)
+			item, err := cloneValueAt(iterator.Value().Interface(), depth+1, budget)
 			if err != nil {
 				return nil, err
 			}
@@ -98,6 +158,60 @@ func cloneValueAt(value any, depth int) (any, error) {
 	default:
 		return nil, fmt.Errorf("%w: extension value type %T", ErrInvalidRequest, value)
 	}
+}
+
+func directCloneCost(value any) (int, int) {
+	switch typed := value.(type) {
+	case nil:
+		return 1, 0
+	case string:
+		return 1, len(typed)
+	case []byte:
+		return 1, len(typed)
+	case PRFValues:
+		return 3, len(typed.First) + len(typed.Second)
+	case PRFInput:
+		nodes, bytes := 1+len(typed.AllowCredentials)+len(typed.EvalByCredential), 0
+		if typed.Eval != nil {
+			nodes += 2
+			bytes += len(typed.Eval.First) + len(typed.Eval.Second)
+		}
+		for _, credential := range typed.AllowCredentials {
+			bytes += len(credential)
+		}
+		for id, values := range typed.EvalByCredential {
+			nodes += 2
+			bytes += len(id) + len(values.First) + len(values.Second)
+		}
+		return nodes, bytes
+	case PRFResult:
+		nodes, bytes := directCloneCost(PRFInput{Eval: typed.Eval, EvalByCredential: typed.EvalByCredential})
+		if typed.Results != nil {
+			nodes += 2
+			bytes += len(typed.Results.First) + len(typed.Results.Second)
+		}
+		return nodes, bytes
+	case LargeBlobInput:
+		return 3, len(typed.Write)
+	case LargeBlobResult:
+		return 6, len(typed.Write) + len(typed.Blob)
+	case UVMResult:
+		return 1 + len(typed.Entries), 0
+	case []UVMEntry:
+		return 1 + len(typed), 0
+	default:
+		return 1, 0
+	}
+}
+
+func mapKeyByteSize(value reflect.Value) int {
+	for value.Kind() == reflect.Interface && !value.IsNil() {
+		value = value.Elem()
+	}
+	if value.IsValid() && value.Kind() == reflect.String {
+		return value.Len()
+	}
+	return 0
 }
 
 func cloneWithMethod(value any) (cloned any, ok bool, err error) {

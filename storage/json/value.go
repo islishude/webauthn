@@ -21,30 +21,52 @@ const (
 	valueArray    = "array"
 	valueObject   = "object"
 	maxValueDepth = 32
+	maxValueNodes = 4096
 )
 
+type valueBudget struct {
+	nodes int
+	bytes int
+}
+
+func (budget *valueBudget) consume(nodes int, bytes int, invalid error) error {
+	if nodes < 0 || bytes < 0 || budget.nodes > maxValueNodes-nodes || budget.bytes > MaxEnvelopeBytes-bytes {
+		return fmt.Errorf("%w: extension value exceeds storage budget", invalid)
+	}
+	budget.nodes += nodes
+	budget.bytes += bytes
+	return nil
+}
+
 type encodedValue struct {
-	Type   string                  `json:"type"`
-	Bool   *bool                   `json:"bool,omitempty"`
-	String *string                 `json:"string,omitempty"`
-	Bytes  *string                 `json:"bytes,omitempty"`
-	Int    *int64                  `json:"int,omitempty"`
-	Uint   *uint64                 `json:"uint,omitempty"`
-	Float  *float64                `json:"float,omitempty"`
-	Array  []encodedValue          `json:"array"`
-	Object map[string]encodedValue `json:"object"`
+	Type   string                   `json:"type"`
+	Bool   *bool                    `json:"bool,omitempty"`
+	String *string                  `json:"string,omitempty"`
+	Bytes  *string                  `json:"bytes,omitempty"`
+	Int    *int64                   `json:"int,omitempty"`
+	Uint   *uint64                  `json:"uint,omitempty"`
+	Float  *float64                 `json:"float,omitempty"`
+	Array  *[]encodedValue          `json:"array,omitempty"`
+	Object *map[string]encodedValue `json:"object,omitempty"`
 }
 
 func encodeExtensionValues(values map[string]any) (map[string]encodedValue, error) {
 	if values == nil {
 		return nil, nil
 	}
+	if len(values) > extension.MaxEntries {
+		return nil, fmt.Errorf("%w: %w", ErrUnsupportedExtensionValue, extension.ErrTooManyEntries)
+	}
 	out := make(map[string]encodedValue, len(values))
+	budget := &valueBudget{}
 	for id, value := range values {
 		if !protocolidentifier.Valid(id) {
 			return nil, fmt.Errorf("%w: invalid extension id", ErrUnsupportedExtensionValue)
 		}
-		encoded, err := encodeValueAt(normalizeBuiltInValue(value), 0)
+		if err := budget.consume(1, len(id), ErrUnsupportedExtensionValue); err != nil {
+			return nil, err
+		}
+		encoded, err := encodeValueAt(normalizeBuiltInValue(value), 0, budget)
 		if err != nil {
 			return nil, fmt.Errorf("%w: extension %s", err, id)
 		}
@@ -57,12 +79,19 @@ func decodeExtensionValues(values map[string]encodedValue) (map[string]any, erro
 	if values == nil {
 		return nil, nil
 	}
+	if len(values) > extension.MaxEntries {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidEnvelope, extension.ErrTooManyEntries)
+	}
 	out := make(map[string]any, len(values))
+	budget := &valueBudget{}
 	for id, value := range values {
 		if !protocolidentifier.Valid(id) {
 			return nil, fmt.Errorf("%w: invalid extension id", ErrInvalidEnvelope)
 		}
-		decoded, err := decodeValueAt(value, 0)
+		if err := budget.consume(1, len(id), ErrInvalidEnvelope); err != nil {
+			return nil, err
+		}
+		decoded, err := decodeValueAt(value, 0, budget)
 		if err != nil {
 			return nil, fmt.Errorf("%w: extension %s", err, id)
 		}
@@ -116,9 +145,12 @@ func prfValuesObject(values extension.PRFValues) map[string]any {
 	return out
 }
 
-func encodeValueAt(value any, depth int) (encodedValue, error) {
+func encodeValueAt(value any, depth int, budget *valueBudget) (encodedValue, error) {
 	if depth > maxValueDepth {
 		return encodedValue{}, fmt.Errorf("%w: nesting too deep", ErrUnsupportedExtensionValue)
+	}
+	if err := budget.consume(1, directValueBytes(value), ErrUnsupportedExtensionValue); err != nil {
+		return encodedValue{}, err
 	}
 	if value == nil {
 		return encodedValue{Type: valueNull}, nil
@@ -148,13 +180,13 @@ func encodeValueAt(value any, depth int) (encodedValue, error) {
 	case reflect.Slice, reflect.Array:
 		array := make([]encodedValue, reflected.Len())
 		for i := range reflected.Len() {
-			item, err := encodeValueAt(normalizeBuiltInValue(reflected.Index(i).Interface()), depth+1)
+			item, err := encodeValueAt(normalizeBuiltInValue(reflected.Index(i).Interface()), depth+1, budget)
 			if err != nil {
 				return encodedValue{}, err
 			}
 			array[i] = item
 		}
-		return encodedValue{Type: valueArray, Array: array}, nil
+		return encodedValue{Type: valueArray, Array: &array}, nil
 	case reflect.Map:
 		if reflected.Type().Key().Kind() != reflect.String {
 			return encodedValue{}, fmt.Errorf("%w: map key type %s", ErrUnsupportedExtensionValue, reflected.Type().Key())
@@ -162,15 +194,29 @@ func encodeValueAt(value any, depth int) (encodedValue, error) {
 		object := make(map[string]encodedValue, reflected.Len())
 		iterator := reflected.MapRange()
 		for iterator.Next() {
-			item, err := encodeValueAt(normalizeBuiltInValue(iterator.Value().Interface()), depth+1)
+			if err := budget.consume(1, iterator.Key().Len(), ErrUnsupportedExtensionValue); err != nil {
+				return encodedValue{}, err
+			}
+			item, err := encodeValueAt(normalizeBuiltInValue(iterator.Value().Interface()), depth+1, budget)
 			if err != nil {
 				return encodedValue{}, err
 			}
 			object[iterator.Key().String()] = item
 		}
-		return encodedValue{Type: valueObject, Object: object}, nil
+		return encodedValue{Type: valueObject, Object: &object}, nil
 	default:
 		return encodedValue{}, fmt.Errorf("%w: type %T", ErrUnsupportedExtensionValue, value)
+	}
+}
+
+func directValueBytes(value any) int {
+	switch typed := value.(type) {
+	case string:
+		return len(typed)
+	case []byte:
+		return len(typed)
+	default:
+		return 0
 	}
 }
 
@@ -181,11 +227,14 @@ func encodeFloat(value float64) (encodedValue, error) {
 	return encodedValue{Type: valueFloat, Float: &value}, nil
 }
 
-func decodeValueAt(value encodedValue, depth int) (any, error) {
+func decodeValueAt(value encodedValue, depth int, budget *valueBudget) (any, error) {
 	if depth > maxValueDepth {
 		return nil, fmt.Errorf("%w: nesting too deep", ErrInvalidEnvelope)
 	}
 	if err := validateEncodedValue(value); err != nil {
+		return nil, err
+	}
+	if err := budget.consume(1, encodedValueBytes(value), ErrInvalidEnvelope); err != nil {
 		return nil, err
 	}
 	switch value.Type {
@@ -212,9 +261,9 @@ func decodeValueAt(value encodedValue, depth int) (any, error) {
 		}
 		return *value.Float, nil
 	case valueArray:
-		out := make([]any, len(value.Array))
-		for i, item := range value.Array {
-			decoded, err := decodeValueAt(item, depth+1)
+		out := make([]any, len(*value.Array))
+		for i, item := range *value.Array {
+			decoded, err := decodeValueAt(item, depth+1, budget)
 			if err != nil {
 				return nil, err
 			}
@@ -222,9 +271,12 @@ func decodeValueAt(value encodedValue, depth int) (any, error) {
 		}
 		return out, nil
 	case valueObject:
-		out := make(map[string]any, len(value.Object))
-		for key, item := range value.Object {
-			decoded, err := decodeValueAt(item, depth+1)
+		out := make(map[string]any, len(*value.Object))
+		for key, item := range *value.Object {
+			if err := budget.consume(1, len(key), ErrInvalidEnvelope); err != nil {
+				return nil, err
+			}
+			decoded, err := decodeValueAt(item, depth+1, budget)
 			if err != nil {
 				return nil, err
 			}
@@ -233,6 +285,17 @@ func decodeValueAt(value encodedValue, depth int) (any, error) {
 		return out, nil
 	default:
 		return nil, fmt.Errorf("%w: unknown value type", ErrInvalidEnvelope)
+	}
+}
+
+func encodedValueBytes(value encodedValue) int {
+	switch {
+	case value.String != nil:
+		return len(*value.String)
+	case value.Bytes != nil:
+		return len(*value.Bytes)
+	default:
+		return 0
 	}
 }
 

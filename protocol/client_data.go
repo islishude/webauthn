@@ -18,10 +18,12 @@ var (
 // preserving the original serialized bytes for hashing.
 func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 	var decoded struct {
-		Type         ClientDataType `json:"type"`
-		Challenge    string         `json:"challenge"`
-		Origin       string         `json:"origin"`
-		TokenBinding *TokenBinding  `json:"tokenBinding"`
+		Type         ClientDataType  `json:"type"`
+		Challenge    string          `json:"challenge"`
+		Origin       string          `json:"origin"`
+		CrossOrigin  json.RawMessage `json:"crossOrigin"`
+		TopOrigin    json.RawMessage `json:"topOrigin"`
+		TokenBinding *TokenBinding   `json:"tokenBinding"`
 	}
 
 	// WebAuthn's UTF-8 decode step strips one leading byte-order mark for JSON
@@ -31,37 +33,29 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 	if err := json.Unmarshal(jsonText, &decoded); err != nil {
 		return CollectedClientData{}, err
 	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(jsonText, &members); err != nil {
-		return CollectedClientData{}, err
-	}
 	if decoded.Type == "" || decoded.Challenge == "" || decoded.Origin == "" {
 		return CollectedClientData{}, ErrMalformedClientData
 	}
 
 	var crossOrigin *bool
-	if rawCrossOrigin, present := members["crossOrigin"]; present {
-		var value any
-		if err := json.Unmarshal(rawCrossOrigin, &value); err != nil {
+	if decoded.CrossOrigin != nil {
+		if bytes.Equal(bytes.TrimSpace(decoded.CrossOrigin), []byte("null")) {
 			return CollectedClientData{}, ErrMalformedClientData
 		}
-		boolean, ok := value.(bool)
-		if !ok {
+		var boolean bool
+		if err := json.Unmarshal(decoded.CrossOrigin, &boolean); err != nil {
 			return CollectedClientData{}, ErrMalformedClientData
 		}
 		crossOrigin = &boolean
 	}
 
 	var topOrigin string
-	_, topOriginSet := members["topOrigin"]
+	topOriginSet := decoded.TopOrigin != nil
 	if topOriginSet {
-		var value any
-		if err := json.Unmarshal(members["topOrigin"], &value); err != nil {
+		if bytes.Equal(bytes.TrimSpace(decoded.TopOrigin), []byte("null")) {
 			return CollectedClientData{}, ErrMalformedClientData
 		}
-		var ok bool
-		topOrigin, ok = value.(string)
-		if !ok || topOrigin == "" {
+		if err := json.Unmarshal(decoded.TopOrigin, &topOrigin); err != nil || topOrigin == "" {
 			return CollectedClientData{}, ErrMalformedClientData
 		}
 	}

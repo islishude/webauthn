@@ -6,15 +6,17 @@ import (
 	"errors"
 
 	"github.com/islishude/webauthn/codec"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
 // normalizePlaywrightRegistrationJSON fills the Level 3 authenticatorData
 // convenience member from the authoritative attestationObject only for the
-// test-only Playwright Credentials shim, which omits it and returns an empty
-// toJSON() response. The public browser decoder remains strict.
+// test-only Playwright Credentials shim, which can omit the member or mirror
+// attestationObject into it. Other supplied values remain untouched so the
+// public browser decoder and root source-consistency check stay strict.
 func normalizePlaywrightRegistrationJSON(data []byte, decoder codec.AttestationObjectDecoder) ([]byte, error) {
-	if decoder == nil {
+	if interfaceutil.IsNil(decoder) {
 		return nil, errors.New("attestation object decoder is required")
 	}
 	var root map[string]json.RawMessage
@@ -25,8 +27,10 @@ func normalizePlaywrightRegistrationJSON(data []byte, decoder codec.AttestationO
 	if err := json.Unmarshal(root["response"], &response); err != nil || response == nil {
 		return nil, errors.New("registration response is required")
 	}
-	if _, present := response["authenticatorData"]; present {
-		return data, nil
+	if rawAuthenticatorData, present := response["authenticatorData"]; present {
+		if !sameJSONString(rawAuthenticatorData, response["attestationObject"]) {
+			return data, nil
+		}
 	}
 
 	var encodedAttestationObject string
@@ -56,4 +60,12 @@ func normalizePlaywrightRegistrationJSON(data []byte, decoder codec.AttestationO
 		return nil, err
 	}
 	return json.Marshal(root)
+}
+
+func sameJSONString(left json.RawMessage, right json.RawMessage) bool {
+	var leftValue string
+	var rightValue string
+	return json.Unmarshal(left, &leftValue) == nil &&
+		json.Unmarshal(right, &rightValue) == nil &&
+		leftValue == rightValue
 }

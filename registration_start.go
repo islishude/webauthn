@@ -3,12 +3,14 @@ package webauthn
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"time"
 
 	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -22,6 +24,9 @@ type ChallengeGeneratorFunc func(context.Context) (protocol.Challenge, error)
 
 // GenerateChallenge calls f(ctx).
 func (f ChallengeGeneratorFunc) GenerateChallenge(ctx context.Context) (protocol.Challenge, error) {
+	if f == nil {
+		return protocol.Challenge{}, errors.New("challenge generator function is nil")
+	}
 	return f(ctx)
 }
 
@@ -51,6 +56,8 @@ func (g RandomChallengeGenerator) GenerateChallenge(ctx context.Context) (protoc
 	reader := g.Reader
 	if reader == nil {
 		reader = rand.Reader
+	} else if interfaceutil.IsNil(reader) {
+		return protocol.Challenge{}, errors.New("random reader is typed nil")
 	}
 	raw := make([]byte, length)
 	if _, err := io.ReadFull(reader, raw); err != nil {
@@ -111,6 +118,7 @@ type RegistrationState struct {
 	UserHandle                protocol.UserHandle
 	RequestedUserVerification protocol.UserVerificationRequirement
 	RequestedExtensions       protocol.ExtensionInputs
+	ExtensionBindings         []extension.Binding
 	AllowedAlgorithms         []protocol.COSEAlgorithmIdentifier
 	Attestation               protocol.AttestationConveyancePreference
 	ExpiresAt                 time.Time
@@ -130,6 +138,9 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err := validateOriginPolicy(options.OriginPolicy); err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	if err := validateRPIDOriginPolicy(options.RP.ID, options.OriginPolicy); err != nil {
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	credentialParameters, err := registrationCredentialParameters(options.PubKeyCredParams)
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
@@ -140,6 +151,8 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		generator := options.ChallengeGenerator
 		if generator == nil {
 			generator = RandomChallengeGenerator{}
+		} else if interfaceutil.IsNil(generator) {
+			return RegistrationStartResult{}, fmt.Errorf("%w: challenge generator is typed nil", ErrInvalidConfiguration)
 		}
 		generated, err := generator.GenerateChallenge(ctx)
 		if err != nil {
@@ -152,7 +165,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err := validateUserVerification(userVerification); err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
-	preparedExtensions, err := prepareExtensionInputs(extension.OperationRegistration, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, nil)
+	preparedExtensions, extensionBindings, err := prepareExtensionInputs(extension.OperationRegistration, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, nil)
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
@@ -208,6 +221,7 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 		UserHandle:                options.User.ID,
 		RequestedUserVerification: userVerification,
 		RequestedExtensions:       stateExtensions,
+		ExtensionBindings:         slices.Clone(extensionBindings),
 		AllowedAlgorithms:         algorithmsFromParameters(credentialParameters),
 		Attestation:               attestationConveyance,
 		ExpiresAt:                 expiresAt,

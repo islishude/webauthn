@@ -56,7 +56,7 @@ func (a *app) registerOptions(response http.ResponseWriter, request *http.Reques
 		User:                   protocol.UserEntity{ID: user.Handle, Name: user.Email, DisplayName: user.DisplayName},
 		OriginPolicy:           a.originPolicy(),
 		PubKeyCredParams:       []protocol.CredentialParameter{{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmES256}},
-		Timeout:                30_000_000_000,
+		Timeout:                30 * time.Second,
 		AuthenticatorSelection: selection,
 		Hints:                  hints,
 		Attestation:            protocol.AttestationNone,

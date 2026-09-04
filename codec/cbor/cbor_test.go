@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/elliptic"
 	"errors"
+	"fmt"
 	"maps"
 	"testing"
 
@@ -472,6 +473,34 @@ func TestDecoderRejectsMalformedCBOR(t *testing.T) {
 	_, err := decoder.DecodeExtensionMap([]byte{0x81})
 	if !errors.Is(err, codeccbor.ErrMalformedCBOR) {
 		t.Fatalf("DecodeExtensionMap() error = %v, want ErrMalformedCBOR", err)
+	}
+}
+
+func TestNilDecoderFailsWithoutPanicking(t *testing.T) {
+	t.Parallel()
+
+	var decoder *codeccbor.Decoder
+	if _, err := decoder.DecodeCredentialPublicKey(mustCOSEKey(t)); err == nil {
+		t.Fatal("DecodeCredentialPublicKey() error = nil, want nil decoder error")
+	}
+}
+
+func TestDecoderEnforcesAggregateWorkBounds(t *testing.T) {
+	t.Parallel()
+
+	oversizedArray := make([]any, codeccbor.MaxArrayElements+1)
+	if _, err := codeccbor.MustNewDecoder().DecodeExtensionMap(mustCBOR(t, map[string]any{"future": oversizedArray})); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+		t.Fatalf("oversized array error = %v, want ErrMalformedCBOR", err)
+	}
+	oversizedMap := make(map[string]any, codeccbor.MaxMapPairs+1)
+	for i := range codeccbor.MaxMapPairs + 1 {
+		oversizedMap[fmt.Sprintf("k%02d", i)] = true
+	}
+	if _, err := codeccbor.MustNewDecoder().DecodeExtensionMap(mustCBOR(t, oversizedMap)); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+		t.Fatalf("oversized map error = %v, want ErrMalformedCBOR", err)
+	}
+	if _, err := codeccbor.MustNewDecoder().DecodeExtensionMap(bytes.Repeat([]byte{0x00}, codeccbor.MaxCBORBytes+1)); !errors.Is(err, codeccbor.ErrMalformedCBOR) {
+		t.Fatalf("oversized bytes error = %v, want ErrMalformedCBOR", err)
 	}
 }
 

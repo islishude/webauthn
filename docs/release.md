@@ -1,6 +1,6 @@
 # Release checklist
 
-Status: Pre-v1 Level 3 security and API cleanup complete, revised 2026-08-28.
+Status: Pre-v1 Level 3 full-repository remediation complete, revised 2026-09-04.
 
 This file records release-readiness checks for `github.com/islishude/webauthn`.
 
@@ -12,10 +12,29 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
   `transport/http`, `crypto/standard`, `storage/json`, or optional attestation
   format packages.
 - Public examples compile through `make example-build`.
+- Go 1.25.0 compatibility, strict E2E TypeScript checking, and Chromium E2E
+  pass in their dedicated gates.
 - README feature claims match implemented and tested behavior.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
 ## Release notes
+
+2026-09-04: Completed the full-repository correctness, design, and performance
+remediation. Injected interfaces now reject typed nils; caller-stored ceremony
+and credential records share fail-closed validation; credential updates carry a
+four-field compare-and-swap predicate; decoded attestation objects must retain
+their exact source, and decoded COSE keys must identify the exact source prefix.
+Verifier outputs with unknown attestation or trust-path classifications now
+fail before trust policy. Extension handlers declare semantic `Revision`s,
+registries freeze `Binding`s, reserved built-in IDs cannot fall back to unknown
+handling, and storage envelope v3 persists those bindings. Credential envelope
+v1/v2 reads remain supported, while legacy extension-bearing ceremony state is
+rejected because it has no safe handler binding. Origins/RP IDs and explicit
+related-origin policy are canonicalized. Browser/HTTP JSON, CBOR, compound
+attestation, extension counts/copies, and storage values have bounded work.
+Redundant parsing/copying was removed from client-data, browser, CBOR, and PRF
+paths; allocation-reporting benchmarks were added. CI now pins Prettier, runs
+strict TypeScript, and tests Go 1.25.0 explicitly. No Go dependency changed.
 
 2026-08-28: Replaced the extension Handler's untyped return values with generic
 normalized input and output types. `Register` is now the explicit registry
@@ -114,6 +133,12 @@ added.
   and side-effect-free `VerifyOutput` as `Handler[I, O]`. Wrap each custom
   handler with `extension.Register(handler)` when constructing a registry; this
   replaces passing the handler directly and is not mutable post-construction.
+- Add `Revision() string` to every custom `extension.Handler[I, O]`. Use a
+  stable protocol/implementation revision and change it whenever state
+  normalized by the previous semantics cannot be verified safely. Persist
+  `RegistrationState.ExtensionBindings` and
+  `AuthenticationState.ExtensionBindings`, and use an equivalent registry at
+  finish. Built-in IDs require their package-defined bindings.
 - `ValidateInput` now returns normalized `I`; `VerifyOutput` accepts
   `OutputRequest[I]` and returns `Verification[O]`. Raw client and authenticator
   outputs are `RawValue`s, whose zero value is absent and whose present nil
@@ -130,15 +155,25 @@ added.
   and configured state TTL may not be shorter than the hint. Use
   `DefaultBrowserTimeout`; `DefaultCeremonyTimeout` is now deprecated because it
   cannot name both lifetimes accurately.
-- Populate `CredentialRecord.Type`; registration returns `public-key` and
-  `storage/json` envelope v2 persists it. The v2 reader maps an absent type in
-  legacy v1 records to `public-key` and rejects explicit empty or null values.
+- Populate every field required by `CredentialRecord.Validate`, including
+  `Type`, `AttestationType`, key, ID, user handle, RP ID, attachment, and valid
+  BE/BS state. Use `CredentialRecord.Clone` when crossing mutable storage
+  boundaries.
+- `storage/json` envelope v3 persists handler bindings and related-origin
+  policy. Credential v1/v2 reads remain compatible: an absent type in v1 maps
+  to `public-key`. Migrate or consume v1/v2 extension-bearing ceremony state
+  before upgrading; it now fails closed. Legacy state without extensions remains
+  readable during the pre-v1 migration window unless it contains the v3-only
+  related-origin policy.
 - An empty registration `PubKeyCredParams` now expands to the Recommendation's
   ES256/RS256 defaults. Unsupported credential types are ignored when a
   supported `public-key` entry remains and fail when none remains.
 - Update custom registration response JSON to include required `id`,
   `clientExtensionResults`, `authenticatorData`, `transports`, and
   `publicKeyAlgorithm`, with `id` equal to canonical base64url `rawId`.
+- Remove uses of root `RegistrationResponse.PublicKey`. The optional browser
+  adapter validates a supplied `response.publicKey` but discards it; use the
+  credential key decoded from signed authenticator data.
 - Construct legacy SafetyNet verifiers with an explicit
   `androidsafetynet.Policy`; the prior policy-free constructor no longer exists.
 - Rename `AppIDExcludeResult.Excluded` to `ActedUpon`; a successful `true`
@@ -154,9 +189,19 @@ added.
   constraint and map conflicts to application transport errors.
 - Construct credential keys from raw COSE plus typed material. Signature inputs
   no longer carry adapter-owned `any` key handles.
-- Persist credential updates conditionally using `PreviousSignCount` and the
-  `*Changed` fields, including `AuthenticatorAttachmentChanged`.
+- Persist credential updates conditionally using `PreviousSignCount`,
+  `PreviousBackupState`, `PreviousUVInitialized`,
+  `PreviousAuthenticatorAttachment`, and the `*Changed` fields. Compare all
+  previous values even when the authenticator counter is zero.
   `BackupEligible` is no longer an authentication update.
+- Configure origins as canonical HTTPS scheme-and-authority values (loopback
+  HTTP is allowed), omit explicit default ports, and keep RP IDs lowercase.
+  Set `OriginPolicy.AllowRelatedOrigins` only after independently validating
+  each explicitly listed related origin.
+- Keep browser responses and HTTP body limits at or below 1 MiB. Extension
+  registries/ceremonies are capped at 64 IDs, default raw extension copies at
+  depth 32/4096 nodes/1 MiB, concrete CBOR at 1 MiB/16 levels/64 container
+  entries, and compound attestation at 16 statements by default (64 hard max).
 - Treat zero browser timeout as five minutes and zero state TTL as ten minutes;
   reject negative or inconsistent timing, invalid backup flags, RP-ID mismatch,
   credential IDs longer than 1023 bytes, and caller-stored state missing expiry

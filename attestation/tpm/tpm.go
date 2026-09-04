@@ -11,6 +11,7 @@ import (
 	"github.com/islishude/webauthn/attestation/internal/x509util"
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -62,7 +63,7 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if request.Format != format || v.signatureVerifier == nil {
+	if request.Format != format || interfaceutil.IsNil(v.signatureVerifier) {
 		return attestation.VerificationResult{}, ErrInvalidStatement
 	}
 

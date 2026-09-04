@@ -415,6 +415,15 @@ func TestTrustPolicyCompositionRejectsEmptyAllOf(t *testing.T) {
 	}
 }
 
+func TestTrustPolicyCompositionRejectsEmptyAnyOf(t *testing.T) {
+	t.Parallel()
+
+	_, err := attestation.AnyOf().EvaluateAttestationTrust(context.Background(), attestation.TrustRequest{})
+	if !errors.Is(err, attestation.ErrTrustPolicyConfiguration) {
+		t.Fatalf("EvaluateAttestationTrust() error = %v, want ErrTrustPolicyConfiguration", err)
+	}
+}
+
 func ExampleAllOf_restrictedEnrollment() {
 	allowedAAGUID := protocol.AAGUID{0x42}
 	policy := attestation.AllOf(

@@ -284,7 +284,7 @@ func (h *handler) insertCredential(record webauthn.CredentialRecord) bool {
 	if _, exists := h.records[key]; exists {
 		return false
 	}
-	h.records[key] = record
+	h.records[key] = record.Clone()
 	return true
 }
 
@@ -292,14 +292,14 @@ func (h *handler) credentialByRawID(id protocol.RawID) (webauthn.CredentialRecor
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	record, ok := h.records[credentialKey(id.Bytes())]
-	return record, ok
+	return record.Clone(), ok
 }
 
 func (h *handler) firstCredential() (webauthn.CredentialRecord, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, credential := range h.records {
-		return credential, true
+		return credential.Clone(), true
 	}
 	return webauthn.CredentialRecord{}, false
 }
@@ -323,7 +323,10 @@ func (h *handler) applyCredentialUpdate(update webauthn.CredentialUpdate) bool {
 	defer h.mu.Unlock()
 	key := credentialKey(update.ID.Bytes())
 	record, ok := h.records[key]
-	if !ok || record.SignCount != update.PreviousSignCount {
+	if !ok || record.SignCount != update.PreviousSignCount ||
+		record.BackupState != update.PreviousBackupState ||
+		record.UVInitialized != update.PreviousUVInitialized ||
+		record.AuthenticatorAttachment != update.PreviousAuthenticatorAttachment {
 		return false
 	}
 	if update.SignCountChanged {

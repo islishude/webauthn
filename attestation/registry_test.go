@@ -44,6 +44,18 @@ func TestRegistryRejectsDuplicateAndEmptyFormats(t *testing.T) {
 			t.Fatalf("NewRegistry(%q) error = %v, want ErrInvalidFormat", format, err)
 		}
 	}
+	var typedNil *pointerVerifier
+	if _, err := attestation.NewRegistry(typedNil); !errors.Is(err, attestation.ErrInvalidFormat) {
+		t.Fatalf("NewRegistry(typed nil) error = %v, want ErrInvalidFormat", err)
+	}
+}
+
+type pointerVerifier struct{ format string }
+
+func (v *pointerVerifier) Format() string { return v.format }
+
+func (*pointerVerifier) VerifyAttestation(context.Context, attestation.VerificationRequest) (attestation.VerificationResult, error) {
+	return attestation.VerificationResult{}, nil
 }
 
 type fakeVerifier struct {

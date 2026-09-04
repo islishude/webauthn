@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -234,7 +235,7 @@ type trustRootsPolicy struct {
 }
 
 func (p trustRootsPolicy) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
-	if p.verifier == nil {
+	if interfaceutil.IsNil(p.verifier) {
 		return TrustResult{}, ErrTrustPolicyConfiguration
 	}
 	if request.Result.TrustPath.Kind != TrustPathX509 || len(request.Result.TrustPath.Certificates) == 0 {
@@ -257,7 +258,7 @@ type metadataPolicy struct {
 }
 
 func (p metadataPolicy) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
-	if p.provider == nil {
+	if interfaceutil.IsNil(p.provider) {
 		return TrustResult{}, ErrTrustPolicyConfiguration
 	}
 
@@ -287,7 +288,7 @@ type certificateStatusPolicy struct {
 }
 
 func (p certificateStatusPolicy) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
-	if p.provider == nil {
+	if interfaceutil.IsNil(p.provider) {
 		return TrustResult{}, ErrTrustPolicyConfiguration
 	}
 	if request.Result.TrustPath.Kind != TrustPathX509 || len(request.Result.TrustPath.Certificates) == 0 {
@@ -329,11 +330,11 @@ func (p allOfPolicy) EvaluateAttestationTrust(ctx context.Context, request Trust
 
 	warnings := []string{}
 	for index, policy := range p.policies {
-		if policy == nil {
+		if interfaceutil.IsNil(policy) {
 			return TrustResult{}, fmt.Errorf("%w: nil policy at index %d", ErrTrustPolicyConfiguration, index)
 		}
 
-		result, err := policy.EvaluateAttestationTrust(ctx, request)
+		result, err := policy.EvaluateAttestationTrust(ctx, cloneTrustRequest(request))
 		if err != nil {
 			return TrustResult{}, err
 		}
@@ -352,13 +353,16 @@ type anyOfPolicy struct {
 }
 
 func (p anyOfPolicy) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
+	if len(p.policies) == 0 {
+		return TrustResult{}, fmt.Errorf("%w: any-of policy requires at least one child policy", ErrTrustPolicyConfiguration)
+	}
 	warnings := []string{}
 	for index, policy := range p.policies {
-		if policy == nil {
+		if interfaceutil.IsNil(policy) {
 			return TrustResult{}, fmt.Errorf("%w: nil policy at index %d", ErrTrustPolicyConfiguration, index)
 		}
 
-		result, err := policy.EvaluateAttestationTrust(ctx, request)
+		result, err := policy.EvaluateAttestationTrust(ctx, cloneTrustRequest(request))
 		if err != nil {
 			return TrustResult{}, err
 		}
@@ -395,10 +399,9 @@ func reasonOrDefault(reason string, fallback string) string {
 	return fallback
 }
 
-func cloneTrustPath(path TrustPath) TrustPath {
-	path.Certificates = slices.Clone(path.Certificates)
-
-	return path
+func cloneTrustRequest(request TrustRequest) TrustRequest {
+	request.Result = request.Result.Clone()
+	return request
 }
 
 func normalizeContext(ctx context.Context) context.Context {

@@ -91,6 +91,16 @@ func TestReadResponseRejectsLargeBody(t *testing.T) {
 	}
 }
 
+func TestReadResponseRejectsLimitAboveBrowserBudget(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/register/finish", strings.NewReader(registrationResponseJSON()))
+	_, err := webauthnhttp.ReadRegistrationResponse(request, math.MaxInt64)
+	if !errors.Is(err, webauthnhttp.ErrInvalidBodyLimit) {
+		t.Fatalf("ReadRegistrationResponse() error = %v, want ErrInvalidBodyLimit", err)
+	}
+}
+
 func TestReadResponseRejectsMalformedJSON(t *testing.T) {
 	t.Parallel()
 

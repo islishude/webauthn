@@ -16,11 +16,7 @@ type passkeyStore interface {
 	UpdateCredential(webauthn.CredentialUpdate) error
 }
 
-func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
-	extensions, err := extension.NewLevel3RegistryWithDeprecated()
-	if err != nil {
-		return browser.CredentialRequestOptionsJSON{}, webauthn.AuthenticationState{}, err
-	}
+func beginPasskeyAuthentication(ctx context.Context, extensions *extension.Registry) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
 	start, err := webauthn.StartAuthentication(ctx, webauthn.AuthenticationStartOptions{
 		RPID:              "example.com",
 		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
@@ -35,7 +31,7 @@ func beginPasskeyAuthentication(ctx context.Context) (browser.CredentialRequestO
 	return browser.CredentialRequestOptionsFromProtocol(start.Options), start.State, nil
 }
 
-func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifier *standard.Verifier, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
+func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifier *standard.Verifier, extensions *extension.Registry, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
 	response, err := browser.AuthenticationResponseFromJSON(body)
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
@@ -48,11 +44,6 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
-	extensions, err := extension.NewLevel3RegistryWithDeprecated()
-	if err != nil {
-		return webauthn.AuthenticationResult{}, err
-	}
-
 	result, err := webauthn.FinishAuthentication(ctx, webauthn.AuthenticationFinishOptions{
 		State:             state,
 		Response:          response,

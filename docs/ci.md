@@ -1,6 +1,6 @@
 # Local and GitHub Actions quality workflow
 
-Status: Level 3 security, storage, standard crypto, and adapter checks active, revised 2026-08-23.
+Status: Level 3 security, storage, standard crypto, and adapter checks active, revised 2026-09-04.
 
 This document is the authoritative workflow for formatting, linting, testing, and CI for `github.com/islishude/webauthn`.
 
@@ -11,11 +11,14 @@ The repository has `go.mod` and Go source files. Go-oriented targets are mandato
 The local workflow is controlled by the root `Makefile`. The GitHub workflow is `.github/workflows/ci.yml`.
 
 Action major versions and trigger branches are defined only in
-`.github/workflows/ci.yml` to avoid duplicated version drift. CI uses stable Go,
-Node.js 24 for e2e, Playwright `1.62.1`, golangci-lint `v2.13.1`, and
+`.github/workflows/ci.yml` to avoid duplicated version drift. CI uses Go 1.27
+for primary jobs, Go 1.25.0 for the minimum-version lane, Node.js 24,
+Playwright `1.62.1`, golangci-lint `v2.13.1`, and
 `.golangci.yml` version 2.
 
-`go.mod` records minimum supported Go version `1.25.0`. The CI workflow continues to use `stable` for the moving latest stable lane, but release hardening may add explicit old-stable or minimum-version lanes.
+`go.mod` records minimum supported Go version `1.25.0`. The separate
+`minimum-go` job runs `go test ./...` with that exact toolchain rather than
+assuming success from the newer primary lane.
 
 ## Local prerequisites
 
@@ -23,8 +26,8 @@ Required local tools:
 
 - `make`;
 - a Go toolchain compatible with the `go.mod` minimum version;
-- Node.js with `npx` available for Prettier formatting;
-- Node.js 20 or newer with npm for `make e2e`;
+- Node.js 24 with npm for the pinned Prettier, TypeScript, fixtures, and E2E
+  dependencies;
 - `golangci-lint v2.13.1` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
@@ -51,17 +54,20 @@ Run these commands from the repository root.
 
 | Command                   | Purpose                                                                                 | Mutates files                        |
 | ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| `make format`             | Run `gofmt -w` on Go files, `golangci-lint fmt ./...`, and `npx -y prettier --write .`. | Yes                                  |
-| `make format-check`       | Fail if Go files are not `gofmt` formatted or `npx -y prettier --check .` fails.        | No                                   |
+| `make node-deps`          | Install the exact `e2e/package-lock.json` dependency graph with `npm ci`.               | Recreates `e2e/node_modules`         |
+| `make format`             | Run configured Go formatters and pinned local Prettier.                                 | Yes                                  |
+| `make format-check`       | Fail if Go or pinned Prettier formatting differs.                                       | No                                   |
 | `make lint`               | Run `golangci-lint run ./...`.                                                          | No                                   |
 | `make test`               | Run `go test ./...`.                                                                    | No                                   |
 | `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
 | `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
+| `make benchmark`          | Run all Go benchmarks with allocation reporting and no unit tests.                      | No                                   |
+| `make e2e-typecheck`      | Run strict TypeScript checking without emitting files.                                  | No                                   |
 | `make example-build`      | Build public examples with `go test ./examples/...`.                                    | No                                   |
 | `make import-graph-check` | Verify root excludes optional attestation, transport, standard crypto, and storage.     | No                                   |
 | `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
 | `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
-| `make browser-fixtures`   | Regenerate Playwright/Chrome virtual-authenticator fixture JSON.                        | Installs e2e npm dependencies        |
+| `make browser-fixtures`   | Write reviewable Playwright/Chrome fixture output to `fixtures.next.json` by default.   | Installs e2e npm dependencies        |
 | `make e2e`                | Run Playwright Chromium tests against the test-only RP app.                             | Installs e2e npm dependencies        |
 | `make e2e-headed`         | Run Playwright Chromium tests against the test-only RP app in headed mode.              | Installs e2e npm dependencies        |
 | `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
@@ -70,8 +76,8 @@ Run these commands from the repository root.
 
 `make ci` is the required pre-PR command. It runs documentation presence checks
 including required Level 3 documentation, README checks, formatting, linting, unit tests,
-race tests, fuzz smoke tests, example builds, import graph checks, dependency
-license checks, and module hygiene.
+strict TypeScript checking, race tests, fuzz smoke tests, example builds, import
+graph checks, dependency license checks, and module hygiene.
 
 `make e2e` is intentionally separate from `make ci`. It starts the test-only
 HTTPS relying-party app under `internal/e2eapp` through Playwright's
@@ -88,9 +94,12 @@ Formatting has three layers:
 
 1. `gofmt` is the baseline formatter and is checked by `make format-check`.
 2. `golangci-lint` formatters enforce import grouping and formatter configuration in `.golangci.yml`.
-3. Prettier formats Markdown and other supported repository text files through `npx -y prettier --write .`; CI checks it with `npx -y prettier --check .`.
+3. Prettier `3.9.6` from the locked E2E dependency graph formats Markdown and
+   other supported repository text files; CI invokes that same local binary.
 
-The Go formatter set is intentionally small: `gofmt` and `goimports`. The local import prefix is `github.com/islishude/webauthn`. Prettier is invoked through `npx` rather than a project runtime dependency.
+The Go formatter set is intentionally small: `gofmt` and `goimports`. The local
+import prefix is `github.com/islishude/webauthn`. Network-selected formatter
+versions are not used by the quality gate.
 
 ## Linting policy
 
@@ -100,7 +109,7 @@ Any lint suppression must be narrow, placed next to the code it affects, and jus
 
 ## Testing policy
 
-The test gate has four layers:
+The local gate has eight layers:
 
 1. `go test ./...` for ordinary unit and integration tests.
 2. `go test -race ./...` for race detection on stateless and shared-state code.
@@ -109,6 +118,7 @@ The test gate has four layers:
 5. import graph verification that the root package remains independent of optional attestation and transport helpers.
 6. dependency license manifest verification.
 7. README reference checks and module tidy verification to prevent accidental drift.
+8. strict TypeScript checking for unused and ill-typed E2E code.
 
 Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. They are a CI tripwire for obvious parser crashes and regressions.
 
@@ -116,19 +126,24 @@ Fuzz smoke tests are not a substitute for longer local or scheduled fuzzing. The
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`.
 
-The workflow has four jobs:
+The workflow has five jobs:
 
 1. `docs-and-config` always runs. It calls `make ci-docs`, `make readme-check`, and checks LF line endings for Markdown, YAML, and Makefile text files.
-2. `lint` runs after `docs-and-config`. It sets up Go and runs the official golangci-lint action with the pinned lint version.
+2. `lint` runs after `docs-and-config`. It sets up Go and Node.js, installs the
+   pinned dependencies once, then runs module, lint, format, and TypeScript
+   checks.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
-4. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
+4. `minimum-go` runs `go test ./...` with Go 1.25.0.
+5. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
    Playwright browser cache from `~/.cache/ms-playwright`, runs `make e2e`
    against `https://localhost:8443`, and uploads the Playwright HTML report on
    failure.
 
 The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, example build failures, README reference drift, or module-tidy drift are CI failures.
 
-The lint job continues to run `make mod-check`, `make lint`, and `make format-check` after setting up Go and Node.js.
+The lint job runs `make mod-check`, `make lint`, and a combined
+`make format-check e2e-typecheck` so the shared `node-deps` prerequisite executes
+once in that invocation.
 
 ## Adding or changing checks
 
@@ -143,6 +158,11 @@ Any change to quality gates must update all of these files in the same change:
 Do not add network-dependent tests to the default CI gate. Attestation metadata, certificate status, or browser interoperability checks that need network access must use explicit fixtures or separate opt-in workflows.
 
 Browser fixture regeneration is intentionally not part of default CI. The committed fixture JSON is verified by Go tests; regenerating it uses the Playwright dependency pinned by `e2e/package-lock.json`, requires a Chromium/Chrome executable, and is an explicit developer action through `make browser-fixtures`.
+
+The generator writes `fixtures.next.json` rather than replacing the committed
+fixture. Set `BROWSER_FIXTURE_OUTPUT` to an explicit relative or absolute output
+only for a deliberate provenance update, review the diff, and rename it into
+place separately.
 
 The committed Playwright 1.60.0/Chrome 148 fixture remains immutable provenance;
 upgrading the live E2E dependency does not rewrite it. Passkey private keys

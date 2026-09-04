@@ -78,6 +78,11 @@ func (PRFHandler) ID() string {
 	return IDPRF
 }
 
+// Revision returns the built-in semantic revision.
+func (PRFHandler) Revision() string {
+	return RevisionLevel3Recommendation
+}
+
 // ValidateInput validates and normalizes PRF input at ceremony start.
 func (PRFHandler) ValidateInput(request InputRequest) (PRFInput, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {
@@ -98,9 +103,13 @@ func (PRFHandler) ValidateInput(request InputRequest) (PRFInput, error) {
 		if len(input.AllowCredentials) == 0 {
 			return PRFInput{}, invalidRequest("prf evalByCredential requires allowCredentials")
 		}
+		allowed := make(map[string]struct{}, len(input.AllowCredentials))
+		for _, id := range input.AllowCredentials {
+			allowed[id] = struct{}{}
+		}
 		encoding := base64.RawURLEncoding.Strict()
 		for id := range input.EvalByCredential {
-			if id == "" || !slices.Contains(input.AllowCredentials, id) {
+			if _, ok := allowed[id]; id == "" || !ok {
 				return PRFInput{}, invalidRequest("prf evalByCredential credential is not allowed")
 			}
 			decoded, err := encoding.DecodeString(id)
@@ -274,9 +283,6 @@ func selectedPRFInput(input PRFInput, selectedCredentialID protocol.CredentialID
 			return PRFValues{}, false
 		}
 		encoded := base64.RawURLEncoding.EncodeToString(selectedCredentialID.AppendTo(nil))
-		if len(input.AllowCredentials) != 0 && !slices.Contains(input.AllowCredentials, encoded) {
-			return PRFValues{}, false
-		}
 		if values, ok := input.EvalByCredential[encoded]; ok {
 			return values, true
 		}

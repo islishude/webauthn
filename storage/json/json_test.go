@@ -32,7 +32,7 @@ func TestRegistrationStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalRegistrationState() error = %v", err)
 	}
-	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ConditionalMediation || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) {
+	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ConditionalMediation || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
@@ -71,7 +71,7 @@ func TestAuthenticationStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalAuthenticationState() error = %v", err)
 	}
-	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ExpectedUserHandle.Equal(state.ExpectedUserHandle) || len(decoded.AllowCredentials) != 1 || !decoded.AllowCredentials[0].ID.Equal(state.AllowCredentials[0].ID) {
+	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ExpectedUserHandle.Equal(state.ExpectedUserHandle) || len(decoded.AllowCredentials) != 1 || !decoded.AllowCredentials[0].ID.Equal(state.AllowCredentials[0].ID) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
@@ -150,6 +150,25 @@ func TestCredentialRecordVersionOneDefaultsPublicKeyType(t *testing.T) {
 	}
 }
 
+func TestCredentialRecordVersionTwoStillDecodes(t *testing.T) {
+	t.Parallel()
+
+	decoder := codeccbor.MustNewDecoder()
+	record := credentialRecordFixture(t, decoder)
+	encoded, err := storagejson.MarshalCredentialRecord(record)
+	if err != nil {
+		t.Fatalf("MarshalCredentialRecord() error = %v", err)
+	}
+	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
+	decoded, err := storagejson.UnmarshalCredentialRecord(legacy, decoder)
+	if err != nil {
+		t.Fatalf("UnmarshalCredentialRecord(v2) error = %v", err)
+	}
+	if decoded.Type != record.Type || !decoded.ID.Equal(record.ID) || !bytes.Equal(decoded.PublicKey.Raw(), record.PublicKey.Raw()) {
+		t.Fatalf("decoded v2 credential = %+v", decoded)
+	}
+}
+
 func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +189,7 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 	}{
 		{
 			name:    "unknown version",
-			data:    bytes.Replace(registration, []byte(`"version":2`), []byte(`"version":3`), 1),
+			data:    bytes.Replace(registration, []byte(`"version":3`), []byte(`"version":4`), 1),
 			decode:  decodeRegistration,
 			wantErr: storagejson.ErrUnsupportedVersion,
 		},
@@ -260,6 +279,58 @@ func TestStorageJSONRejectsInvalidStateAndUnsupportedExtensionValue(t *testing.T
 	}
 }
 
+func TestStorageJSONRejectsLegacyExtensionStateWithoutBindings(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := storagejson.MarshalAuthenticationState(authenticationStateFixture(t))
+	if err != nil {
+		t.Fatalf("MarshalAuthenticationState() error = %v", err)
+	}
+	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
+	if _, err := storagejson.UnmarshalAuthenticationState(legacy); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
+		t.Fatalf("UnmarshalAuthenticationState(v2 extensions) error = %v, want ErrInvalidEnvelope", err)
+	}
+}
+
+func TestStorageJSONReadsLegacyStateWithoutExtensions(t *testing.T) {
+	t.Parallel()
+
+	state := registrationStateFixture(t)
+	state.RequestedExtensions = nil
+	state.ExtensionBindings = nil
+	encoded, err := storagejson.MarshalRegistrationState(state)
+	if err != nil {
+		t.Fatalf("MarshalRegistrationState() error = %v", err)
+	}
+	for _, version := range []byte{'1', '2'} {
+		legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":`+string(version)), 1)
+		decoded, err := storagejson.UnmarshalRegistrationState(legacy)
+		if err != nil {
+			t.Fatalf("UnmarshalRegistrationState(v%c) error = %v", version, err)
+		}
+		if len(decoded.RequestedExtensions) != 0 || len(decoded.ExtensionBindings) != 0 {
+			t.Fatalf("decoded v%c extensions = %#v bindings = %#v", version, decoded.RequestedExtensions, decoded.ExtensionBindings)
+		}
+	}
+}
+
+func TestStorageJSONRejectsLegacyRelatedOriginPolicy(t *testing.T) {
+	t.Parallel()
+
+	state := registrationStateFixture(t)
+	state.RequestedExtensions = nil
+	state.ExtensionBindings = nil
+	state.OriginPolicy.AllowRelatedOrigins = true
+	encoded, err := storagejson.MarshalRegistrationState(state)
+	if err != nil {
+		t.Fatalf("MarshalRegistrationState() error = %v", err)
+	}
+	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
+	if _, err := storagejson.UnmarshalRegistrationState(legacy); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
+		t.Fatalf("UnmarshalRegistrationState(v2 related origin) error = %v, want ErrInvalidEnvelope", err)
+	}
+}
+
 func FuzzUnmarshalRegistrationState(f *testing.F) {
 	seed, err := storagejson.MarshalRegistrationState(registrationStateFixture(f))
 	if err != nil {
@@ -304,9 +375,12 @@ func registrationStateFixture(t testing.TB) webauthn.RegistrationState {
 		UserHandle:                mustUserHandle(t),
 		RequestedUserVerification: protocol.UserVerificationRequired,
 		RequestedExtensions:       extensionTree(),
-		AllowedAlgorithms:         []protocol.COSEAlgorithmIdentifier{protocol.AlgorithmES256},
-		Attestation:               protocol.AttestationNone,
-		ExpiresAt:                 time.Date(2026, 8, 23, 12, 5, 0, 123, time.UTC),
+		ExtensionBindings: []extension.Binding{{
+			ID: extension.IDLargeBlob, Revision: extension.RevisionLevel3Recommendation,
+		}},
+		AllowedAlgorithms: []protocol.COSEAlgorithmIdentifier{protocol.AlgorithmES256},
+		Attestation:       protocol.AttestationNone,
+		ExpiresAt:         time.Date(2026, 8, 23, 12, 5, 0, 123, time.UTC),
 	}
 }
 
@@ -340,6 +414,9 @@ func authenticationStateFixture(t testing.TB) webauthn.AuthenticationState {
 		OriginPolicy:              webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		RequestedUserVerification: protocol.UserVerificationPreferred,
 		RequestedExtensions:       authenticationExtensionTree(),
+		ExtensionBindings: []extension.Binding{{
+			ID: extension.IDPRF, Revision: extension.RevisionLevel3Recommendation,
+		}},
 		AllowCredentials: []protocol.CredentialDescriptor{{
 			Type:       protocol.CredentialTypePublicKey,
 			ID:         credentialID,

@@ -68,6 +68,26 @@ func TestVerifierAppliesMinimumSuccessfulPolicy(t *testing.T) {
 	}
 }
 
+func TestVerifierRejectsUnknownSubStatementTrustPath(t *testing.T) {
+	t.Parallel()
+
+	registry, err := attestation.NewRegistry(
+		fakeVerifier{format: "one", trustPathKind: "future"},
+		fakeVerifier{format: "two"},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+
+	_, err = compound.New(registry).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format:    compound.Format,
+		Statement: compoundStatement("one", "two"),
+	})
+	if !errors.Is(err, compound.ErrInsufficientStatements) {
+		t.Fatalf("VerifyAttestation() error = %v, want ErrInsufficientStatements", err)
+	}
+}
+
 func TestVerifierRejectsMalformedCompoundStatements(t *testing.T) {
 	t.Parallel()
 
@@ -124,6 +144,32 @@ func TestVerifierRejectsMalformedCompoundStatements(t *testing.T) {
 	}
 }
 
+func TestVerifierBoundsWorkAndHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	registry, err := attestation.NewRegistry(fakeVerifier{format: "one"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	formats := make([]string, compound.DefaultMaxStatements+1)
+	for i := range formats {
+		formats[i] = "one"
+	}
+	if _, err := compound.New(registry).VerifyAttestation(context.Background(), attestation.VerificationRequest{
+		Format: compound.Format, Statement: compoundStatement(formats...),
+	}); !errors.Is(err, compound.ErrInvalidStatement) {
+		t.Fatalf("oversized VerifyAttestation() error = %v, want ErrInvalidStatement", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := compound.New(registry).VerifyAttestation(ctx, attestation.VerificationRequest{
+		Format: compound.Format, Statement: compoundStatement("one", "one"),
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled VerifyAttestation() error = %v, want context.Canceled", err)
+	}
+}
+
 func compoundStatement(formats ...string) codec.AttestationStatement {
 	statements := make([]codec.CompoundSubStatement, 0, len(formats))
 	for _, format := range formats {
@@ -139,6 +185,7 @@ func compoundStatement(formats ...string) codec.AttestationStatement {
 type fakeVerifier struct {
 	format          string
 	attestationType attestation.Type
+	trustPathKind   attestation.TrustPathKind
 	err             error
 }
 
@@ -157,9 +204,14 @@ func (v fakeVerifier) VerifyAttestation(_ context.Context, request attestation.V
 	if attestationType == "" {
 		attestationType = attestation.TypeBasic
 	}
+	trustPathKind := v.trustPathKind
+	if trustPathKind == "" {
+		trustPathKind = attestation.TrustPathNone
+	}
 
 	return attestation.VerificationResult{
 		Type:                   attestationType,
+		TrustPath:              attestation.TrustPath{Kind: trustPathKind},
 		CryptographicallyValid: true,
 	}, nil
 }

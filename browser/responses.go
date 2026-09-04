@@ -12,6 +12,12 @@ import (
 	"github.com/islishude/webauthn/protocol"
 )
 
+const (
+	// MaxResponseJSONBytes bounds direct browser response decoding. The HTTP
+	// adapter applies the same default before allocating the input slice.
+	MaxResponseJSONBytes = 1 << 20
+)
+
 // RegistrationCredentialJSON is the browser JSON shape for a registration credential response.
 type RegistrationCredentialJSON struct {
 	ID                      string                           `json:"id"`
@@ -50,113 +56,164 @@ type AssertionResponseJSON struct {
 	UserHandle        *string `json:"userHandle,omitempty"`
 }
 
+type registrationCredentialWire struct {
+	ID                      *string                           `json:"id"`
+	RawID                   *string                           `json:"rawId"`
+	Type                    *protocol.PublicKeyCredentialType `json:"type"`
+	Response                *attestationResponseWire          `json:"response"`
+	AuthenticatorAttachment protocol.AuthenticatorAttachment  `json:"authenticatorAttachment,omitempty"`
+	ClientExtensionResults  *map[string]any                   `json:"clientExtensionResults"`
+}
+
+type attestationResponseWire struct {
+	ClientDataJSON     *string                            `json:"clientDataJSON"`
+	AuthenticatorData  *string                            `json:"authenticatorData"`
+	Transports         *[]protocol.AuthenticatorTransport `json:"transports"`
+	PublicKey          *string                            `json:"publicKey,omitempty"`
+	PublicKeyAlgorithm *protocol.COSEAlgorithmIdentifier  `json:"publicKeyAlgorithm"`
+	AttestationObject  *string                            `json:"attestationObject"`
+}
+
+type authenticationCredentialWire struct {
+	ID                      *string                           `json:"id"`
+	RawID                   *string                           `json:"rawId"`
+	Type                    *protocol.PublicKeyCredentialType `json:"type"`
+	Response                *assertionResponseWire            `json:"response"`
+	AuthenticatorAttachment protocol.AuthenticatorAttachment  `json:"authenticatorAttachment,omitempty"`
+	ClientExtensionResults  *map[string]any                   `json:"clientExtensionResults"`
+}
+
+type assertionResponseWire struct {
+	ClientDataJSON    *string `json:"clientDataJSON"`
+	AuthenticatorData *string `json:"authenticatorData"`
+	Signature         *string `json:"signature"`
+	UserHandle        *string `json:"userHandle,omitempty"`
+}
+
 // RegistrationResponseFromJSON decodes browser registration JSON into transport-neutral input.
 func RegistrationResponseFromJSON(data []byte) (webauthn.RegistrationResponse, error) {
-	var dto RegistrationCredentialJSON
-	if err := unmarshalBrowserJSON(data, &dto); err != nil {
+	if err := validateResponseJSONSize(data); err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	if err := dto.Type.Validate(); err != nil {
+	var wire registrationCredentialWire
+	if err := unmarshalBrowserJSON(data, &wire); err != nil {
+		return webauthn.RegistrationResponse{}, err
+	}
+	if wire.RawID == nil || wire.Type == nil {
+		return webauthn.RegistrationResponse{}, requiredMemberError("registration response")
+	}
+	if err := wire.Type.Validate(); err != nil {
 		return webauthn.RegistrationResponse{}, protocolValueError("type", err)
 	}
-
-	rawID, err := rawIDFromBase64URL("rawId", dto.RawID)
+	rawID, err := rawIDFromBase64URL("rawId", *wire.RawID)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	if dto.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
+	if wire.ID == nil || wire.Response == nil || wire.ClientExtensionResults == nil {
+		return webauthn.RegistrationResponse{}, requiredMemberError("registration response")
+	}
+	response := wire.Response
+	if response.ClientDataJSON == nil || response.AuthenticatorData == nil || response.Transports == nil || response.PublicKeyAlgorithm == nil || response.AttestationObject == nil {
+		return webauthn.RegistrationResponse{}, requiredMemberError("response")
+	}
+	if *wire.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
 		return webauthn.RegistrationResponse{}, protocolValueError("id", errors.New("id does not match rawId"))
 	}
-	if err := validateResponseJSONShape(data, []string{"id", "rawId", "response", "clientExtensionResults", "type"}, []string{"clientDataJSON", "authenticatorData", "transports", "publicKeyAlgorithm", "attestationObject"}); err != nil {
-		return webauthn.RegistrationResponse{}, err
-	}
-	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", dto.Response.ClientDataJSON)
+	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", *response.ClientDataJSON)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	authenticatorData, err := authenticatorDataFromBase64URL("response.authenticatorData", dto.Response.AuthenticatorData)
+	authenticatorData, err := authenticatorDataFromBase64URL("response.authenticatorData", *response.AuthenticatorData)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	attestationObject, err := attestationObjectFromBase64URL("response.attestationObject", dto.Response.AttestationObject)
+	attestationObject, err := attestationObjectFromBase64URL("response.attestationObject", *response.AttestationObject)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	publicKey, err := optionalBytesFromBase64URL("response.publicKey", dto.Response.PublicKey)
+	_, err = optionalBytesFromBase64URL("response.publicKey", response.PublicKey)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
-	if dto.Response.PublicKeyAlgorithm == 0 {
+	if *response.PublicKeyAlgorithm == 0 {
 		return webauthn.RegistrationResponse{}, protocolValueError("response.publicKeyAlgorithm", errors.New("algorithm is required"))
 	}
-	clientExtensions, err := clientExtensionResultsFromJSON(dto.ClientExtensionResults)
+	clientExtensions, err := clientExtensionResultsFromJSON(*wire.ClientExtensionResults)
 	if err != nil {
 		return webauthn.RegistrationResponse{}, err
 	}
 
 	return webauthn.RegistrationResponse{
-		Type:                    dto.Type,
+		Type:                    *wire.Type,
 		RawID:                   rawID,
 		ClientDataJSON:          clientDataJSON,
 		AuthenticatorData:       authenticatorData,
 		AttestationObject:       attestationObject,
-		PublicKey:               publicKey,
-		PublicKeyAlgorithm:      dto.Response.PublicKeyAlgorithm,
-		Transports:              append([]protocol.AuthenticatorTransport(nil), dto.Response.Transports...),
-		AuthenticatorAttachment: dto.AuthenticatorAttachment,
+		PublicKeyAlgorithm:      *response.PublicKeyAlgorithm,
+		Transports:              append([]protocol.AuthenticatorTransport(nil), (*response.Transports)...),
+		AuthenticatorAttachment: wire.AuthenticatorAttachment,
 		ClientExtensionResults:  clientExtensions,
 	}, nil
 }
 
 // AuthenticationResponseFromJSON decodes browser authentication JSON into transport-neutral input.
 func AuthenticationResponseFromJSON(data []byte) (webauthn.AuthenticationResponse, error) {
-	var dto AuthenticationCredentialJSON
-	if err := unmarshalBrowserJSON(data, &dto); err != nil {
+	if err := validateResponseJSONSize(data); err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	if err := dto.Type.Validate(); err != nil {
+	var wire authenticationCredentialWire
+	if err := unmarshalBrowserJSON(data, &wire); err != nil {
+		return webauthn.AuthenticationResponse{}, err
+	}
+	if wire.RawID == nil || wire.Type == nil {
+		return webauthn.AuthenticationResponse{}, requiredMemberError("authentication response")
+	}
+	if err := wire.Type.Validate(); err != nil {
 		return webauthn.AuthenticationResponse{}, protocolValueError("type", err)
 	}
-
-	rawID, err := rawIDFromBase64URL("rawId", dto.RawID)
+	rawID, err := rawIDFromBase64URL("rawId", *wire.RawID)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	if dto.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
+	if wire.ID == nil || wire.Response == nil || wire.ClientExtensionResults == nil {
+		return webauthn.AuthenticationResponse{}, requiredMemberError("authentication response")
+	}
+	response := wire.Response
+	if response.ClientDataJSON == nil || response.AuthenticatorData == nil || response.Signature == nil {
+		return webauthn.AuthenticationResponse{}, requiredMemberError("response")
+	}
+	if *wire.ID != base64.RawURLEncoding.EncodeToString(rawID.Bytes()) {
 		return webauthn.AuthenticationResponse{}, protocolValueError("id", errors.New("id does not match rawId"))
 	}
-	if err := validateResponseJSONShape(data, []string{"id", "rawId", "response", "clientExtensionResults", "type"}, []string{"clientDataJSON", "authenticatorData", "signature"}); err != nil {
-		return webauthn.AuthenticationResponse{}, err
-	}
-	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", dto.Response.ClientDataJSON)
+	clientDataJSON, err := clientDataJSONFromBase64URL("response.clientDataJSON", *response.ClientDataJSON)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	authenticatorData, err := authenticatorDataFromBase64URL("response.authenticatorData", dto.Response.AuthenticatorData)
+	authenticatorData, err := authenticatorDataFromBase64URL("response.authenticatorData", *response.AuthenticatorData)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	signature, err := signatureFromBase64URL("response.signature", dto.Response.Signature)
+	signature, err := signatureFromBase64URL("response.signature", *response.Signature)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	userHandle, err := optionalUserHandleFromBase64URL("response.userHandle", dto.Response.UserHandle)
+	userHandle, err := optionalUserHandleFromBase64URL("response.userHandle", response.UserHandle)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
-	clientExtensions, err := clientExtensionResultsFromJSON(dto.ClientExtensionResults)
+	clientExtensions, err := clientExtensionResultsFromJSON(*wire.ClientExtensionResults)
 	if err != nil {
 		return webauthn.AuthenticationResponse{}, err
 	}
 
 	return webauthn.AuthenticationResponse{
-		Type:                    dto.Type,
+		Type:                    *wire.Type,
 		RawID:                   rawID,
 		ClientDataJSON:          clientDataJSON,
 		AuthenticatorData:       authenticatorData,
 		Signature:               signature,
 		UserHandle:              userHandle,
-		AuthenticatorAttachment: dto.AuthenticatorAttachment,
+		AuthenticatorAttachment: wire.AuthenticatorAttachment,
 		ClientExtensionResults:  clientExtensions,
 	}, nil
 }
@@ -192,37 +249,15 @@ func unmarshalBrowserJSON(data []byte, target any) error {
 	return nil
 }
 
-func validateResponseJSONShape(data []byte, requiredTopLevel []string, requiredResponse []string) error {
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal(data, &root); err != nil {
-		return fmt.Errorf("%w: %w", ErrMalformedJSON, err)
-	}
-	for _, name := range requiredTopLevel {
-		if !presentJSONMember(root, name) {
-			return protocolValueError(name, errors.New("required member is missing or null"))
-		}
-	}
-
-	var response map[string]json.RawMessage
-	if err := json.Unmarshal(root["response"], &response); err != nil || response == nil {
-		return protocolValueError("response", errors.New("response must be an object"))
-	}
-	for _, name := range requiredResponse {
-		if !presentJSONMember(response, name) {
-			return protocolValueError("response."+name, errors.New("required member is missing or null"))
-		}
-	}
-
-	var extensionResults map[string]json.RawMessage
-	if err := json.Unmarshal(root["clientExtensionResults"], &extensionResults); err != nil || extensionResults == nil {
-		return protocolValueError("clientExtensionResults", errors.New("member must be an object"))
+func validateResponseJSONSize(data []byte) error {
+	if len(data) == 0 || len(data) > MaxResponseJSONBytes {
+		return fmt.Errorf("%w: response size", ErrMalformedJSON)
 	}
 	return nil
 }
 
-func presentJSONMember(members map[string]json.RawMessage, name string) bool {
-	value, ok := members[name]
-	return ok && len(value) != 0 && string(value) != "null"
+func requiredMemberError(field string) error {
+	return protocolValueError(field, errors.New("required member is missing or null"))
 }
 
 func rawIDFromBase64URL(field string, encoded string) (protocol.RawID, error) {

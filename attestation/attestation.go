@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/internal/protocolidentifier"
 	"github.com/islishude/webauthn/protocol"
 )
@@ -31,6 +34,16 @@ const (
 	TypeUncertain       Type = "uncertain"
 )
 
+// Known reports whether t is a defined WebAuthn attestation type.
+func (t Type) Known() bool {
+	switch t {
+	case TypeNone, TypeSelf, TypeBasic, TypeAttCA, TypeAnonymizationCA, TypeUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
 // TrustPathKind identifies the kind of trust path material returned by a format.
 type TrustPathKind string
 
@@ -39,6 +52,18 @@ const (
 	TrustPathX509 TrustPathKind = "x5c"
 	TrustPathRaw  TrustPathKind = "raw"
 )
+
+// Known reports whether k is a trust-path representation understood by this
+// package. Format verifiers must use Raw for non-X.509 evidence instead of
+// inventing an unrecognized kind.
+func (k TrustPathKind) Known() bool {
+	switch k {
+	case TrustPathNone, TrustPathX509, TrustPathRaw:
+		return true
+	default:
+		return false
+	}
+}
 
 // TrustPath carries format evidence without making trust decisions.
 type TrustPath struct {
@@ -67,6 +92,15 @@ type VerificationResult struct {
 	Evidence               map[string]any
 }
 
+// Clone returns a result whose mutable metadata containers do not alias the
+// source result.
+func (result VerificationResult) Clone() VerificationResult {
+	result.TrustPath = cloneTrustPath(result.TrustPath)
+	result.Warnings = slices.Clone(result.Warnings)
+	result.Evidence = maps.Clone(result.Evidence)
+	return result
+}
+
 // TrustRequest is the evidence, including registration AAGUID, passed to
 // relying-party attestation trust policy after format verification succeeds.
 type TrustRequest struct {
@@ -86,6 +120,24 @@ type TrustResult struct {
 	Warnings []string
 }
 
+// Clone returns a trust result with an independent warnings slice.
+func (result TrustResult) Clone() TrustResult {
+	result.Warnings = slices.Clone(result.Warnings)
+	return result
+}
+
+func cloneTrustPath(path TrustPath) TrustPath {
+	path.Certificates = slices.Clone(path.Certificates)
+	if results, ok := path.Raw.([]VerificationResult); ok {
+		cloned := make([]VerificationResult, len(results))
+		for i, result := range results {
+			cloned[i] = result.Clone()
+		}
+		path.Raw = cloned
+	}
+	return path
+}
+
 // TrustPolicy decides whether verified attestation evidence is acceptable for
 // a relying party.
 type TrustPolicy interface {
@@ -97,6 +149,9 @@ type TrustPolicyFunc func(context.Context, TrustRequest) (TrustResult, error)
 
 // EvaluateAttestationTrust calls f(ctx, request).
 func (f TrustPolicyFunc) EvaluateAttestationTrust(ctx context.Context, request TrustRequest) (TrustResult, error) {
+	if f == nil {
+		return TrustResult{}, ErrTrustPolicyConfiguration
+	}
 	return f(ctx, request)
 }
 
@@ -115,7 +170,7 @@ type Registry struct {
 func NewRegistry(verifiers ...Verifier) (*Registry, error) {
 	registry := &Registry{verifiers: make(map[string]Verifier, len(verifiers))}
 	for _, verifier := range verifiers {
-		if verifier == nil || !protocolidentifier.Valid(verifier.Format()) {
+		if interfaceutil.IsNil(verifier) || !protocolidentifier.Valid(verifier.Format()) {
 			return nil, ErrInvalidFormat
 		}
 		format := verifier.Format()

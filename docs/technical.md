@@ -1,6 +1,6 @@
 # Technical design
 
-Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-08-28.
+Status: registration, authentication, Level 3 attestation and extensions, typed key verification, storage encoding, trust hooks, optional adapters, and examples implemented, revised 2026-09-04.
 
 Module: `github.com/islishude/webauthn`.
 
@@ -39,6 +39,12 @@ Registration is split into two application-visible phases. The first phase build
 
 Authentication is split similarly. The first phase builds `PublicKeyCredentialRequestOptions` and returns ceremony state. The second phase accepts stored state, persisted credential material, and the browser assertion response, then returns verification status, user identity information, counter update information, and extension outcomes.
 
+Both start operations persist a sorted `(extension ID, handler revision)`
+binding for every known extension input. Finish requires the same binding and
+handler registry before it interprets output. Reserved built-in IDs cannot fall
+back to unknown-extension handling, and a registry or ceremony may contain at
+most 64 extension entries.
+
 The library should not own the account model. User lookup, session creation, account recovery, credential storage, rate limiting, and audit logging remain application responsibilities.
 
 ## Planned package boundaries
@@ -76,7 +82,9 @@ objects and COSE keys are decoded through a codec dependency or adapter. The
 concrete adapter uses that dependency for canonical round-tripping and rejects
 tags, indefinite lengths, duplicate keys, non-canonical ordering/widths, extra
 attestation-object fields, and optional or private COSE key parameters. No
-general-purpose CBOR implementation is added here.
+general-purpose CBOR implementation is added here. A decoded CBOR value is
+limited to 1 MiB, 16 nested levels, 64 array elements, and 64 map pairs before
+WebAuthn-specific shape validation.
 
 The project must not implement cryptographic algorithms. SHA-256 hashing uses
 Go standard library primitives at WebAuthn call sites. Signature verification,
@@ -111,7 +119,9 @@ Stored credential records should include at minimum:
 Raw COSE bytes and typed EC2/RSA/OKP material are stored together without an
 adapter-owned `any` key handle. `backupEligible` is immutable after registration;
 `backupState`, signature counters, authorized UV initialization, and known
-authenticator-attachment changes use explicit conditional updates. Optional
+authenticator-attachment changes use explicit conditional updates. Each update
+includes the previous counter, backup state, UV initialization, and attachment
+so storage can compare-and-swap the whole mutable credential state. Optional
 `storage/json` reconstructs typed key material by
 decoding the stored raw COSE key rather than trusting serialized derivatives.
 COSE algorithm identifiers remain extensible but are bounded to Web IDL `long`.
@@ -135,9 +145,9 @@ Registration verification must include these categories:
 7. authenticator data parsing and RP ID hash check;
 8. user presence and user verification policy checks;
 9. credential public key algorithm acceptance check;
-10. extension output policy;
-11. attestation format dispatch and cryptographic validity;
-12. attestation trust policy;
+10. attestation format dispatch and cryptographic validity;
+11. attestation trust policy;
+12. extension output policy after attestation acceptance;
 13. credential record construction for caller-owned atomic insertion.
 
 Authentication verification must include these categories:
@@ -149,9 +159,9 @@ Authentication verification must include these categories:
 5. expected origin and cross-origin policy checks;
 6. authenticator data parsing and RP ID hash check, including AppID extension behavior;
 7. user presence and user verification policy checks;
-8. extension output policy;
-9. signature verification over authenticator data plus SHA-256 of client data;
-10. signature counter comparison and clone-risk result;
+8. signature verification over authenticator data plus SHA-256 of client data;
+9. signature counter comparison and clone-risk policy;
+10. extension output policy after those core checks;
 11. result construction for application persistence.
 
 ## Policy model
@@ -273,6 +283,15 @@ produced the assertion. The Ed448 ceremony pair remains recorded for inventory
 completeness but is excluded from executable coverage because neither
 `crypto/standard` nor the test suite supplies an Ed448 verifier.
 
+The 2026-09-04 full-repository remediation adds no dependency. It centralizes
+typed-nil validation, validates caller-stored ceremony and credential records,
+binds extension handler revisions across start and finish, advances storage
+state envelopes to v3, adds bounded CBOR/browser/extension/compound work,
+validates canonical origin/RP-ID configuration, strengthens credential-update
+compare-and-swap predicates, and removes redundant parsing and copying from hot
+paths. Optional browser, HTTP, storage, standard-crypto, and attestation format
+packages remain outside the root import graph.
+
 ## Compatibility and passkey behavior
 
 The library should support both username-first and discoverable-credential authentication flows. Passkey-oriented behavior requires correct user handle processing, resident/discoverable credential options, user verification policy, authenticator attachment preferences, and extension results such as credential properties where supported.
@@ -286,4 +305,9 @@ the repository. Current architecture, boundary, security, testing, CI,
 dependency, and release requirements are maintained in the active documents
 listed in `README.md` and `AGENTS.md`.
 
-The local quality gate is `make ci`. It validates documentation and configuration immediately, then enforces README checks, Go formatting, linting, tests, race checks, fuzz smoke checks, example builds, import graph checks, dependency license checks, and module hygiene after `go.mod` exists. GitHub Actions mirrors this split so implementation work remains gated by local and CI behavior.
+The local quality gate is `make ci`. It validates documentation and
+configuration immediately, then enforces README checks, Go and repository
+formatting, strict E2E TypeScript checks, linting, tests, race checks, fuzz smoke
+checks, example builds, import graph checks, dependency license checks, and
+module hygiene. GitHub Actions adds an explicit Go 1.25 compatibility lane and
+the separate Chromium E2E job.

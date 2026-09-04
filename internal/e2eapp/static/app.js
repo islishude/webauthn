@@ -148,9 +148,12 @@ function encodeRegistrationCredential(credential) {
     authenticatorAttachment: credential.authenticatorAttachment,
     response: {
       clientDataJSON: bufferToB64url(response.clientDataJSON),
+      authenticatorData: optionalBufferToB64url(
+        response.getAuthenticatorData?.(),
+      ),
       attestationObject: bufferToB64url(response.attestationObject),
       publicKey: optionalBufferToB64url(response.getPublicKey?.()),
-      publicKeyAlgorithm: response.getPublicKeyAlgorithm?.() || 0,
+      publicKeyAlgorithm: response.getPublicKeyAlgorithm?.() ?? 0,
       transports: response.getTransports?.() || [],
     },
     clientExtensionResults: credential.getClientExtensionResults(),
@@ -175,7 +178,10 @@ function encodeAuthenticationCredential(credential) {
 }
 
 function optionalBufferToB64url(value) {
-  return value ? bufferToB64url(value) : undefined;
+  if (!value || value.byteLength === 0) {
+    return undefined;
+  }
+  return bufferToB64url(value);
 }
 
 function b64urlToBuffer(value) {

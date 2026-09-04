@@ -34,6 +34,13 @@ func (UVMHandler) ID() string {
 	return IDUVM
 }
 
+// Revision returns the built-in semantic revision.
+//
+// Deprecated: The uvm extension is deprecated in WebAuthn Level 3.
+func (UVMHandler) Revision() string {
+	return RevisionLevel3Recommendation
+}
+
 // ValidateInput validates UVM input at ceremony start.
 func (UVMHandler) ValidateInput(request InputRequest) (bool, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {

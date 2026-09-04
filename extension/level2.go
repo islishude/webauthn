@@ -51,6 +51,11 @@ func (AppIDHandler) ID() string {
 	return IDAppID
 }
 
+// Revision returns the built-in semantic revision.
+func (AppIDHandler) Revision() string {
+	return RevisionLevel3Recommendation
+}
+
 // ValidateInput validates AppID extension input at ceremony start.
 func (AppIDHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationAuthentication); err != nil {
@@ -105,6 +110,11 @@ func (AppIDExcludeHandler) ID() string {
 	return IDAppIDExclude
 }
 
+// Revision returns the built-in semantic revision.
+func (AppIDExcludeHandler) Revision() string {
+	return RevisionLevel3Recommendation
+}
+
 // ValidateInput validates AppID exclusion input at ceremony start.
 func (AppIDExcludeHandler) ValidateInput(request InputRequest) (string, error) {
 	if err := requireInputOperation(request, OperationRegistration); err != nil {
@@ -154,6 +164,11 @@ type CredPropsHandler struct{}
 // ID returns "credProps".
 func (CredPropsHandler) ID() string {
 	return IDCredProps
+}
+
+// Revision returns the built-in semantic revision.
+func (CredPropsHandler) Revision() string {
+	return RevisionLevel3Recommendation
 }
 
 // ValidateInput validates credential properties input at ceremony start.

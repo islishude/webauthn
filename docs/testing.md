@@ -1,6 +1,6 @@
 # Testing and conformance strategy
 
-Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-08-28.
+Status: Level 3 security, typed-key, storage, extension lifecycle, and adapter coverage complete, revised 2026-09-04.
 
 This document defines the test approach for the planned WebAuthn/passkey server-side library.
 
@@ -35,7 +35,10 @@ The required pre-PR command is:
 make ci
 ```
 
-`make ci` runs Go and Prettier format checks, linting, unit tests, race tests, bounded fuzz smoke tests, import graph checks, dependency license checks, and module tidy verification without module-detection skips.
+`make ci` runs Go and pinned Prettier format checks, strict TypeScript checking,
+linting, unit tests, race tests, bounded fuzz smoke tests, import graph checks,
+dependency license checks, and module tidy verification without module-detection
+skips.
 
 A narrow, network-independent Recommendation vector check is:
 
@@ -112,6 +115,7 @@ Required coverage:
 - unsupported credential public key algorithm;
 - unsupported attestation format;
 - invalid attestation statement;
+- unknown attestation type or trust-path classification from a verifier;
 - untrusted attestation policy result;
 - missing expiry and unresolved user-verification ceremony state;
 - atomic duplicate credential insertion in application integration tests;
@@ -211,8 +215,10 @@ Required coverage:
 - deprecated `uvm` result metadata;
 - generic custom-handler registration, typed dispatch, and `Find` result
   inference without output type assertions;
+- stable handler revisions, exact start/finish bindings, reserved built-in ID
+  enforcement, and 64-entry registry/input/output limits;
 - `RawValue` absent/null/type behavior plus defensive copying of typed
-  `Clone() T` values;
+  `Clone() T` values and aggregate depth/node/byte budgets;
 - unknown extension policy and recursively copied composite values with
   non-string comparable CBOR map keys.
 
@@ -454,6 +460,30 @@ The 2026-08-28 section-by-section audit remediation added:
   presence rejection, and finish-time largeBlob state revalidation;
 - credential type persistence in storage envelope v2 with v1 read compatibility.
 
+The 2026-09-04 full-repository remediation added:
+
+- typed-nil rejection across codec, crypto, attestation, extension, transport,
+  and challenge-generator interfaces;
+- shared ceremony-state and credential-record validation, stored BE/BS
+  rejection, defensive credential copies, and four-field credential-update CAS
+  coverage;
+- exact extension handler revision bindings, reserved built-in enforcement,
+  storage envelope v3 migration checks, and legacy extension-state rejection;
+- bounded CBOR maps/arrays/depth/bytes, compound attestation statements,
+  recursive extension clones, storage values, browser JSON, HTTP bodies, and
+  total extension IDs;
+- canonical origin/RP-ID/port and explicit related-origin policy coverage,
+  including `http://localhost:8080` fixture compatibility;
+- attestation-object and COSE decoder source-identity, COSE canonicality,
+  unknown-parameter, and nil-decoder rejection; browser
+  required/null/alias/size tests; and context cancellation;
+- concurrent example storage, exact CAS predicates, one-time state consumption,
+  shared extension registries, and browser authenticator-data transport;
+- allocation-reporting benchmarks for client data, CBOR, browser response,
+  extension clone, and start-operation hot paths;
+- pinned Prettier, strict unused TypeScript checks, and the minimum Go 1.25 CI
+  lane.
+
 ## Fuzzing targets
 
 Current fuzzing targets are:
@@ -477,18 +507,24 @@ CI fuzzing is a bounded smoke check. Longer fuzz campaigns should be run locally
 
 Browser-produced registration and authentication outputs are generated specifically for this project by `scripts/generate-browser-fixtures.mjs` through the Playwright dependency pinned by `e2e/package-lock.json` and Chrome DevTools virtual authenticators. The committed fixture suite lives under `testdata/browser/virtual-authenticator`.
 
+Regeneration writes `fixtures.next.json` by default so review does not overwrite
+the committed provenance accidentally. `BROWSER_FIXTURE_OUTPUT` may select an
+explicit review destination. The generator records the current date and Level 3
+Recommendation provenance, writes a mode-0600 temporary file, and publishes it
+with an atomic rename.
+
 The committed fixture remains immutable historical provenance from Playwright
 1.60.0 and Chrome 148. Live E2E uses Playwright 1.62.1. Its Credentials API
 exercises capture, deletion, reseeding, and credential-inclusive storage state
 without writing passkey private material to disk. Chromium CDP remains the
 native-browser path for transport selection, UV failure, and bogus signatures.
 
-The experimental Playwright Credentials shim omits registration
-`authenticatorData` and returns an empty `toJSON()` response. The test-only RP
-normalizes only that missing convenience member from the authoritative
-`attestationObject` before invoking the strict public browser decoder. A
-provided member is never overwritten, so the core equality check still rejects
-mismatches; production browser parsing is not relaxed.
+The experimental Playwright Credentials shim may omit registration
+`authenticatorData` or mirror the entire `attestationObject` into that member.
+The test-only RP normalizes only an absent value or that exact known mirror from
+the authoritative `attestationObject` before invoking the strict public browser
+decoder. Any other provided value is preserved, so the core equality check
+still rejects mismatches; production browser parsing is not relaxed.
 
 Current fixture coverage:
 
@@ -535,6 +571,7 @@ Before release, CI should run:
 - documentation and configuration presence checks;
 - line-ending checks for text files;
 - `gofmt`/`goimports` formatting checks;
+- pinned Prettier formatting and strict TypeScript checks;
 - golangci-lint static analysis;
 - unit tests;
 - race-enabled tests for state-free components where practical;
@@ -542,6 +579,11 @@ Before release, CI should run:
 - dependency license checks;
 - import graph checks proving root package does not import optional attestation or transport packages;
 - example build checks for public integration examples;
+- minimum supported Go 1.25 package tests;
 - README checks proving usage references point to compile-checked examples.
 
-The workflow now includes documentation/config checks, README checks, line-ending checks, formatting checks, static analysis, unit tests, race tests, bounded fuzz smoke tests, example builds, dependency license checks, import graph checks, and module hygiene.
+The workflow now includes documentation/config checks, README checks,
+line-ending checks, formatting and TypeScript checks, static analysis, unit
+tests, race tests, bounded fuzz smoke tests, example builds, dependency license
+checks, import graph checks, minimum-Go tests, module hygiene, and separate
+Chromium E2E.

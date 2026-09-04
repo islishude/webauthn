@@ -143,7 +143,7 @@ func (s *store) insertCredential(record webauthn.CredentialRecord) bool {
 	if _, exists := s.credentialsByID[key]; exists {
 		return false
 	}
-	credential := &credentialRecord{Credential: record, CreatedAt: now, UpdatedAt: now}
+	credential := &credentialRecord{Credential: record.Clone(), CreatedAt: now, UpdatedAt: now}
 	s.credentialsByID[key] = credential
 	userKey := handleKey(record.UserHandle)
 	s.credentialsByUserHandle[userKey] = append(s.credentialsByUserHandle[userKey], credential)
@@ -157,7 +157,7 @@ func (s *store) credentialByID(id []byte) (webauthn.CredentialRecord, bool) {
 	if !ok {
 		return webauthn.CredentialRecord{}, false
 	}
-	return credential.Credential, true
+	return credential.Credential.Clone(), true
 }
 
 func (s *store) credentialsForUser(handle protocol.UserHandle) []webauthn.CredentialRecord {
@@ -166,7 +166,7 @@ func (s *store) credentialsForUser(handle protocol.UserHandle) []webauthn.Creden
 	records := s.credentialsByUserHandle[handleKey(handle)]
 	out := make([]webauthn.CredentialRecord, 0, len(records))
 	for _, record := range records {
-		out = append(out, record.Credential)
+		out = append(out, record.Credential.Clone())
 	}
 	return out
 }
@@ -175,7 +175,10 @@ func (s *store) updateCredential(update webauthn.CredentialUpdate) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, ok := s.credentialsByID[credentialKey(update.ID.Bytes())]
-	if !ok || record.Credential.SignCount != update.PreviousSignCount {
+	if !ok || record.Credential.SignCount != update.PreviousSignCount ||
+		record.Credential.BackupState != update.PreviousBackupState ||
+		record.Credential.UVInitialized != update.PreviousUVInitialized ||
+		record.Credential.AuthenticatorAttachment != update.PreviousAuthenticatorAttachment {
 		return false
 	}
 	if update.SignCountChanged {

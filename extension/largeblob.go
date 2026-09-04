@@ -40,6 +40,11 @@ func (LargeBlobHandler) ID() string {
 	return IDLargeBlob
 }
 
+// Revision returns the built-in semantic revision.
+func (LargeBlobHandler) Revision() string {
+	return RevisionLevel3Recommendation
+}
+
 // ValidateInput validates and normalizes largeBlob input at ceremony start.
 func (LargeBlobHandler) ValidateInput(request InputRequest) (LargeBlobInput, error) {
 	if err := requireInputOperation(request, OperationRegistration, OperationAuthentication); err != nil {

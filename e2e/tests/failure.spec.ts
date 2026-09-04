@@ -3,10 +3,7 @@ import { expect, test } from "@playwright/test";
 import { uniqueEmail } from "../support/test-users.js";
 import { addVirtualAuthenticator } from "../support/webauthn.js";
 
-test("unregistered user cannot login with a security key", async ({
-  page,
-  request,
-}) => {
+test("unregistered user cannot login with a security key", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Email").fill(uniqueEmail("missing"));
   await page.getByRole("button", { name: "Sign in with security key" }).click();
@@ -22,7 +19,6 @@ test("unregistered user cannot login with a security key", async ({
 test("UV-required passkey registration fails when user verification is false", async ({
   page,
   context,
-  request,
 }) => {
   await using authenticator = await addVirtualAuthenticator(context, {
     transport: "internal",
@@ -47,7 +43,6 @@ test("UV-required passkey registration fails when user verification is false", a
 test("bogus assertion signature cannot create a session", async ({
   page,
   context,
-  request,
 }) => {
   await using authenticator = await addVirtualAuthenticator(context, {
     transport: "internal",
@@ -81,6 +76,7 @@ test("registration state replay is rejected", async ({ page, context }) => {
     userVerification: true,
     userVerified: true,
   });
+  void authenticator;
 
   const email = uniqueEmail("registration-replay");
   await page.goto("/");
@@ -127,6 +123,7 @@ test("registration finish rejects mismatched ceremony email", async ({
     userVerification: true,
     userVerified: true,
   });
+  void authenticator;
 
   const email = uniqueEmail("registration-state");
   const otherEmail = uniqueEmail("registration-state-other");
@@ -178,6 +175,7 @@ test("authentication finish rejects mismatched username-first email", async ({
     userVerification: true,
     userVerified: true,
   });
+  void authenticator;
 
   const email = uniqueEmail("authentication-state");
   const otherEmail = uniqueEmail("authentication-state-other");
@@ -230,6 +228,7 @@ test("logout clears an authenticated session", async ({ page, context }) => {
     userVerification: true,
     userVerified: true,
   });
+  void authenticator;
 
   const email = uniqueEmail("logout-session");
   await page.goto("/");

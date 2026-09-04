@@ -1,6 +1,7 @@
 package browser_test
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -124,6 +125,21 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 	}
 }
 
+func TestOptionConversionCopiesUnknownExtensionValues(t *testing.T) {
+	t.Parallel()
+
+	bytes := []byte{0x01}
+	options := protocol.PublicKeyCredentialRequestOptions{
+		Extensions: protocol.ExtensionInputs{"future": map[string]any{"bytes": bytes}},
+	}
+	dto := browser.CredentialRequestOptionsFromProtocol(options)
+	converted := dto.Extensions["future"].(map[string]any)["bytes"].([]byte)
+	converted[0] = 0xff
+	if bytes[0] != 0x01 {
+		t.Fatal("converted unknown extension aliases protocol options")
+	}
+}
+
 func TestCredentialCreationOptionsPreservesEmptyPRFEvalByCredential(t *testing.T) {
 	t.Parallel()
 
@@ -204,8 +220,8 @@ func TestRegistrationResponseFromJSON(t *testing.T) {
 	if response.AuthenticatorAttachment != protocol.AuthenticatorAttachmentPlatform {
 		t.Fatalf("AuthenticatorAttachment = %q", response.AuthenticatorAttachment)
 	}
-	if string(response.PublicKey) != "public-key" || response.PublicKeyAlgorithm != protocol.AlgorithmEdDSA {
-		t.Fatalf("public key fields = %q %d", response.PublicKey, response.PublicKeyAlgorithm)
+	if response.PublicKeyAlgorithm != protocol.AlgorithmEdDSA {
+		t.Fatalf("public key algorithm = %d", response.PublicKeyAlgorithm)
 	}
 	largeBlob := response.ClientExtensionResults[extension.IDLargeBlob].(map[string]any)
 	if string(largeBlob["blob"].([]byte)) != "blob" {
@@ -372,6 +388,19 @@ func TestResponseDecodersRequireLevel3JSONMembers(t *testing.T) {
 	delete(authentication, "clientExtensionResults")
 	if _, err := browser.AuthenticationResponseFromJSON(mustJSON(t, authentication)); !errors.Is(err, browser.ErrInvalidProtocolValue) {
 		t.Fatalf("AuthenticationResponseFromJSON() error = %v, want ErrInvalidProtocolValue", err)
+	}
+}
+
+func TestResponseDecodersRejectNullContainersAndOversizedInput(t *testing.T) {
+	t.Parallel()
+
+	id := encode([]byte("credential-1"))
+	nullTransports := []byte(`{"id":"` + id + `","rawId":"` + id + `","type":"public-key","clientExtensionResults":{},"response":{"clientDataJSON":"e30","authenticatorData":"` + encode(make([]byte, protocol.MinAuthenticatorDataLength)) + `","transports":null,"publicKeyAlgorithm":-7,"attestationObject":"oA"}}`)
+	if _, err := browser.RegistrationResponseFromJSON(nullTransports); !errors.Is(err, browser.ErrInvalidProtocolValue) {
+		t.Fatalf("null transports error = %v, want ErrInvalidProtocolValue", err)
+	}
+	if _, err := browser.RegistrationResponseFromJSON(bytes.Repeat([]byte{' '}, browser.MaxResponseJSONBytes+1)); !errors.Is(err, browser.ErrMalformedJSON) {
+		t.Fatalf("oversized response error = %v, want ErrMalformedJSON", err)
 	}
 }
 

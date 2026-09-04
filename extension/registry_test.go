@@ -3,6 +3,7 @@ package extension_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/islishude/webauthn/extension"
@@ -12,21 +13,21 @@ func TestRegistryLookupIsCaseSensitive(t *testing.T) {
 	t.Parallel()
 
 	registry, err := extension.NewRegistry(
-		extension.Register[bool, bool](fakeHandler{id: "credProps"}),
-		extension.Register[bool, bool](fakeHandler{id: "CredProps"}),
+		extension.Register[bool, bool](fakeHandler{id: "custom"}),
+		extension.Register[bool, bool](fakeHandler{id: "Custom"}),
 	)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 
-	if !registry.Contains("credProps") {
-		t.Fatal("Contains(credProps) = false, want true")
+	if !registry.Contains("custom") {
+		t.Fatal("Contains(custom) = false, want true")
 	}
-	if !registry.Contains("CredProps") {
-		t.Fatal("Contains(CredProps) = false, want true")
+	if !registry.Contains("Custom") {
+		t.Fatal("Contains(Custom) = false, want true")
 	}
-	if registry.Contains("CREDPROPS") {
-		t.Fatal("Contains(CREDPROPS) = true, want false")
+	if registry.Contains("CUSTOM") {
+		t.Fatal("Contains(CUSTOM) = true, want false")
 	}
 }
 
@@ -34,8 +35,8 @@ func TestRegistryRejectsDuplicateAndEmptyIDs(t *testing.T) {
 	t.Parallel()
 
 	_, err := extension.NewRegistry(
-		extension.Register[bool, bool](fakeHandler{id: "credProps"}),
-		extension.Register[bool, bool](fakeHandler{id: "credProps"}),
+		extension.Register[bool, bool](fakeHandler{id: "custom"}),
+		extension.Register[bool, bool](fakeHandler{id: "custom"}),
 	)
 	if !errors.Is(err, extension.ErrDuplicateID) {
 		t.Fatalf("NewRegistry() error = %v, want ErrDuplicateID", err)
@@ -56,6 +57,29 @@ func TestRegistryRejectsDuplicateAndEmptyIDs(t *testing.T) {
 	var nilHandler *typedHandler
 	if _, err := extension.NewRegistry(extension.Register(nilHandler)); !errors.Is(err, extension.ErrInvalidID) {
 		t.Fatalf("NewRegistry(typed nil) error = %v, want ErrInvalidID", err)
+	}
+}
+
+func TestRegistryBoundsEntriesAndReservesBuiltInBindings(t *testing.T) {
+	t.Parallel()
+
+	entries := make([]extension.HandlerEntry, extension.MaxEntries+1)
+	for i := range entries {
+		entries[i] = extension.Register[bool, bool](fakeHandler{id: fmt.Sprintf("x%02d", i)})
+	}
+	if _, err := extension.NewRegistry(entries...); !errors.Is(err, extension.ErrTooManyEntries) {
+		t.Fatalf("NewRegistry(too many) error = %v, want ErrTooManyEntries", err)
+	}
+
+	binding, ok := extension.BuiltInBinding(extension.IDCredProps)
+	if !ok || binding != (extension.Binding{ID: extension.IDCredProps, Revision: extension.RevisionLevel3Recommendation}) {
+		t.Fatalf("BuiltInBinding(credProps) = %+v, %t", binding, ok)
+	}
+	if _, ok := extension.BuiltInBinding("future"); ok {
+		t.Fatal("BuiltInBinding(future) = known, want unknown")
+	}
+	if _, err := extension.NewRegistry(extension.Register[bool, bool](fakeHandler{id: extension.IDCredProps})); !errors.Is(err, extension.ErrInvalidRevision) {
+		t.Fatalf("NewRegistry(reserved revision) error = %v, want ErrInvalidRevision", err)
 	}
 }
 
@@ -111,12 +135,46 @@ func TestRegistryDispatchAndTypedFindDefensivelyCopy(t *testing.T) {
 	}
 }
 
+func TestRegistryFreezesHandlerIdentity(t *testing.T) {
+	t.Parallel()
+
+	handler := &mutableHandler{id: "first", revision: "revision-1"}
+	registry, err := extension.NewRegistry(extension.Register[bool, bool](handler))
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	result, err := registry.VerifyOutput(context.Background(), extension.RawOutputRequest{ID: "first", Requested: true})
+	if err != nil {
+		t.Fatalf("VerifyOutput() error = %v", err)
+	}
+	handler.revision = "revision-2"
+	if _, ok := extension.Find(extension.Results{result}, handler); ok {
+		t.Fatal("Find() accepted a handler with a different semantic revision")
+	}
+	matching := &mutableHandler{id: "first", revision: "revision-1"}
+	if typed, ok := extension.Find(extension.Results{result}, matching); !ok || !typed.Accepted || !typed.Output {
+		t.Fatalf("Find() frozen revision = %+v, %t", typed, ok)
+	}
+	handler.id = "second"
+	if !registry.Contains("first") || registry.Contains("second") {
+		t.Fatal("registry identity changed after construction")
+	}
+	binding, ok := registry.Binding("first")
+	if !ok || binding.Revision != "revision-1" {
+		t.Fatalf("Binding(first) = %+v, %t", binding, ok)
+	}
+}
+
 type fakeHandler struct {
 	id string
 }
 
 func (h fakeHandler) ID() string {
 	return h.id
+}
+
+func (fakeHandler) Revision() string {
+	return "test-v1"
 }
 
 func (h fakeHandler) ValidateInput(request extension.InputRequest) (bool, error) {
@@ -142,6 +200,10 @@ func (h typedHandler) ID() string {
 	return h.id
 }
 
+func (typedHandler) Revision() string {
+	return "test-v1"
+}
+
 func (typedHandler) ValidateInput(request extension.InputRequest) (bool, error) {
 	value, ok := extension.As[bool](request.Input)
 	if !ok {
@@ -158,3 +220,17 @@ func (h typedHandler) VerifyOutput(_ context.Context, request extension.OutputRe
 }
 
 var _ extension.Handler[bool, cloneableValue] = typedHandler{}
+
+type mutableHandler struct {
+	id       string
+	revision string
+}
+
+func (handler *mutableHandler) ID() string       { return handler.id }
+func (handler *mutableHandler) Revision() string { return handler.revision }
+func (*mutableHandler) ValidateInput(extension.InputRequest) (bool, error) {
+	return true, nil
+}
+func (*mutableHandler) VerifyOutput(context.Context, extension.OutputRequest[bool]) (extension.Verification[bool], error) {
+	return extension.Verification[bool]{Accepted: true, Output: true}, nil
+}

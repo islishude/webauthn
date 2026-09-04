@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/attestation"
@@ -15,12 +16,14 @@ import (
 )
 
 type server struct {
+	mu                   sync.Mutex
 	registrationStates   map[string]webauthn.RegistrationState
 	authenticationStates map[string]webauthn.AuthenticationState
 	credentials          map[string]webauthn.CredentialRecord
 	attestations         *attestation.Registry
 	extensions           *extension.Registry
 	signatures           *standard.Verifier
+	decoder              *codeccbor.Decoder
 }
 
 func newServer() (*server, error) {
@@ -36,6 +39,10 @@ func newServer() (*server, error) {
 	if err != nil {
 		return nil, err
 	}
+	decoder, err := codeccbor.NewDecoder()
+	if err != nil {
+		return nil, err
+	}
 
 	return &server{
 		registrationStates:   make(map[string]webauthn.RegistrationState),
@@ -44,6 +51,7 @@ func newServer() (*server, error) {
 		attestations:         attestations,
 		extensions:           extensions,
 		signatures:           signatures,
+		decoder:              decoder,
 	}, nil
 }
 
@@ -61,12 +69,17 @@ func (s *server) beginRegistration(ctx context.Context, sessionID string, user p
 		return browser.CredentialCreationOptionsJSON{}, err
 	}
 
+	s.mu.Lock()
 	s.registrationStates[sessionID] = start.State
+	s.mu.Unlock()
 	return browser.CredentialCreationOptionsFromProtocol(start.Options), nil
 }
 
 func (s *server) finishRegistration(ctx context.Context, sessionID string, body []byte) (webauthn.CredentialRecord, error) {
+	s.mu.Lock()
 	state, ok := s.registrationStates[sessionID]
+	delete(s.registrationStates, sessionID)
+	s.mu.Unlock()
 	if !ok {
 		return webauthn.CredentialRecord{}, errors.New("registration state not found")
 	}
@@ -75,13 +88,12 @@ func (s *server) finishRegistration(ctx context.Context, sessionID string, body 
 		return webauthn.CredentialRecord{}, err
 	}
 
-	decoder := codeccbor.MustNewDecoder()
 	result, err := webauthn.FinishRegistration(ctx, webauthn.RegistrationFinishOptions{
 		State:                      state,
 		Response:                   response,
-		AttestationObjectDecoder:   decoder,
-		CredentialPublicKeyDecoder: decoder,
-		ExtensionMapDecoder:        decoder,
+		AttestationObjectDecoder:   s.decoder,
+		CredentialPublicKeyDecoder: s.decoder,
+		ExtensionMapDecoder:        s.decoder,
 		AttestationRegistry:        s.attestations,
 		AttestationTrustPolicy:     attestation.AcceptNone(),
 		ExtensionRegistry:          s.extensions,
@@ -90,8 +102,13 @@ func (s *server) finishRegistration(ctx context.Context, sessionID string, body 
 		return webauthn.CredentialRecord{}, err
 	}
 
-	s.credentials[string(result.Credential.ID.Bytes())] = result.Credential
-	delete(s.registrationStates, sessionID)
+	key := string(result.Credential.ID.Bytes())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.credentials[key]; exists {
+		return webauthn.CredentialRecord{}, errors.New("credential already registered")
+	}
+	s.credentials[key] = result.Credential.Clone()
 	return result.Credential, nil
 }
 
@@ -111,12 +128,17 @@ func (s *server) beginAuthentication(ctx context.Context, sessionID string, cred
 		return browser.CredentialRequestOptionsJSON{}, err
 	}
 
+	s.mu.Lock()
 	s.authenticationStates[sessionID] = start.State
+	s.mu.Unlock()
 	return browser.CredentialRequestOptionsFromProtocol(start.Options), nil
 }
 
 func (s *server) finishAuthentication(ctx context.Context, sessionID string, body []byte) (webauthn.AuthenticationResult, error) {
+	s.mu.Lock()
 	state, ok := s.authenticationStates[sessionID]
+	delete(s.authenticationStates, sessionID)
+	s.mu.Unlock()
 	if !ok {
 		return webauthn.AuthenticationResult{}, errors.New("authentication state not found")
 	}
@@ -124,7 +146,10 @@ func (s *server) finishAuthentication(ctx context.Context, sessionID string, bod
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
+	s.mu.Lock()
 	credential, ok := s.credentials[string(response.RawID.Bytes())]
+	credential = credential.Clone()
+	s.mu.Unlock()
 	if !ok {
 		return webauthn.AuthenticationResult{}, errors.New("credential not found")
 	}
@@ -141,8 +166,28 @@ func (s *server) finishAuthentication(ctx context.Context, sessionID string, bod
 		return webauthn.AuthenticationResult{}, err
 	}
 
-	s.credentials[string(result.Update.ID.Bytes())] = result.Credential
-	delete(s.authenticationStates, sessionID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.credentials[string(result.Update.ID.Bytes())]
+	if !ok || current.SignCount != result.Update.PreviousSignCount ||
+		current.BackupState != result.Update.PreviousBackupState ||
+		current.UVInitialized != result.Update.PreviousUVInitialized ||
+		current.AuthenticatorAttachment != result.Update.PreviousAuthenticatorAttachment {
+		return webauthn.AuthenticationResult{}, errors.New("credential changed concurrently")
+	}
+	if result.Update.SignCountChanged {
+		current.SignCount = result.Update.SignCount
+	}
+	if result.Update.BackupStateChanged {
+		current.BackupState = result.Update.BackupState
+	}
+	if result.Update.UVInitializedChanged {
+		current.UVInitialized = result.Update.UVInitialized
+	}
+	if result.Update.AuthenticatorAttachmentChanged {
+		current.AuthenticatorAttachment = result.Update.AuthenticatorAttachment
+	}
+	s.credentials[string(result.Update.ID.Bytes())] = current
 	return result, nil
 }
 

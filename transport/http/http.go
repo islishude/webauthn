@@ -10,12 +10,13 @@ import (
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
+	"github.com/islishude/webauthn/internal/interfaceutil"
 	"github.com/islishude/webauthn/protocol"
 )
 
 const (
 	// DefaultMaxBodyBytes is the read limit used when callers pass a non-positive limit.
-	DefaultMaxBodyBytes int64 = 1 << 20
+	DefaultMaxBodyBytes int64 = browser.MaxResponseJSONBytes
 )
 
 var (
@@ -25,6 +26,9 @@ var (
 	ErrReadRequest = errors.New("webauthn/http: read request")
 	// ErrWriteResponse reports a failure writing an HTTP JSON response.
 	ErrWriteResponse = errors.New("webauthn/http: write response")
+	// ErrInvalidBodyLimit reports a configured body limit above the browser
+	// decoder's fixed work budget.
+	ErrInvalidBodyLimit = errors.New("webauthn/http: request body limit invalid")
 )
 
 // ErrorResponse is the generic JSON shape written by WriteError.
@@ -74,7 +78,7 @@ func ReadAuthenticationResponse(request *http.Request, maxBodyBytes int64) (weba
 
 // WriteJSON writes value as an application/json response with status.
 func WriteJSON(response http.ResponseWriter, status int, value any) error {
-	if response == nil {
+	if interfaceutil.IsNil(response) {
 		return fmt.Errorf("%w: response writer is nil", ErrWriteResponse)
 	}
 	var encoded bytes.Buffer
@@ -115,6 +119,9 @@ func readRequestBody(request *http.Request, maxBodyBytes int64) ([]byte, error) 
 	limit := maxBodyBytes
 	if limit <= 0 {
 		limit = DefaultMaxBodyBytes
+	}
+	if limit > browser.MaxResponseJSONBytes {
+		return nil, ErrInvalidBodyLimit
 	}
 
 	reader := &io.LimitedReader{R: request.Body, N: limit + 1}

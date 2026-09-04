@@ -1,7 +1,7 @@
 # Protocol map
 
 Status: WebAuthn Level 3 protocol, attestation, extension, adapter, and example
-slices implemented, revised 2026-08-28.
+slices implemented, revised 2026-09-04.
 
 This file maps WebAuthn Level 3 relying-party protocol surfaces to library
 components. It is a completeness checklist, not implementation code.
@@ -40,7 +40,7 @@ behavior.
 | ---------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CollectedClientData.type`         | Ceremony verification | Must match `webauthn.create` for registration and `webauthn.get` for authentication.                                                          |
 | `CollectedClientData.challenge`    | Ceremony verification | Must exactly equal the canonical unpadded base64url encoding of the server-generated challenge; equivalent alternate spellings are malformed. |
-| `CollectedClientData.origin`       | Origin policy         | Must match configured allowed origins. No HTTP request inference in core.                                                                     |
+| `CollectedClientData.origin`       | Origin policy         | Must match canonical configured origins scoped to the RP ID unless related-origin validation is explicitly delegated.                         |
 | `CollectedClientData.crossOrigin`  | Origin policy         | Must be accepted or rejected by explicit RP policy.                                                                                           |
 | `CollectedClientData.topOrigin`    | Origin policy         | Presence is tracked separately; if present it must be a non-empty string, require `crossOrigin`, and match configured top origins.            |
 | `CollectedClientData.tokenBinding` | Reserved client data  | Parsed for preservation but ignored for relying-party verification in Level 3.                                                                |
@@ -134,6 +134,12 @@ need to parse existing outputs.
 registry. A caller opting into it must also configure the remote origin in
 `OriginPolicy`; no origin inference or wildcard is introduced.
 
+All handlers declare semantic revisions. Start persists sorted ID/revision
+bindings, finish requires exact matches, and reserved built-in IDs cannot use
+unknown-extension fallback. Registry and ceremony extension work is capped at
+64 IDs; recursive raw values and concrete CBOR decoding have independent
+depth/node/byte limits.
+
 ## Recommendation test-vector accounting
 
 The local manifest accounts for all 45 section 16 cases: 30 registration and
@@ -153,8 +159,8 @@ production acceptance.
 | Attestation privacy       | Defaults do not require identifying attestation unless RP policy opts in.                                   |
 | Credential ID privacy     | Discoverable credentials and account-agnostic starts are allowed where configured.                          |
 | Signature counters        | Clone-risk signals are surfaced for caller policy.                                                          |
-| Server-side serialization | Optional versioned storage JSON with bounded, strict decoding.                                              |
-| Origin and RP ID scoping  | Explicit origin, top-origin, and RP ID policy; no implicit trust in request headers.                        |
+| Server-side serialization | Optional v3 storage JSON with bounded strict decoding and v1/v2 credential compatibility.                   |
+| Origin and RP ID scoping  | Canonical explicit origin, top-origin, related-origin, and RP ID policy; no request-header inference.       |
 | Transport hints           | Hints are preserved as UI hints, not security proof.                                                        |
 
 ## Out-of-scope for the core package

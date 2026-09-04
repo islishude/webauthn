@@ -304,6 +304,11 @@ func (o AttestationObject) Bytes() []byte {
 	return o.bytes()
 }
 
+// Equal compares attestation objects without allocating defensive copies.
+func (o AttestationObject) Equal(other AttestationObject) bool {
+	return o.byteValue.Equal(other.byteValue)
+}
+
 // IsNil reports whether the attestation object was left unset.
 func (o AttestationObject) IsNil() bool {
 	return o.byteValue.IsNil()

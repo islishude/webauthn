@@ -159,6 +159,9 @@ func extensionInputsToJSON(inputs protocol.ExtensionInputs) map[string]any {
 
 	out := make(map[string]any, len(inputs))
 	for id, value := range inputs {
+		if cloned, err := extension.CloneValue(value); err == nil {
+			value = cloned
+		}
 		if id == extension.IDLargeBlob {
 			out[id] = largeBlobInputToJSON(value)
 			continue
