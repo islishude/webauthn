@@ -68,6 +68,7 @@ func (g RandomChallengeGenerator) GenerateChallenge(ctx context.Context) (protoc
 
 // RegistrationStartOptions configures registration option creation.
 type RegistrationStartOptions struct {
+	// RP, User and OriginPolicy are required trusted application inputs.
 	RP           protocol.RPEntity
 	User         protocol.UserEntity
 	OriginPolicy OriginPolicy
@@ -77,22 +78,35 @@ type RegistrationStartOptions struct {
 	// setting the browser API option. The zero value keeps user presence
 	// required.
 	ConditionalMediation bool
-	Challenge            protocol.Challenge
-	ChallengeGenerator   ChallengeGenerator
-	PubKeyCredParams     []protocol.CredentialParameter
-	Timeout              time.Duration
+	// Challenge, if nonzero, overrides generation. Never reuse a challenge in production.
+	Challenge protocol.Challenge
+	// ChallengeGenerator defaults to RandomChallengeGenerator when Challenge is zero.
+	ChallengeGenerator ChallengeGenerator
+	// PubKeyCredParams defaults to ES256/RS256 when empty.
+	PubKeyCredParams []protocol.CredentialParameter
+	// Timeout is the browser hint; zero uses DefaultBrowserTimeout.
+	Timeout time.Duration
 	// StateTTL controls the lifetime of the trusted server-side challenge state
 	// independently from the browser timeout hint. Zero uses DefaultChallengeTTL.
-	StateTTL               time.Duration
-	ExcludeCredentials     []protocol.CredentialDescriptor
+	StateTTL time.Duration
+	// ExcludeCredentials lists existing account credentials; it does not replace unique insertion.
+	ExcludeCredentials []protocol.CredentialDescriptor
+	// AuthenticatorSelection defaults to preferred UV and browser selection defaults.
 	AuthenticatorSelection *protocol.AuthenticatorSelectionCriteria
-	Hints                  []protocol.PublicKeyCredentialHint
-	Attestation            protocol.AttestationConveyancePreference
-	AttestationFormats     []string
-	Extensions             protocol.ExtensionInputs
-	ExtensionRegistry      *extension.Registry
-	ExtensionInputPolicy   ExtensionInputPolicy
-	Now                    func() time.Time
+	// Hints are optional browser preferences.
+	Hints []protocol.PublicKeyCredentialHint
+	// Attestation defaults to none; finish still requires explicit trust acceptance.
+	Attestation protocol.AttestationConveyancePreference
+	// AttestationFormats contains optional format preferences.
+	AttestationFormats []string
+	// Extensions contains explicit requests, copied and normalized by registered handlers.
+	Extensions protocol.ExtensionInputs
+	// ExtensionRegistry is required when extension inputs are supplied; reuse at finish.
+	ExtensionRegistry *extension.Registry
+	// ExtensionInputPolicy defaults to preserving unknown input values.
+	ExtensionInputPolicy ExtensionInputPolicy
+	// Now defaults to time.Now; injectable callbacks must support concurrent callers.
+	Now func() time.Time
 }
 
 // ExtensionInputPolicy controls unknown extension inputs at ceremony start.

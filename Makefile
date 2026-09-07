@@ -7,7 +7,7 @@ GOFLAGS ?=
 FUZZTIME ?= 10s
 PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
-.PHONY: help node-deps format format-check lint test test-race test-fuzz-smoke benchmark e2e-typecheck example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci
+.PHONY: help node-deps format format-check lint test test-race test-fuzz-smoke benchmark e2e-typecheck example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci test-minimum consumer-check
 
 help:
 	@echo 'Targets:'
@@ -20,6 +20,8 @@ help:
 	@echo '  make benchmark        - run allocation-reporting Go benchmarks'
 	@echo '  make e2e-typecheck    - run strict TypeScript checking'
 	@echo '  make example-build    - build public examples'
+	@echo '  make test-minimum     - run tests with Go 1.25.0'
+	@echo '  make consumer-check   - test an independent public-API consumer module'
 	@echo '  make import-graph-check - verify root import graph boundaries'
 	@echo '  make license-check    - verify dependency license manifest coverage'
 	@echo '  make readme-check     - verify README references compile-checked examples'
@@ -72,11 +74,18 @@ e2e-typecheck: node-deps
 example-build:
 	$(GO) test $(GOFLAGS) ./examples/...
 
+test-minimum:
+	GOTOOLCHAIN=go1.25.0 $(GO) test $(GOFLAGS) ./...
+	GOTOOLCHAIN=go1.25.0 $(MAKE) consumer-check
+
+consumer-check:
+	cd tests/consumer && GOWORK=off $(GO) test -mod=readonly $(GOFLAGS) ./...
+
 import-graph-check:
 	@deps="$$(GOWORK=off $(GO) list -deps .)"; \
 	for dep in $$deps; do \
 		case "$$dep" in \
-			net/http|github.com/islishude/webauthn/attestation/*|github.com/islishude/webauthn/transport*|github.com/islishude/webauthn/browser*|github.com/islishude/webauthn/crypto/standard*|github.com/islishude/webauthn/storage*|github.com/islishude/webauthn/http*) \
+			net/http|github.com/islishude/webauthn/attestation/*|github.com/islishude/webauthn/transport*|github.com/islishude/webauthn/browser*|github.com/islishude/webauthn/crypto/standard*|github.com/islishude/webauthn/storage*|github.com/islishude/webauthn/http*|github.com/islishude/webauthn/preset*|github.com/islishude/webauthn/codec/cbor*) \
 				echo "import-graph-check: forbidden root dependency $$dep"; \
 				exit 1; \
 				;; \
@@ -88,7 +97,7 @@ license-check:
 	$(GO) run ./tools/checklicenses -manifest docs/dependencies.json
 
 readme-check:
-	@for path in examples/manual examples/http examples/passkey examples/attestation docs/release.md; do \
+	@for path in examples/manual examples/http examples/passkey examples/attestation examples/quickstart docs/integration.md docs/release.md; do \
 		if ! grep -F "$$path" README.md >/dev/null; then \
 			echo "readme-check: README.md does not reference $$path"; \
 			exit 1; \
@@ -115,6 +124,10 @@ mod-check:
 	@if command -v git >/dev/null 2>&1; then git diff --exit-code -- go.mod go.sum; fi
 
 ci-docs:
+	@test -f LICENSE
+	@test -f SECURITY.md
+	@test -f CHANGELOG.md
+	@test -f docs/integration.md
 	@test -f README.md
 	@test -f AGENTS.md
 	@test -f docs/technical.md
@@ -130,4 +143,4 @@ ci-docs:
 	@test -f .gitattributes
 	@echo 'ci-docs: required docs and quality configuration are present'
 
-ci: ci-docs readme-check format-check e2e-typecheck lint test test-race test-fuzz-smoke example-build import-graph-check license-check mod-check
+ci: ci-docs readme-check format-check e2e-typecheck lint test test-race test-fuzz-smoke example-build consumer-check import-graph-check license-check mod-check

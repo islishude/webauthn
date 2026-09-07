@@ -1,0 +1,22 @@
+body {
+  font:
+    1.1rem/1.6 system-ui,
+    sans-serif;
+  margin: 0;
+  color: #182e35;
+  background: #f3f7f7;
+}
+main {
+  max-width: 42rem;
+  margin: 8vh auto;
+  padding: 2rem;
+}
+button {
+  font: inherit;
+  padding: 0.65rem 1rem;
+  margin: 0.3rem;
+  cursor: pointer;
+}
+#status {
+  min-height: 2rem;
+}

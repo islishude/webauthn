@@ -17,7 +17,7 @@ Playwright `1.62.1`, golangci-lint `v2.13.1`, and
 `.golangci.yml` version 2.
 
 `go.mod` records minimum supported Go version `1.25.0`. The separate
-`minimum-go` job runs `go test ./...` with that exact toolchain rather than
+`compatibility` matrix runs `go test ./...` with that exact toolchain rather than
 assuming success from the newer primary lane.
 
 ## Local prerequisites
@@ -49,6 +49,19 @@ golangci-lint version
 ```
 
 ## Local commands
+
+The integration gates add `make consumer-check` (an independent module under
+`tests/consumer`, with a local replace and readonly module resolution) to
+`make ci`. `make test-minimum` runs Go 1.25.0 tests and the consumer gate.
+GitHub's compatibility matrix runs Go 1.25.0 and 1.27 on Linux, macOS and Windows
+with toolchain auto-upgrade disabled. The matrix is separate from Linux-only
+lint, race, fuzz and browser jobs. Public quickstart Chromium coverage runs in
+the same `make e2e` gate with an additional localhost web server.
+
+The consumer fixture is a public API compilation and state-codec contract, not
+a complete semantic API-diff checker. It intentionally uses no internal package.
+When its requirements change, run `go mod tidy` in that module and commit both
+module files; the gate itself uses `-mod=readonly`.
 
 Run these commands from the repository root.
 
@@ -133,10 +146,11 @@ The workflow has five jobs:
    pinned dependencies once, then runs module, lint, format, and TypeScript
    checks.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
-4. `minimum-go` runs `go test ./...` with Go 1.25.0.
+4. `compatibility` runs public packages, examples and the external consumer on
+   Go 1.25.0 and 1.27 across Linux, macOS and Windows.
 5. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
    Playwright browser cache from `~/.cache/ms-playwright`, runs `make e2e`
-   against `https://localhost:8443`, and uploads the Playwright HTML report on
+   against `https://localhost:8443` and the public `http://localhost:8080` demo, and uploads the Playwright HTML report on
    failure.
 
 The workflow no longer detects `go.mod` before running Go checks. Missing module files, missing Go source files, format drift, lint failures, test failures, example build failures, README reference drift, or module-tidy drift are CI failures.

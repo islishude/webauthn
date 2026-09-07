@@ -33,6 +33,13 @@ Fourth, it must aim at complete WebAuthn Level 3 relying-party support. The stab
 
 ## Core architecture
 
+The reusable `RelyingParty` API groups static dependencies and policy in
+`Config`, validates them without generating challenges, and delegates ceremonies
+to the existing functions. Configuration data is copied; injected dependencies
+must be concurrency-safe. Optional `preset.PasskeyConfig` selects discoverable
+credentials, required UV and explicitly accepted `none` attestation. This adds
+no dependency and keeps concrete adapters outside the root import graph.
+
 The core library is ceremony-oriented.
 
 Registration is split into two application-visible phases. The first phase builds `PublicKeyCredentialCreationOptions` and returns opaque or structured ceremony state that the application stores temporarily. The state records conditional creation mediation when the caller opts into it, while the caller remains responsible for setting the outer browser `CredentialCreationOptions.mediation` value. The second phase accepts the stored ceremony state and the browser credential response, verifies the response, and returns a credential record plus attestation and extension outcomes.

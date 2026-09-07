@@ -52,6 +52,14 @@ The root package must not import optional attestation format packages, `browser`
 
 ## Ceremony API shape
 
+`New(Config)` constructs a reusable `RelyingParty` with copied configuration
+and caller-selected, concurrency-safe dependencies. Its four ceremony methods
+accept request data and return the existing result/state types. Finish rejects
+state whose RP, origin policy, UV, registration algorithms or conveyance differ
+from its configuration. Existing package functions remain the low-level API.
+The optional `preset` package builds explicit passkey configuration using CBOR,
+standard signatures, `none` verification and `AcceptNone`; root never imports it.
+
 ### Registration start
 
 `StartRegistration(ctx, RegistrationStartOptions)` accepts RP/user entities,

@@ -8,6 +8,11 @@ components. It is a completeness checklist, not implementation code.
 
 ## Normative baseline
 
+The reusable `RelyingParty` methods delegate to the same protocol implementation.
+`preset.PasskeyConfig` is application policy: required UV, discoverable
+credentials and explicitly accepted none attestation. Its algorithm preferences
+do not replace the specification's empty-parameter defaults.
+
 Stable normative source: [W3C Web Authentication Level 3 Recommendation](https://www.w3.org/TR/2026/REC-webauthn-3-20260825/),
 25 August 2026. W3C records no substantive change from the 26 May 2026
 Candidate Recommendation.

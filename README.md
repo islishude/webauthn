@@ -3,6 +3,42 @@
 `github.com/islishude/webauthn` is a Go server-side WebAuthn/passkey
 relying-party library.
 
+## Start here
+
+Requires Go 1.25.0 or newer. The project is pre-v1 and licensed under
+[MIT](LICENSE); see [security reporting](SECURITY.md) and [changes](CHANGELOG.md).
+
+To install the existing published source baseline before a version tag exists:
+
+```sh
+go get github.com/islishude/webauthn@dc7e1c7edbc2ea1f1fa70c1344644b7df4e4da3f
+```
+
+That baseline predates the unreleased RP/preset API described below. To try
+the new API and quickstart, use this checkout from its repository root:
+
+```sh
+go run ./examples/quickstart
+```
+
+Open [the local demo](http://localhost:8080). It uses a single shared demo
+account and memory-only credentials/sessions. Restarting loses all data. A
+browser with native WebAuthn JSON conversion APIs is required. The server only
+listens on `127.0.0.1:8080` and must not be exposed as a production service.
+
+For your application, create explicit configuration with `preset.PasskeyConfig`
+and validate it once with `webauthn.New`. Then:
+
+1. Start registration; store the returned state server-side and send options.
+2. Consume state once, verify registration, and atomically insert the credential.
+3. Start authentication and store its state; discoverable login omits the allow-list.
+4. Consume state, look up the credential, verify, persist the conditional update,
+   and only then create your application session.
+
+Read the [integration guide](docs/integration.md) and the tested
+[passkey example](examples/passkey/main.go). Manual dependency wiring remains
+available through the original package-level functions.
+
 The core package is intentionally framework-neutral. It creates and verifies
 registration and authentication ceremonies, then returns credential records,
 conditional credential updates, attestation results, extension results, and
@@ -83,6 +119,7 @@ used only for browser-facing context and terminology.
 The package graph is designed so applications only import what they need:
 
 - root `webauthn`: registration and authentication ceremony APIs;
+- `preset`: optional explicit passkey configuration; never imported by root;
 - `protocol`: WebAuthn values, option dictionaries, collected client data, and
   authenticator data parsing;
 - `codec`: CBOR attestation object, COSE key, and extension map decoder
@@ -117,9 +154,12 @@ format packages.
 
 Public examples are compiled by `make example-build` and by CI:
 
+- `examples/quickstart` is the runnable, browser-tested local passkey demo.
+
 - `examples/manual` shows framework-neutral registration and authentication
   wiring with caller-owned ceremony state and credential storage.
 - `examples/http` shows how to use the optional `transport/http` JSON helpers
+  and the reusable RP object
   with `net/http`, per-session one-time state, expiry, atomic credential
   insertion, and conditional credential updates.
 - `examples/passkey` shows discoverable credential authentication, including

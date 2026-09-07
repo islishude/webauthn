@@ -60,6 +60,25 @@ storage state through the repository's browser and HTTP adapter packages.
 
 ## Test layers
 
+### Public integration contracts
+
+`relying_party_test.go` tests construction, nil dependencies, copied configuration,
+concurrent reuse, lower-level parity, state/config mismatches, extension bindings
+and storage v3 round trips. Explicit preset tests exercise required UV, none
+acceptance and other-format rejection. `internal/testceremony` independently
+generates ephemeral Ed25519 credentials and signed unknown extensions using Go
+crypto and CTAP2 CBOR; public example tests exercise these responses end to end.
+Manual and quickstart tests cover one-time state and unique insertion, while
+quickstart tests check zero-counter four-field CAS and cross-origin rejection.
+The independent consumer module compiles public calls and round-trips ceremony
+state and credentials through a full registration/authentication lifecycle using
+the project's committed browser fixture. It is intentionally not an exhaustive
+compatibility proof.
+
+The `chromium-quickstart` project runs the public localhost example using native
+JSON APIs, registration, discoverable login and logout, plus missing-capability
+feedback. It uses CDP virtual authenticators without the test-only RP shim.
+
 ### Protocol model tests
 
 Required coverage:

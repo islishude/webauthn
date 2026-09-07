@@ -6,6 +6,12 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 
 ## Release candidate requirements
 
+- Review MIT licensing, SECURITY.md reporting contact and CHANGELOG.md.
+- Run the independent consumer module and Go 1.25.0 checks; require passing
+  Linux/macOS/Windows compatibility jobs and public quickstart browser coverage.
+- After the first tag is actually published, replace the baseline commit install
+  command in README with that tag and remove the unreleased-API caveat.
+
 - Local `make ci` passes from a clean worktree.
 - GitHub Actions CI passes on the release branch.
 - Root package import graph does not include `net/http`, `browser`,
@@ -17,7 +23,24 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 - README feature claims match implemented and tested behavior.
 - Dependency inventory in `docs/dependencies.json` covers every module returned by `go list -m all`.
 
-## Release notes
+## Version policy
+
+Before v1, patch releases do not intentionally break the public API. Minor
+releases may introduce incompatible changes with explicit migration notes.
+Security fixes may tighten previously accepted behavior and must document the
+change. Security maintenance targets the latest release (main before the first
+release); older versions have no guaranteed backports. Preparing release
+materials does not create a tag or certify remote CI readiness.
+
+## Reusable RP migration
+
+Existing low-level functions remain supported. New callers can use
+`preset.PasskeyConfig` followed by `New`; advanced callers can construct `Config`
+with explicit dependencies. The RP checks state/config agreement and restricts
+authentication to its advertised algorithm list. Reconfigure and restart a
+ceremony when state-bound policy changes. No storage version change is required.
+
+## Historical release notes
 
 2026-09-04: Completed the full-repository correctness, design, and performance
 remediation. Injected interfaces now reject typed nils; caller-stored ceremony

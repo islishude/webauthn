@@ -95,16 +95,25 @@ type RegistrationExtensionPolicy struct {
 
 // RegistrationFinishOptions configures registration response verification.
 type RegistrationFinishOptions struct {
-	State                      RegistrationState
-	Response                   RegistrationResponse
+	// State must come from trusted storage and be consumed once by the caller.
+	State RegistrationState
+	// Response is untrusted browser input.
+	Response RegistrationResponse
+	// AttestationObjectDecoder and CredentialPublicKeyDecoder are required.
 	AttestationObjectDecoder   codec.AttestationObjectDecoder
 	CredentialPublicKeyDecoder codec.COSEKeyDecoder
-	ExtensionMapDecoder        codec.ExtensionMapDecoder
-	AttestationRegistry        *attestation.Registry
-	AttestationTrustPolicy     attestation.TrustPolicy
-	ExtensionRegistry          *extension.Registry
-	ExtensionPolicy            RegistrationExtensionPolicy
-	Now                        func() time.Time
+	// ExtensionMapDecoder is required when authenticator extensions are present.
+	ExtensionMapDecoder codec.ExtensionMapDecoder
+	// AttestationRegistry is required and must include the response's format.
+	AttestationRegistry *attestation.Registry
+	// AttestationTrustPolicy must explicitly accept evidence; nil rejects all attestations.
+	AttestationTrustPolicy attestation.TrustPolicy
+	// ExtensionRegistry must match the state's known extension bindings.
+	ExtensionRegistry *extension.Registry
+	// ExtensionPolicy defaults to preserving untrusted unknown/unrequested outputs.
+	ExtensionPolicy RegistrationExtensionPolicy
+	// Now defaults to time.Now.
+	Now func() time.Time
 }
 
 // CredentialRecord is storage-neutral credential material returned after

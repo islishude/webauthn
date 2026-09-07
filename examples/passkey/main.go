@@ -6,8 +6,7 @@ import (
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
-	"github.com/islishude/webauthn/crypto/standard"
-	"github.com/islishude/webauthn/extension"
+	"github.com/islishude/webauthn/preset"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -16,14 +15,16 @@ type passkeyStore interface {
 	UpdateCredential(webauthn.CredentialUpdate) error
 }
 
-func beginPasskeyAuthentication(ctx context.Context, extensions *extension.Registry) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
-	start, err := webauthn.StartAuthentication(ctx, webauthn.AuthenticationStartOptions{
-		RPID:              "example.com",
-		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		UserVerification:  protocol.UserVerificationRequired,
-		Extensions:        protocol.ExtensionInputs{extension.IDUVM: true},
-		ExtensionRegistry: extensions,
-	})
+func newPasskeyRP() (*webauthn.RelyingParty, error) {
+	config, err := preset.PasskeyConfig(protocol.RPEntity{ID: "example.com", Name: "Example"}, webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}})
+	if err != nil {
+		return nil, err
+	}
+	return webauthn.New(config)
+}
+
+func beginPasskeyAuthentication(ctx context.Context, rp *webauthn.RelyingParty) (browser.CredentialRequestOptionsJSON, webauthn.AuthenticationState, error) {
+	start, err := rp.StartAuthentication(ctx, webauthn.AuthenticationRequest{})
 	if err != nil {
 		return browser.CredentialRequestOptionsJSON{}, webauthn.AuthenticationState{}, err
 	}
@@ -31,7 +32,9 @@ func beginPasskeyAuthentication(ctx context.Context, extensions *extension.Regis
 	return browser.CredentialRequestOptionsFromProtocol(start.Options), start.State, nil
 }
 
-func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifier *standard.Verifier, extensions *extension.Registry, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
+// The caller atomically consumes state before calling this function. UpdateCredential
+// must compare all four previous fields and report conflicts before session creation.
+func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, rp *webauthn.RelyingParty, state webauthn.AuthenticationState, body []byte) (webauthn.AuthenticationResult, error) {
 	response, err := browser.AuthenticationResponseFromJSON(body)
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
@@ -44,13 +47,10 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
 	}
-	result, err := webauthn.FinishAuthentication(ctx, webauthn.AuthenticationFinishOptions{
-		State:             state,
-		Response:          response,
-		Credential:        credential,
-		SignatureVerifier: verifier,
-		AlgorithmPolicy:   verifier,
-		ExtensionRegistry: extensions,
+	result, err := rp.FinishAuthentication(ctx, webauthn.AuthenticationVerification{
+		State:      state,
+		Response:   response,
+		Credential: credential,
 	})
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err
@@ -63,6 +63,7 @@ func finishPasskeyAuthentication(ctx context.Context, store passkeyStore, verifi
 }
 
 func main() {
+	_ = newPasskeyRP
 	_ = beginPasskeyAuthentication
 	_ = finishPasskeyAuthentication
 }

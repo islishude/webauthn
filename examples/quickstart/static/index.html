@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local passkey demo</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Try a passkey</h1>
+      <p>Register a passkey, then sign in without a username or password.</p>
+      <p>
+        This local demo has one shared account. All credentials and sessions
+        disappear when the server restarts. Do not expose it as a production
+        service.
+      </p>
+      <button id="register" disabled>Register passkey</button>
+      <button id="login" disabled>Sign in</button>
+      <button id="logout" disabled>Sign out</button>
+      <p id="status" role="status">Checking browser support…</p>
+      <p id="session">Signed out</p>
+    </main>
+  </body>
+</html>

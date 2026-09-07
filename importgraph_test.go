@@ -27,6 +27,8 @@ func TestRootPackageImportGraphExcludesOptionalPackages(t *testing.T) {
 		"net/http": {},
 	}
 	forbiddenPrefixes := []string{
+		"github.com/islishude/webauthn/preset",
+		"github.com/islishude/webauthn/codec/cbor",
 		"github.com/islishude/webauthn/attestation/",
 		"github.com/islishude/webauthn/transport",
 		"github.com/islishude/webauthn/browser",

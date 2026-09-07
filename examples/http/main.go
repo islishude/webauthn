@@ -25,6 +25,7 @@ const (
 )
 
 type handler struct {
+	rp *webauthn.RelyingParty
 	mu sync.Mutex
 
 	registrationStates   map[string]webauthn.RegistrationState
@@ -32,12 +33,8 @@ type handler struct {
 	records              map[string]webauthn.CredentialRecord
 	userHandle           protocol.UserHandle
 
-	verifiers  *attestation.Registry
-	extensions *extension.Registry
-	decoder    *codeccbor.Decoder
-	signatures *standard.Verifier
-	random     io.Reader
-	now        func() time.Time
+	random io.Reader
+	now    func() time.Time
 }
 
 func newHandler() (*handler, error) {
@@ -45,7 +42,7 @@ func newHandler() (*handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	extensions, err := extension.NewLevel3RegistryWithDeprecated()
+	extensions, err := extension.NewLevel3Registry()
 	if err != nil {
 		return nil, err
 	}
@@ -70,31 +67,34 @@ func newHandler() (*handler, error) {
 		return nil, err
 	}
 
-	return &handler{
+	h := &handler{
 		registrationStates:   make(map[string]webauthn.RegistrationState),
 		authenticationStates: make(map[string]webauthn.AuthenticationState),
 		records:              make(map[string]webauthn.CredentialRecord),
 		userHandle:           userHandle,
-		verifiers:            verifiers,
-		extensions:           extensions,
-		decoder:              decoder,
-		signatures:           signatures,
 		random:               rand.Reader,
 		now:                  time.Now,
-	}, nil
+	}
+	h.rp, err = webauthn.New(webauthn.Config{
+		RP:                       protocol.RPEntity{ID: "example.com", Name: "Example"},
+		OriginPolicy:             webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+		PubKeyCredParams:         protocol.RecommendedLevel3CredentialParameters(),
+		AttestationObjectDecoder: decoder, CredentialPublicKeyDecoder: decoder, ExtensionMapDecoder: decoder,
+		SignatureVerifier: signatures, AlgorithmPolicy: signatures,
+		AttestationRegistry: verifiers, AttestationTrustPolicy: attestation.AcceptNone(), ExtensionRegistry: extensions,
+		Now: func() time.Time { return h.now() },
+	})
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func (h *handler) beginRegistration(response http.ResponseWriter, request *http.Request) {
-	start, err := webauthn.StartRegistration(request.Context(), webauthn.RegistrationStartOptions{
-		RP:                 protocol.RPEntity{ID: "example.com", Name: "Example"},
+	start, err := h.rp.StartRegistration(request.Context(), webauthn.RegistrationRequest{
 		User:               protocol.UserEntity{ID: h.userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
-		OriginPolicy:       webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
-		PubKeyCredParams:   protocol.RecommendedLevel3CredentialParameters(),
 		ExcludeCredentials: h.credentialDescriptors(),
-		Attestation:        protocol.AttestationNone,
 		Extensions:         protocol.ExtensionInputs{extension.IDCredProps: true},
-		ExtensionRegistry:  h.extensions,
-		Now:                h.now,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)
@@ -127,16 +127,9 @@ func (h *handler) finishRegistration(response http.ResponseWriter, request *http
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)
 		return
 	}
-	result, err := webauthn.FinishRegistration(request.Context(), webauthn.RegistrationFinishOptions{
-		State:                      state,
-		Response:                   credentialResponse,
-		AttestationObjectDecoder:   h.decoder,
-		CredentialPublicKeyDecoder: h.decoder,
-		ExtensionMapDecoder:        h.decoder,
-		AttestationRegistry:        h.verifiers,
-		AttestationTrustPolicy:     attestation.AcceptNone(),
-		ExtensionRegistry:          h.extensions,
-		Now:                        h.now,
+	result, err := h.rp.FinishRegistration(request.Context(), webauthn.RegistrationVerification{
+		State:    state,
+		Response: credentialResponse,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusUnauthorized, err)
@@ -155,17 +148,13 @@ func (h *handler) beginAuthentication(response http.ResponseWriter, request *htt
 		_ = webauthnhttp.WriteError(response, http.StatusUnauthorized, errors.New("credential not found"))
 		return
 	}
-	start, err := webauthn.StartAuthentication(request.Context(), webauthn.AuthenticationStartOptions{
-		RPID:         credential.RPID,
-		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
+	start, err := h.rp.StartAuthentication(request.Context(), webauthn.AuthenticationRequest{
 		AllowCredentials: []protocol.CredentialDescriptor{{
 			Type:       protocol.CredentialTypePublicKey,
 			ID:         credential.ID,
 			Transports: credential.Transports,
 		}},
 		ExpectedUserHandle: credential.UserHandle,
-		UserVerification:   protocol.UserVerificationPreferred,
-		Now:                h.now,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)
@@ -203,15 +192,10 @@ func (h *handler) finishAuthentication(response http.ResponseWriter, request *ht
 		_ = webauthnhttp.WriteError(response, http.StatusUnauthorized, errors.New("credential not found"))
 		return
 	}
-	result, err := webauthn.FinishAuthentication(request.Context(), webauthn.AuthenticationFinishOptions{
-		State:               state,
-		Response:            assertion,
-		Credential:          credential,
-		SignatureVerifier:   h.signatures,
-		AlgorithmPolicy:     h.signatures,
-		ExtensionMapDecoder: h.decoder,
-		ExtensionRegistry:   h.extensions,
-		Now:                 h.now,
+	result, err := h.rp.FinishAuthentication(request.Context(), webauthn.AuthenticationVerification{
+		State:      state,
+		Response:   assertion,
+		Credential: credential,
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusUnauthorized, err)

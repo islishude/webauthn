@@ -35,22 +35,34 @@ var (
 
 // AuthenticationStartOptions configures assertion option creation.
 type AuthenticationStartOptions struct {
-	RPID               string
-	OriginPolicy       OriginPolicy
-	Challenge          protocol.Challenge
+	// RPID and OriginPolicy are required trusted application configuration.
+	RPID         string
+	OriginPolicy OriginPolicy
+	// Challenge overrides generation when nonzero; never reuse it in production.
+	Challenge protocol.Challenge
+	// ChallengeGenerator defaults to RandomChallengeGenerator.
 	ChallengeGenerator ChallengeGenerator
-	Timeout            time.Duration
+	// Timeout is the browser hint; zero uses DefaultBrowserTimeout.
+	Timeout time.Duration
 	// StateTTL controls the lifetime of the trusted server-side challenge state
 	// independently from the browser timeout hint. Zero uses DefaultChallengeTTL.
-	StateTTL             time.Duration
-	AllowCredentials     []protocol.CredentialDescriptor
-	UserVerification     protocol.UserVerificationRequirement
-	Hints                []protocol.PublicKeyCredentialHint
-	Extensions           protocol.ExtensionInputs
-	ExtensionRegistry    *extension.Registry
+	StateTTL time.Duration
+	// AllowCredentials may be empty for discoverable authentication.
+	AllowCredentials []protocol.CredentialDescriptor
+	// UserVerification defaults to preferred.
+	UserVerification protocol.UserVerificationRequirement
+	// Hints contains optional browser preferences.
+	Hints []protocol.PublicKeyCredentialHint
+	// Extensions contains explicitly requested client extensions.
+	Extensions protocol.ExtensionInputs
+	// ExtensionRegistry is required with extension inputs and must match finish bindings.
+	ExtensionRegistry *extension.Registry
+	// ExtensionInputPolicy defaults to preserving unknown input values.
 	ExtensionInputPolicy ExtensionInputPolicy
-	ExpectedUserHandle   protocol.UserHandle
-	Now                  func() time.Time
+	// ExpectedUserHandle binds username-first login; zero requires a response user handle.
+	ExpectedUserHandle protocol.UserHandle
+	// Now defaults to time.Now; injectable callbacks must support concurrent callers.
+	Now func() time.Time
 }
 
 // AuthenticationStartResult contains browser request options and caller-stored
@@ -226,19 +238,28 @@ type CounterResult struct {
 
 // AuthenticationFinishOptions configures assertion verification.
 type AuthenticationFinishOptions struct {
-	State               AuthenticationState
-	Response            AuthenticationResponse
-	Credential          CredentialRecord
+	// State must come from trusted storage and be consumed once by the caller.
+	State AuthenticationState
+	// Response is untrusted browser input; Credential is the corresponding stored record.
+	Response   AuthenticationResponse
+	Credential CredentialRecord
+	// ExtensionMapDecoder is required whenever signed authenticator extensions are present.
 	ExtensionMapDecoder codec.ExtensionMapDecoder
-	SignatureVerifier   webcrypto.SignatureVerifier
-	AlgorithmPolicy     webcrypto.AlgorithmPolicy
-	ExtensionRegistry   *extension.Registry
-	ExtensionPolicy     AuthenticationExtensionPolicy
-	CounterPolicy       CounterPolicy
+	// SignatureVerifier is required and owns actual algorithm capability.
+	SignatureVerifier webcrypto.SignatureVerifier
+	// AlgorithmPolicy optionally further restricts algorithms; nil delegates policy to the verifier.
+	AlgorithmPolicy webcrypto.AlgorithmPolicy
+	// ExtensionRegistry must match the state's known extension bindings.
+	ExtensionRegistry *extension.Registry
+	// ExtensionPolicy defaults to preserving untrusted unknown/unrequested outputs.
+	ExtensionPolicy AuthenticationExtensionPolicy
+	// CounterPolicy defaults to reporting clone risk without rolling back stored counters.
+	CounterPolicy CounterPolicy
 	// UVInitializationAuthorized confirms that an additional authentication
 	// factor authorizes changing UVInitialized from false to true.
 	UVInitializationAuthorized bool
-	Now                        func() time.Time
+	// Now defaults to time.Now.
+	Now func() time.Time
 }
 
 // CredentialUpdate is a conditional storage update after authentication.

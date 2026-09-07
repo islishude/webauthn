@@ -202,6 +202,8 @@ func (a COSEAlgorithmIdentifier) Validate() error {
 
 // RecommendedLevel3CredentialParameters returns the WebAuthn Level 3 baseline
 // public-key credential algorithm preference order.
+// This explicit preference includes EdDSA; omitted ceremony parameters instead
+// use ES256/RS256. Configure the verifier to accept every advertised algorithm.
 func RecommendedLevel3CredentialParameters() []CredentialParameter {
 	return []CredentialParameter{
 		{Type: CredentialTypePublicKey, Algorithm: AlgorithmEdDSA},

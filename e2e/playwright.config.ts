@@ -17,6 +17,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-webauthn",
+      testIgnore: "**/quickstart.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
         baseURL: process.env.E2E_BASE_URL ?? "https://localhost:8443",
@@ -25,12 +26,24 @@ export default defineConfig({
         video: "retain-on-failure",
       },
     },
+    {
+      name: "chromium-quickstart",
+      testMatch: "**/quickstart.spec.ts",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:8080" },
+    },
   ],
-  webServer: {
-    command:
-      "cd .. && go run ./internal/e2eapp -addr 127.0.0.1:8443 -host localhost",
-    url: "https://localhost:8443/healthz",
-    ignoreHTTPSErrors: true,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command:
+        "cd .. && go run ./internal/e2eapp -addr 127.0.0.1:8443 -host localhost",
+      url: "https://localhost:8443/healthz",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: "cd .. && go run ./examples/quickstart",
+      url: "http://localhost:8080/me",
+      reuseExistingServer: false,
+    },
+  ],
 });

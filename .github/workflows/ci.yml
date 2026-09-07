@@ -117,6 +117,32 @@ jobs:
       - name: Dependency license check
         run: make license-check
 
+  compatibility:
+    name: Go ${{ matrix.go }} / ${{ matrix.os }}
+    needs: docs-and-config
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ["1.25", "1.26"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Public packages and examples
+        run: go test ./...
+        env:
+          GOTOOLCHAIN: local
+      - name: External consumer
+        working-directory: tests/consumer
+        run: go test -mod=readonly ./...
+        env:
+          GOTOOLCHAIN: local
+          GOWORK: "off"
+
   e2e:
     name: e2e
     runs-on: ubuntu-latest

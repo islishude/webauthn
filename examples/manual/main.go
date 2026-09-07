@@ -35,7 +35,7 @@ func newServer() (*server, error) {
 	if err != nil {
 		return nil, err
 	}
-	extensions, err := extension.NewLevel3RegistryWithDeprecated()
+	extensions, err := extension.NewLevel3Registry()
 	if err != nil {
 		return nil, err
 	}
@@ -155,12 +155,13 @@ func (s *server) finishAuthentication(ctx context.Context, sessionID string, bod
 	}
 
 	result, err := webauthn.FinishAuthentication(ctx, webauthn.AuthenticationFinishOptions{
-		State:             state,
-		Response:          response,
-		Credential:        credential,
-		SignatureVerifier: s.signatures,
-		AlgorithmPolicy:   s.signatures,
-		ExtensionRegistry: s.extensions,
+		State:               state,
+		Response:            response,
+		Credential:          credential,
+		SignatureVerifier:   s.signatures,
+		ExtensionMapDecoder: s.decoder,
+		AlgorithmPolicy:     s.signatures,
+		ExtensionRegistry:   s.extensions,
 	})
 	if err != nil {
 		return webauthn.AuthenticationResult{}, err

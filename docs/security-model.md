@@ -6,6 +6,19 @@ This document records security and privacy decisions that implementation must pr
 
 ## Threat model
 
+The optional passkey preset explicitly accepts none attestation and requires
+discoverable credentials and UV. The reusable RP requires explicit trust and
+algorithm policies; it never imports preset defaults implicitly. Finish checks
+state-bound configuration without rewriting state. Origin/algorithm list order
+is part of that comparison; changed configuration requires a new ceremony.
+Dependencies must remain stable and concurrency-safe after construction.
+
+The public quickstart is a single shared demo account on loopback HTTP. It
+enforces a fixed Host, same-origin JSON POSTs, bounded in-memory state and
+four-field conditional updates before session creation. Production applications
+must supply their own authenticated account enrollment, recovery, persistent
+storage and HTTPS session policy. Vulnerability reports go to SECURITY.md.
+
 The library verifies WebAuthn relying-party server inputs from browsers and authenticators. Inputs must be treated as attacker-controlled until verified. The attacker may control the network client, submit malformed CBOR/JSON/binary fields, replay old ceremonies, swap origins, attempt credential confusion between users, exploit unsupported extensions, or use cloned authenticators.
 
 The library does not protect the application from insecure account recovery, compromised sessions, weak TLS termination, unsafe frontend JavaScript, database compromise, or incorrect caller policy. It must provide clear outputs so the application can make correct decisions.
