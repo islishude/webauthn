@@ -23,8 +23,8 @@ func BenchmarkParseCollectedClientData(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		if _, err := protocol.ParseCollectedClientData(raw); err != nil {
 			b.Fatal(err)
 		}
@@ -42,8 +42,8 @@ func BenchmarkDecodeAttestationObject(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		if _, err := decoder.DecodeAttestationObject(raw); err != nil {
 			b.Fatal(err)
 		}
@@ -64,8 +64,8 @@ func BenchmarkDecodeBrowserRegistrationResponse(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		if _, err := browser.RegistrationResponseFromJSON(payload); err != nil {
 			b.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func BenchmarkCloneExtensionValue(b *testing.B) {
 		"nested": []any{map[string]any{"bytes": bytes.Repeat([]byte{0x01}, 256)}},
 	}
 	b.ReportAllocs()
-	for range b.N {
+	for b.Loop() {
 		if _, err := extension.CloneValue(value); err != nil {
 			b.Fatal(err)
 		}
@@ -99,8 +99,8 @@ func BenchmarkStartRegistrationWithUnknownExtension(b *testing.B) {
 		ExtensionRegistry: registry,
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+
+	for b.Loop() {
 		if _, err := webauthn.StartRegistration(context.Background(), options); err != nil {
 			b.Fatal(err)
 		}
