@@ -115,49 +115,57 @@ func cloneValueAt(value any, depth int, budget *cloneBudget) (any, error) {
 	reflected := reflect.ValueOf(value)
 	switch reflected.Kind() {
 	case reflect.Slice, reflect.Array:
-		out := reflect.New(reflected.Type()).Elem()
-		if reflected.Kind() == reflect.Slice {
-			out = reflect.MakeSlice(reflected.Type(), reflected.Len(), reflected.Len())
-		}
-		for i := range reflected.Len() {
-			item, err := cloneValueAt(reflected.Index(i).Interface(), depth+1, budget)
-			if err != nil {
-				return nil, err
-			}
-			if err := setClonedValue(out.Index(i), item); err != nil {
-				return nil, err
-			}
-		}
-		return out.Interface(), nil
+		return cloneSequence(reflected, depth, budget)
 	case reflect.Map:
-		out := reflect.MakeMapWithSize(reflected.Type(), reflected.Len())
-		iterator := reflected.MapRange()
-		for iterator.Next() {
-			if err := budget.consume(1, mapKeyByteSize(iterator.Key())); err != nil {
-				return nil, err
-			}
-			key, err := cloneMapKey(iterator.Key())
-			if err != nil {
-				return nil, err
-			}
-			item, err := cloneValueAt(iterator.Value().Interface(), depth+1, budget)
-			if err != nil {
-				return nil, err
-			}
-			keyValue := reflect.ValueOf(key)
-			if key == nil {
-				keyValue = reflect.Zero(reflected.Type().Key())
-			}
-			valueTarget := reflect.New(reflected.Type().Elem()).Elem()
-			if err := setClonedValue(valueTarget, item); err != nil {
-				return nil, err
-			}
-			out.SetMapIndex(keyValue, valueTarget)
-		}
-		return out.Interface(), nil
+		return cloneMap(reflected, depth, budget)
 	default:
 		return nil, fmt.Errorf("%w: extension value type %T", ErrInvalidRequest, value)
 	}
+}
+
+func cloneSequence(reflected reflect.Value, depth int, budget *cloneBudget) (any, error) {
+	out := reflect.New(reflected.Type()).Elem()
+	if reflected.Kind() == reflect.Slice {
+		out = reflect.MakeSlice(reflected.Type(), reflected.Len(), reflected.Len())
+	}
+	for i := range reflected.Len() {
+		item, err := cloneValueAt(reflected.Index(i).Interface(), depth+1, budget)
+		if err != nil {
+			return nil, err
+		}
+		if err := setClonedValue(out.Index(i), item); err != nil {
+			return nil, err
+		}
+	}
+	return out.Interface(), nil
+}
+
+func cloneMap(reflected reflect.Value, depth int, budget *cloneBudget) (any, error) {
+	out := reflect.MakeMapWithSize(reflected.Type(), reflected.Len())
+	iterator := reflected.MapRange()
+	for iterator.Next() {
+		if err := budget.consume(1, mapKeyByteSize(iterator.Key())); err != nil {
+			return nil, err
+		}
+		key, err := cloneMapKey(iterator.Key())
+		if err != nil {
+			return nil, err
+		}
+		item, err := cloneValueAt(iterator.Value().Interface(), depth+1, budget)
+		if err != nil {
+			return nil, err
+		}
+		keyValue := reflect.ValueOf(key)
+		if key == nil {
+			keyValue = reflect.Zero(reflected.Type().Key())
+		}
+		valueTarget := reflect.New(reflected.Type().Elem()).Elem()
+		if err := setClonedValue(valueTarget, item); err != nil {
+			return nil, err
+		}
+		out.SetMapIndex(keyValue, valueTarget)
+	}
+	return out.Interface(), nil
 }
 
 func directCloneCost(value any) (int, int) {

@@ -158,76 +158,82 @@ func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
-		clientInput, requested := inputs.requestedExtensions[id]
-		clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
-		authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
-		known := inputs.registry != nil && inputs.registry.Contains(id)
-		hasOutput := hasClientOutput || hasAuthenticatorOutput
-		if !known && hasOutput && inputs.policy.rejectUnknown {
-			return nil, ErrExtensionPolicy
-		}
-		if !requested && hasOutput && inputs.policy.rejectUnrequested {
-			return nil, ErrExtensionPolicy
-		}
-
-		if inputs.clientInputTransform != nil {
-			clientInput = inputs.clientInputTransform(id, clientInput)
-		}
-		clientInputValue, err := rawExtensionValue(clientInput, requested)
+		result, err := verifyExtension(ctx, inputs, id)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		clientOutputValue, err := rawExtensionValue(clientOutput, hasClientOutput)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		authenticatorOutputValue, err := rawExtensionValue(authenticatorOutput, hasAuthenticatorOutput)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-
-		if !requested && hasOutput {
-			result, err := extension.PreserveRaw(id, extension.RawResult{
-				Requested:           false,
-				ClientInput:         clientInputValue,
-				ClientOutput:        clientOutputValue,
-				AuthenticatorOutput: authenticatorOutputValue,
-			}, "unrequested extension output ignored")
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-			}
-			results = append(results, result)
-			continue
-		}
-		if !known {
-			result, err := extension.PreserveRaw(id, extension.RawResult{
-				Requested:           requested,
-				ClientInput:         clientInputValue,
-				ClientOutput:        clientOutputValue,
-				AuthenticatorOutput: authenticatorOutputValue,
-			}, "unknown extension preserved")
-			if err != nil {
-				return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-			}
-			results = append(results, result)
-			continue
-		}
-
-		result, err := inputs.registry.VerifyOutput(ctx, extension.RawOutputRequest{
-			Operation:            inputs.operation,
-			ID:                   id,
-			Requested:            requested,
-			SelectedCredentialID: inputs.selectedCredentialID,
-			ClientInput:          clientInputValue,
-			ClientOutput:         clientOutputValue,
-			AuthenticatorOutput:  authenticatorOutputValue,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			return nil, err
 		}
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+func verifyExtension(ctx context.Context, inputs extensionVerificationInputs, id string) (extension.Result, error) {
+	clientInput, requested := inputs.requestedExtensions[id]
+	clientOutput, hasClientOutput := inputs.clientExtensionResults[id]
+	authenticatorOutput, hasAuthenticatorOutput := inputs.authenticatorExtensions[id]
+	known := inputs.registry != nil && inputs.registry.Contains(id)
+	hasOutput := hasClientOutput || hasAuthenticatorOutput
+	if !known && hasOutput && inputs.policy.rejectUnknown {
+		return extension.Result{}, ErrExtensionPolicy
+	}
+	if !requested && hasOutput && inputs.policy.rejectUnrequested {
+		return extension.Result{}, ErrExtensionPolicy
+	}
+
+	if inputs.clientInputTransform != nil {
+		clientInput = inputs.clientInputTransform(id, clientInput)
+	}
+	clientInputValue, err := rawExtensionValue(clientInput, requested)
+	if err != nil {
+		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	clientOutputValue, err := rawExtensionValue(clientOutput, hasClientOutput)
+	if err != nil {
+		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	authenticatorOutputValue, err := rawExtensionValue(authenticatorOutput, hasAuthenticatorOutput)
+	if err != nil {
+		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+
+	if !requested && hasOutput {
+		result, err := extension.PreserveRaw(id, extension.RawResult{
+			Requested:           false,
+			ClientInput:         clientInputValue,
+			ClientOutput:        clientOutputValue,
+			AuthenticatorOutput: authenticatorOutputValue,
+		}, "unrequested extension output ignored")
+		if err != nil {
+			return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+		}
+		return result, nil
+	}
+	if !known {
+		result, err := extension.PreserveRaw(id, extension.RawResult{
+			Requested:           requested,
+			ClientInput:         clientInputValue,
+			ClientOutput:        clientOutputValue,
+			AuthenticatorOutput: authenticatorOutputValue,
+		}, "unknown extension preserved")
+		if err != nil {
+			return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+		}
+		return result, nil
+	}
+
+	result, err := inputs.registry.VerifyOutput(ctx, extension.RawOutputRequest{
+		Operation:            inputs.operation,
+		ID:                   id,
+		Requested:            requested,
+		SelectedCredentialID: inputs.selectedCredentialID,
+		ClientInput:          clientInputValue,
+		ClientOutput:         clientOutputValue,
+		AuthenticatorOutput:  authenticatorOutputValue,
+	})
+	if err != nil {
+		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+	}
+	return result, nil
 }
 
 func validateExtensionWork(requested protocol.ExtensionInputs, client map[string]any, authenticator codec.ExtensionMap) (map[string]struct{}, error) {
