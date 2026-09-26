@@ -252,8 +252,12 @@ The extension type cleanup adds no dependency. Handlers use generic normalized
 input and output types, while `RawValue` confines dynamic data to browser/CBOR
 and unknown-extension boundaries. `Register` performs the one internal erasure
 needed by a heterogeneous registry, and ceremony results expose typed `Find`
-and untrusted `FindRaw` access instead of `map[string]any`. Browser wire values,
-protocol extension maps, and storage JSON envelopes remain unchanged.
+and untrusted `FindRaw` access instead of `map[string]any`. The later public-boundary refinement replaces protocol extension-map values
+with `protocol.ExtensionInput`, core client outputs with `extension.ClientOutputs`,
+and browser extension DTO values with `json.RawMessage`. Optional attestation
+formats own copyable typed evidence; certificate roots are a typed chain.
+The package directions and storage JSON v3 envelopes remain unchanged.
+See [type safety](type-safety.md) for the concrete contracts and raw boundaries.
 
 The post-audit Recommendation remediation adds no dependency. It binds
 `appid=true` in both directions to the AppID hash, performs clone-risk policy

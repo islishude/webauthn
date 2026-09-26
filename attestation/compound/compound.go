@@ -133,13 +133,10 @@ func (v Verifier) VerifyAttestation(ctx context.Context, request attestation.Ver
 
 	return attestation.VerificationResult{
 		Type:                   attestation.TypeUncertain,
-		TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathRaw, Raw: slices.Clone(results)},
+		TrustPath:              attestation.TrustPath{Kind: attestation.TrustPathCompound, Statements: slices.Clone(results)},
 		CryptographicallyValid: true,
 		Warnings:               warnings,
-		Evidence: map[string]any{
-			"successfulStatements": successes,
-			"requiredStatements":   required,
-		},
+		Evidence:               Evidence{SuccessfulStatements: successes, RequiredStatements: required},
 	}, nil
 }
 
@@ -187,3 +184,12 @@ func (v Verifier) requiredSuccesses(total int) (int, error) {
 }
 
 var _ attestation.Verifier = Verifier{}
+
+// Evidence records the number of independently verified compound statements.
+type Evidence struct {
+	SuccessfulStatements int
+	RequiredStatements   int
+}
+
+// CloneEvidence returns this immutable evidence.
+func (e Evidence) CloneEvidence() attestation.Evidence { return e }

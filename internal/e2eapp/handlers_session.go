@@ -9,18 +9,15 @@ import (
 func (a *app) me(response http.ResponseWriter, request *http.Request) {
 	cookie, err := request.Cookie(sessionCookie)
 	if err != nil {
-		_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]bool{"authenticated": false})
+		_ = webauthnhttp.WriteJSON(response, http.StatusOK, sessionResponse{Authenticated: false})
 		return
 	}
 	user, ok := a.store.sessionUser(cookie.Value)
 	if !ok {
-		_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]bool{"authenticated": false})
+		_ = webauthnhttp.WriteJSON(response, http.StatusOK, sessionResponse{Authenticated: false})
 		return
 	}
-	_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]any{
-		"authenticated": true,
-		"user":          map[string]string{"email": user.Email},
-	})
+	_ = webauthnhttp.WriteJSON(response, http.StatusOK, sessionResponse{Authenticated: true, User: &userResponse{Email: user.Email}})
 }
 
 func (a *app) logout(response http.ResponseWriter, request *http.Request) {
@@ -47,9 +44,5 @@ func (a *app) debugCredential(response http.ResponseWriter, request *http.Reques
 	if user != nil {
 		email = user.Email
 	}
-	_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]any{
-		"ok":        true,
-		"email":     email,
-		"signCount": credential.SignCount,
-	})
+	_ = webauthnhttp.WriteJSON(response, http.StatusOK, debugCredentialResponse{OK: true, Email: email, SignCount: credential.SignCount})
 }

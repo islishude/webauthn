@@ -452,7 +452,7 @@ func trustPathRequest() attestation.TrustRequest {
 				Kind:         attestation.TrustPathX509,
 				Certificates: webcrypto.CertificateChain{webcrypto.NewCertificate([]byte("leaf"))},
 			},
-			Evidence: map[string]any{"source": "test"},
+			Evidence: testEvidence{Source: "test"},
 		},
 	}
 }
@@ -509,4 +509,24 @@ func (p *statusProvider) CheckCertificateStatus(context.Context, attestation.Cer
 	}
 
 	return p.result, nil
+}
+
+type testEvidence struct{ Source string }
+
+func (e testEvidence) CloneEvidence() attestation.Evidence { return e }
+
+func TestTrustedRootsPolicyCopiesTypedRoots(t *testing.T) {
+	roots := webcrypto.CertificateChain{webcrypto.NewCertificate([]byte("root"))}
+	verifier := &certificateVerifier{result: webcrypto.CertificateVerification{Trusted: true}}
+	policy := attestation.RequireTrustedRoots(verifier, webcrypto.CertificateVerificationContext{Roots: roots})
+	roots[0] = webcrypto.NewCertificate([]byte("replaced"))
+	for range 2 {
+		if _, err := policy.EvaluateAttestationTrust(context.Background(), trustPathRequest()); err != nil {
+			t.Fatal(err)
+		}
+		if string(verifier.context.Roots[0].Raw()) != "root" {
+			t.Fatal("policy roots were mutated through a shared slice")
+		}
+		verifier.context.Roots[0] = webcrypto.NewCertificate([]byte("adapter mutation"))
+	}
 }

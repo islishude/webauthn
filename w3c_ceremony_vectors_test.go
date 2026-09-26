@@ -267,7 +267,7 @@ func w3cAttestationConfiguration(
 			attestation.AllowFormats(vector.Format),
 			attestation.RequireTrustedRoots(w3cCertificateVerifier{}, webcrypto.CertificateVerificationContext{
 				CurrentTime: w3cVectorTime,
-				Roots:       rootCertificate,
+				Roots:       webcrypto.CertificateChain{webcrypto.NewCertificate(rootCertificate)},
 			}),
 		)
 	}
@@ -292,11 +292,10 @@ func (w3cCertificateVerifier) VerifyCertificateChain(
 		default:
 		}
 	}
-	rootDER, ok := verificationContext.Roots.([]byte)
-	if !ok || len(rootDER) == 0 || len(chain) == 0 {
+	if len(verificationContext.Roots) != 1 || len(chain) == 0 {
 		return webcrypto.CertificateVerification{}, errors.New("W3C certificate verifier requires a root and leaf-first chain")
 	}
-	root, err := x509.ParseCertificate(rootDER)
+	root, err := x509.ParseCertificate(verificationContext.Roots[0].Raw())
 	if err != nil {
 		return webcrypto.CertificateVerification{}, fmt.Errorf("parse W3C root: %w", err)
 	}

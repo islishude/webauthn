@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 
 	webcrypto "github.com/islishude/webauthn/crypto"
@@ -23,7 +22,7 @@ type MetadataRequest struct {
 	Type      Type
 	AAGUID    protocol.AAGUID
 	TrustPath TrustPath
-	Evidence  map[string]any
+	Evidence  Evidence
 }
 
 // MetadataResult is the caller-owned metadata decision for attestation trust.
@@ -60,7 +59,7 @@ type CertificateStatusRequest struct {
 	AAGUID       protocol.AAGUID
 	TrustPath    TrustPath
 	Certificates webcrypto.CertificateChain
-	Evidence     map[string]any
+	Evidence     Evidence
 }
 
 // CertificateStatusResult is the caller-owned certificate status decision.
@@ -143,6 +142,7 @@ func RequireAAGUID(aaguids ...protocol.AAGUID) TrustPolicy {
 
 // RequireTrustedRoots returns a policy that accepts trusted x5c trust paths.
 func RequireTrustedRoots(verifier webcrypto.CertificateVerifier, verificationContext webcrypto.CertificateVerificationContext) TrustPolicy {
+	verificationContext.Roots = slices.Clone(verificationContext.Roots)
 	return trustRootsPolicy{verifier: verifier, verificationContext: verificationContext}
 }
 
@@ -242,7 +242,9 @@ func (p trustRootsPolicy) EvaluateAttestationTrust(ctx context.Context, request 
 		return rejected("x5c trust path required by policy"), nil
 	}
 
-	verification, err := p.verifier.VerifyCertificateChain(normalizeContext(ctx), slices.Clone(request.Result.TrustPath.Certificates), p.verificationContext)
+	verificationContext := p.verificationContext
+	verificationContext.Roots = slices.Clone(verificationContext.Roots)
+	verification, err := p.verifier.VerifyCertificateChain(normalizeContext(ctx), slices.Clone(request.Result.TrustPath.Certificates), verificationContext)
 	if err != nil {
 		return TrustResult{}, err
 	}
@@ -267,7 +269,7 @@ func (p metadataPolicy) EvaluateAttestationTrust(ctx context.Context, request Tr
 		Type:      request.Result.Type,
 		AAGUID:    request.AAGUID,
 		TrustPath: cloneTrustPath(request.Result.TrustPath),
-		Evidence:  maps.Clone(request.Result.Evidence),
+		Evidence:  cloneEvidence(request.Result.Evidence),
 	})
 	if err != nil {
 		return TrustResult{}, err
@@ -302,7 +304,7 @@ func (p certificateStatusPolicy) EvaluateAttestationTrust(ctx context.Context, r
 		AAGUID:       request.AAGUID,
 		TrustPath:    trustPath,
 		Certificates: slices.Clone(trustPath.Certificates),
-		Evidence:     maps.Clone(request.Result.Evidence),
+		Evidence:     cloneEvidence(request.Result.Evidence),
 	})
 	if err != nil {
 		return TrustResult{}, err

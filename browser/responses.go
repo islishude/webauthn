@@ -25,7 +25,7 @@ type RegistrationCredentialJSON struct {
 	Type                    protocol.PublicKeyCredentialType `json:"type"`
 	Response                AttestationResponseJSON          `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults"`
+	ClientExtensionResults  ExtensionJSON                    `json:"clientExtensionResults"`
 }
 
 // AttestationResponseJSON is the browser JSON shape for an authenticator attestation response.
@@ -45,7 +45,7 @@ type AuthenticationCredentialJSON struct {
 	Type                    protocol.PublicKeyCredentialType `json:"type"`
 	Response                AssertionResponseJSON            `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  map[string]any                   `json:"clientExtensionResults"`
+	ClientExtensionResults  ExtensionJSON                    `json:"clientExtensionResults"`
 }
 
 // AssertionResponseJSON is the browser JSON shape for an authenticator assertion response.
@@ -62,7 +62,7 @@ type registrationCredentialWire struct {
 	Type                    *protocol.PublicKeyCredentialType `json:"type"`
 	Response                *attestationResponseWire          `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment  `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  *map[string]any                   `json:"clientExtensionResults"`
+	ClientExtensionResults  *ExtensionJSON                    `json:"clientExtensionResults"`
 }
 
 type attestationResponseWire struct {
@@ -80,7 +80,7 @@ type authenticationCredentialWire struct {
 	Type                    *protocol.PublicKeyCredentialType `json:"type"`
 	Response                *assertionResponseWire            `json:"response"`
 	AuthenticatorAttachment protocol.AuthenticatorAttachment  `json:"authenticatorAttachment,omitempty"`
-	ClientExtensionResults  *map[string]any                   `json:"clientExtensionResults"`
+	ClientExtensionResults  *ExtensionJSON                    `json:"clientExtensionResults"`
 }
 
 type assertionResponseWire struct {
@@ -366,13 +366,17 @@ func protocolValueError(field string, err error) error {
 	return fmt.Errorf("%w: %s: %w", ErrInvalidProtocolValue, field, err)
 }
 
-func clientExtensionResultsFromJSON(results map[string]any) (map[string]any, error) {
+func clientExtensionResultsFromJSON(results ExtensionJSON) (extension.ClientOutputs, error) {
 	if len(results) == 0 {
 		return nil, nil
 	}
 
 	out := make(map[string]any, len(results))
-	for id, value := range results {
+	for id, encoded := range results {
+		var value any
+		if err := json.Unmarshal(encoded, &value); err != nil {
+			return nil, protocolValueError("clientExtensionResults."+id, err)
+		}
 		if id != extension.IDLargeBlob {
 			if id == extension.IDPRF {
 				converted, err := prfOutputFromJSON(value)
@@ -392,7 +396,11 @@ func clientExtensionResultsFromJSON(results map[string]any) (map[string]any, err
 		out[id] = converted
 	}
 
-	return out, nil
+	converted, err := extension.ClientOutputsFromRaw(out)
+	if err != nil {
+		return nil, protocolValueError("clientExtensionResults", err)
+	}
+	return converted, nil
 }
 
 func prfOutputFromJSON(value any) (any, error) {

@@ -298,13 +298,13 @@ func TestRegistrationStartValidatesAndCopiesExtensionInputs(t *testing.T) {
 	}
 
 	missingRegistry := base
-	missingRegistry.Extensions = protocol.ExtensionInputs{extension.IDCredProps: true}
+	missingRegistry.Extensions = protocol.ExtensionInputs{extension.IDCredProps: testInput(true)}
 	if _, err := webauthn.StartRegistration(context.Background(), missingRegistry); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("missing registry error = %v, want ErrInvalidConfiguration", err)
 	}
 
 	invalidKnown := missingRegistry
-	invalidKnown.Extensions = protocol.ExtensionInputs{extension.IDCredProps: false}
+	invalidKnown.Extensions = protocol.ExtensionInputs{extension.IDCredProps: testInput(false)}
 	invalidKnown.ExtensionRegistry = mustLevel3Registry(t)
 	if _, err := webauthn.StartRegistration(context.Background(), invalidKnown); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("invalid known extension error = %v, want ErrInvalidConfiguration", err)
@@ -323,7 +323,7 @@ func TestRegistrationStartValidatesAndCopiesExtensionInputs(t *testing.T) {
 	tooMany := base
 	tooMany.Extensions = make(protocol.ExtensionInputs, extension.MaxEntries+1)
 	for i := range extension.MaxEntries + 1 {
-		tooMany.Extensions[fmt.Sprintf("x%02d", i)] = true
+		tooMany.Extensions[fmt.Sprintf("x%02d", i)] = protocol.BoolInput(true)
 	}
 	tooMany.ExtensionRegistry = emptyRegistry
 	if _, err := webauthn.StartRegistration(context.Background(), tooMany); !errors.Is(err, extension.ErrTooManyEntries) {
@@ -331,15 +331,15 @@ func TestRegistrationStartValidatesAndCopiesExtensionInputs(t *testing.T) {
 	}
 	nested := map[string]any{"bytes": []byte{0x01}}
 	unknown := base
-	unknown.Extensions = protocol.ExtensionInputs{"future": nested}
+	unknown.Extensions = protocol.ExtensionInputs{"future": testInput(nested)}
 	unknown.ExtensionRegistry = emptyRegistry
 	result, err := webauthn.StartRegistration(context.Background(), unknown)
 	if err != nil {
 		t.Fatalf("StartRegistration() error = %v", err)
 	}
 	nested["bytes"].([]byte)[0] = 0xff
-	stateValue := result.State.RequestedExtensions["future"].(map[string]any)["bytes"].([]byte)
-	optionValue := result.Options.Extensions["future"].(map[string]any)["bytes"].([]byte)
+	stateValue := inputTree(t, result.State.RequestedExtensions["future"])["bytes"].([]byte)
+	optionValue := inputTree(t, result.Options.Extensions["future"])["bytes"].([]byte)
 	if stateValue[0] != 0x01 || optionValue[0] != 0x01 {
 		t.Fatal("extension input aliases caller memory")
 	}
@@ -507,7 +507,7 @@ func TestRegistrationFinishRejectsInvalidInputs(t *testing.T) {
 			name: "unsolicited extension rejected",
 			mutate: func(t *testing.T, _ *registrationFixture, options *webauthn.RegistrationFinishOptions) {
 				t.Helper()
-				options.Response.ClientExtensionResults = map[string]any{"credProps": true}
+				options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"credProps": true})
 				options.ExtensionPolicy.RejectUnrequested = true
 			},
 			wantErr: webauthn.ErrExtensionPolicy,
@@ -641,14 +641,14 @@ func TestRegistrationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtensions(
 	t.Parallel()
 
 	requested := newRegistrationFixture(t)
-	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
+	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": testInput(true)}
 	if _, err := webauthn.FinishRegistration(context.Background(), requested.finishOptions()); err != nil {
 		t.Fatalf("FinishRegistration() with absent requested extension error = %v", err)
 	}
 
 	ignored := newRegistrationFixture(t)
 	options := ignored.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{"credProps": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"credProps": true})
 	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
 		t.Fatalf("FinishRegistration() with ignored unrequested extension error = %v", err)
 	}
@@ -659,16 +659,16 @@ func TestRegistrationRejectsUnboundBuiltInAndExcessOutputs(t *testing.T) {
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: testInput(true)}
 	options.ExtensionRegistry = mustLevel3Registry(t)
 	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidCeremonyState) {
 		t.Fatalf("unbound built-in error = %v, want ErrInvalidCeremonyState", err)
 	}
 
 	options = fixture.finishOptions()
-	options.Response.ClientExtensionResults = make(map[string]any, extension.MaxEntries+1)
+	options.Response.ClientExtensionResults = testClientOutputs(make(map[string]any, extension.MaxEntries+1))
 	for i := range extension.MaxEntries + 1 {
-		options.Response.ClientExtensionResults[fmt.Sprintf("x%02d", i)] = true
+		options.Response.ClientExtensionResults[fmt.Sprintf("x%02d", i)] = mustRawExtensionValue(t, true)
 	}
 	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, extension.ErrTooManyEntries) {
 		t.Fatalf("too many outputs error = %v, want ErrTooManyEntries", err)
@@ -680,10 +680,10 @@ func TestRegistrationLevel2CredPropsExtension(t *testing.T) {
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: true}
-	options.Response.ClientExtensionResults = map[string]any{
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDCredProps: testInput(true)}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		extension.IDCredProps: map[string]any{"rk": true},
-	}
+	})
 	options.ExtensionRegistry = mustLevel2Registry(t)
 	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDCredProps)
 
@@ -706,7 +706,7 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
-		options.Response.ClientExtensionResults = map[string]any{"future": true}
+		options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"future": true})
 
 		result, err := webauthn.FinishRegistration(context.Background(), options)
 		if err != nil {
@@ -724,7 +724,7 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
-		options.Response.ClientExtensionResults = map[string]any{"future": nil}
+		options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"future": nil})
 
 		result, err := webauthn.FinishRegistration(context.Background(), options)
 		if err != nil {
@@ -741,7 +741,7 @@ func TestRegistrationUnknownExtensionPolicy(t *testing.T) {
 
 		fixture := newRegistrationFixture(t)
 		options := fixture.finishOptions()
-		options.Response.ClientExtensionResults = map[string]any{"future": true}
+		options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"future": true})
 		options.ExtensionPolicy.RejectUnknown = true
 
 		_, err := webauthn.FinishRegistration(context.Background(), options)
@@ -756,7 +756,7 @@ func TestRegistrationRejectUnknownAllowsRequestedExtensionWithoutOutput(t *testi
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"future": testInput(true)}
 	options.ExtensionPolicy.RejectUnknown = true
 	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
 		t.Fatalf("FinishRegistration() error = %v", err)
@@ -768,7 +768,7 @@ func TestRegistrationExtensionResultsAreSorted(t *testing.T) {
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{"zeta": true, "alpha": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"zeta": true, "alpha": true})
 	result, err := webauthn.FinishRegistration(context.Background(), options)
 	if err != nil {
 		t.Fatalf("FinishRegistration() error = %v", err)
@@ -796,9 +796,9 @@ func TestRegistrationExtensionOutputRunsAfterAttestationVerification(t *testing.
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": testInput(true)}
 	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
-	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"track": true})
 	options.ExtensionRegistry = registry
 	options.AttestationRegistry = attesters
 	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidAttestation) {
@@ -814,9 +814,9 @@ func TestRegistrationUnrequestedKnownExtensionOutputIsUntrusted(t *testing.T) {
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		extension.IDCredProps: map[string]any{"rk": true},
-	}
+	})
 	options.ExtensionRegistry = mustLevel2Registry(t)
 
 	result, err := webauthn.FinishRegistration(context.Background(), options)
@@ -1517,4 +1517,13 @@ func mustLevel3Registry(t *testing.T) *extension.Registry {
 	}
 
 	return registry
+}
+
+func inputTree(t *testing.T, input protocol.ExtensionInput) map[string]any {
+	t.Helper()
+	raw, err := extension.InputValue(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw.(map[string]any)
 }

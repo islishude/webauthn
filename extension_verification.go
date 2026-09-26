@@ -18,7 +18,7 @@ type registrationExtensionInputs struct {
 	state                   RegistrationState
 	policy                  RegistrationExtensionPolicy
 	registry                *extension.Registry
-	clientExtensionResults  map[string]any
+	clientExtensionResults  extension.ClientOutputs
 	authenticatorExtensions codec.ExtensionMap
 	clientDataJSON          protocol.ClientDataJSON
 }
@@ -77,7 +77,7 @@ func verifyRemoteClientDataBinding(inputs protocol.ExtensionInputs, bindings []e
 	if !requested || !hasExtensionBinding(bindings, extension.IDRemoteClientDataJSON) {
 		return nil
 	}
-	serialized, ok := value.(string)
+	serialized, ok := value.(protocol.StringInput)
 	if !ok || !bytes.Equal(raw.Bytes(), []byte(serialized)) {
 		return fmt.Errorf("%w: remote client data changed", ErrExtensionPolicy)
 	}
@@ -109,7 +109,7 @@ func validateStoredAuthenticationExtensionContext(inputs protocol.ExtensionInput
 	return validateLargeBlobCredentialContext(value, allowCredentials)
 }
 
-func validateLargeBlobCredentialContext(value any, allowCredentials []protocol.CredentialDescriptor) error {
+func validateLargeBlobCredentialContext(value protocol.ExtensionInput, allowCredentials []protocol.CredentialDescriptor) error {
 	raw, err := extension.NewRawValue(value)
 	if err != nil {
 		return err
@@ -139,9 +139,9 @@ type extensionVerificationInputs struct {
 	requestedExtensions     protocol.ExtensionInputs
 	policy                  extensionOutputPolicy
 	registry                *extension.Registry
-	clientExtensionResults  map[string]any
+	clientExtensionResults  extension.ClientOutputs
 	authenticatorExtensions codec.ExtensionMap
-	clientInputTransform    func(string, any) any
+	clientInputTransform    extensionInputTransform
 }
 
 func verifyExtensions(ctx context.Context, inputs extensionVerificationInputs) (extension.Results, error) {
@@ -180,17 +180,18 @@ func verifyExtension(ctx context.Context, inputs extensionVerificationInputs, id
 		return extension.Result{}, ErrExtensionPolicy
 	}
 
-	if inputs.clientInputTransform != nil {
-		clientInput = inputs.clientInputTransform(id, clientInput)
+	if requested && inputs.clientInputTransform != nil {
+		var err error
+		clientInput, err = inputs.clientInputTransform(id, clientInput)
+		if err != nil {
+			return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+		}
 	}
 	clientInputValue, err := rawExtensionValue(clientInput, requested)
 	if err != nil {
 		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 	}
-	clientOutputValue, err := rawExtensionValue(clientOutput, hasClientOutput)
-	if err != nil {
-		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-	}
+	clientOutputValue := clientOutput
 	authenticatorOutputValue, err := rawExtensionValue(authenticatorOutput, hasAuthenticatorOutput)
 	if err != nil {
 		return extension.Result{}, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
@@ -236,18 +237,28 @@ func verifyExtension(ctx context.Context, inputs extensionVerificationInputs, id
 	return result, nil
 }
 
-func validateExtensionWork(requested protocol.ExtensionInputs, client map[string]any, authenticator codec.ExtensionMap) (map[string]struct{}, error) {
+func validateExtensionWork(requested protocol.ExtensionInputs, client extension.ClientOutputs, authenticator codec.ExtensionMap) (map[string]struct{}, error) {
 	if len(requested) > extension.MaxEntries || len(client) > extension.MaxEntries || len(authenticator) > extension.MaxEntries {
 		return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
 	}
 	ids := make(map[string]struct{}, len(requested)+len(client)+len(authenticator))
-	for _, values := range []map[string]any{requested, client, authenticator} {
-		for id := range values {
-			if !protocolidentifier.Valid(id) {
-				return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
-			}
-			ids[id] = struct{}{}
+	for id := range requested {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
 		}
+		ids[id] = struct{}{}
+	}
+	for id := range client {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
+		ids[id] = struct{}{}
+	}
+	for id := range authenticator {
+		if !protocolidentifier.Valid(id) {
+			return nil, fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
+		}
+		ids[id] = struct{}{}
 	}
 	if len(ids) > extension.MaxEntries {
 		return nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
@@ -255,11 +266,14 @@ func validateExtensionWork(requested protocol.ExtensionInputs, client map[string
 	return ids, nil
 }
 
-func validateClientExtensionResults(results map[string]any) error {
+func validateClientExtensionResults(results extension.ClientOutputs) error {
 	if len(results) > extension.MaxEntries {
 		return fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrTooManyEntries)
 	}
-	for id := range results {
+	for id, value := range results {
+		if !value.Present() {
+			return fmt.Errorf("%w: absent client output value", ErrExtensionPolicy)
+		}
 		if !protocolidentifier.Valid(id) {
 			return fmt.Errorf("%w: invalid extension id", ErrExtensionPolicy)
 		}
@@ -267,7 +281,7 @@ func validateClientExtensionResults(results map[string]any) error {
 	return nil
 }
 
-type extensionInputTransform func(string, any) any
+type extensionInputTransform func(string, protocol.ExtensionInput) (protocol.ExtensionInput, error)
 
 func prepareExtensionInputs(operation extension.Operation, inputs protocol.ExtensionInputs, registry *extension.Registry, policy ExtensionInputPolicy, transform extensionInputTransform) (protocol.ExtensionInputs, []extension.Binding, error) {
 	if len(inputs) == 0 {
@@ -285,12 +299,15 @@ func prepareExtensionInputs(operation extension.Operation, inputs protocol.Exten
 		if !protocolidentifier.Valid(id) {
 			return nil, nil, fmt.Errorf("%w: extension id is invalid", ErrExtensionPolicy)
 		}
-		value, err := extension.CloneValue(inputs[id])
+		value, err := extension.CloneInput(inputs[id])
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
 		if transform != nil {
-			value = transform(id, value)
+			value, err = transform(id, value)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
+			}
 		}
 		known := registry.Contains(id)
 		if !known {
@@ -303,19 +320,11 @@ func prepareExtensionInputs(operation extension.Operation, inputs protocol.Exten
 			out[id] = value
 			continue
 		}
-		raw, err := extension.NewRawValue(value)
+		out[id], err = normalizeRegisteredInput(registry, operation, id, value)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
 		}
-		normalized, err := registry.ValidateInput(extension.InputRequest{Operation: operation, ID: id, Input: raw})
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		cloned, err := normalized.Clone()
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, err)
-		}
-		out[id] = cloned
+
 		binding, ok := registry.Binding(id)
 		if !ok {
 			return nil, nil, fmt.Errorf("%w: %w", ErrExtensionPolicy, extension.ErrBindingMismatch)
@@ -323,6 +332,22 @@ func prepareExtensionInputs(operation extension.Operation, inputs protocol.Exten
 		bindings = append(bindings, binding)
 	}
 	return out, bindings, nil
+}
+
+func normalizeRegisteredInput(registry *extension.Registry, operation extension.Operation, id string, input protocol.ExtensionInput) (protocol.ExtensionInput, error) {
+	raw, err := extension.NewRawValue(input)
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := registry.ValidateInput(extension.InputRequest{Operation: operation, ID: id, Input: raw})
+	if err != nil {
+		return nil, err
+	}
+	value, err := normalized.Clone()
+	if err != nil {
+		return nil, err
+	}
+	return extension.NormalizeInput(value)
 }
 
 func validateFinishExtensionBindings(requested protocol.ExtensionInputs, bindings []extension.Binding, registry *extension.Registry) error {
@@ -355,7 +380,7 @@ func cloneExtensionInputs(inputs protocol.ExtensionInputs) (protocol.ExtensionIn
 	}
 	out := make(protocol.ExtensionInputs, len(inputs))
 	for id, value := range inputs {
-		cloned, err := extension.CloneValue(value)
+		cloned, err := extension.CloneInput(value)
 		if err != nil {
 			return nil, err
 		}

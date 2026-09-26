@@ -202,7 +202,7 @@ func ec2CurveAndHash(algorithm protocol.COSEAlgorithmIdentifier, curveName strin
 }
 
 func writeGenericError(response http.ResponseWriter, status int) {
-	_ = webauthnhttp.WriteJSON(response, status, map[string]any{"ok": false, "error": http.StatusText(status)})
+	_ = webauthnhttp.WriteJSON(response, status, errorResponse{OK: false, Error: http.StatusText(status)})
 }
 
 func decodeJSON(request *http.Request, target any) error {
@@ -221,7 +221,7 @@ func decodeJSON(request *http.Request, target any) error {
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
-	var extra any
+	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return errors.New("trailing json data")
 	}

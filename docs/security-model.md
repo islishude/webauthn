@@ -138,7 +138,7 @@ are validated before trust evaluation.
 TPM statement signatures remain fail-closed to the normative `TPMT_SIGNATURE`
 shape; a raw DER ECDSA signature is not accepted as a compatibility form.
 Format verifiers must also return a known attestation type and one of the
-package's explicit `none`, `x5c`, or raw trust-path representations; unknown
+package's explicit `none`, `x5c`, `compound`, or raw-byte trust-path representations; unknown
 result classifications are rejected before relying-party trust policy runs.
 
 The current default remains conservative. Without a caller-supplied `attestation.TrustPolicy`, registration rejects every attestation after format verification. Callers that accept consumer passkey `none` attestation must pass an explicit policy such as `attestation.AcceptNone()`. Optional `packed`, `fido-u2f`, `tpm`, `android-key`, legacy `android-safetynet`, `apple`, and `compound` verification can prove statement validity, but x5c trust-chain acceptance is still a relying-party decision.
@@ -155,7 +155,9 @@ and application-signing-certificate digests, a bounded timestamp window, an
 integrity requirement, and an optional version allow-list. JWS verification and
 outer Google-root/status acceptance remain separate requirements.
 
-Compound attestation returns successful sub-results as raw trust evidence.
+Compound attestation returns successful sub-results in typed `TrustPath.Statements`.
+Built-in evidence and nested statements are copied deeply. Custom evidence and
+input implementations must honor their explicit defensive-copy contracts.
 `RequireTrustedRoots` deliberately does not treat that aggregate as an X.509
 path; callers accepting `compound` must recursively evaluate the trust of enough
 successful sub-statements rather than relying on a format allow-list alone.
@@ -178,7 +180,8 @@ handler has validated them and the relying-party policy accepts them. Unknown
 and unrequested extension outputs are preserved as recursively copied, untrusted
 raw results by default, including nested maps with non-string comparable CBOR
 keys; callers can set `RejectUnknown` or `RejectUnrequested` for fail-closed
-behavior. Rejection policy is applied before raw-value copying.
+behavior. Rejection policy is applied before copying preserved results; transport raw-value
+constructors already validate and defensively copy their input at the boundary.
 
 Known handlers normalize raw boundary data into typed inputs and outputs. The
 heterogeneous registry erases those types only internally; callers recover a
@@ -322,3 +325,13 @@ Before stable release, defaults should be:
 - BE/BS invariants and immutable backup eligibility;
 - transport-neutral error objects;
 - optional HTTP helper errors written generically without raw protocol material.
+
+## Typed boundary validation
+
+Typed client output entries must be present; a zero `RawValue` in an existing
+map entry is rejected rather than confused with explicit null. Browser option
+conversion propagates copy/JSON errors before HTTP headers are written. Typed
+SafetyNet payload parsing preserves exact claim names and rejects present null
+booleans, quoted/fractional/overflow timestamps, and malformed digest arrays.
+These changes do not relax handler revision checks, unknown-output policy,
+work budgets, signature checks, or explicit attestation trust acceptance.

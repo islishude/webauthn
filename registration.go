@@ -81,7 +81,7 @@ type RegistrationResponse struct {
 	PublicKeyAlgorithm      protocol.COSEAlgorithmIdentifier
 	Transports              []protocol.AuthenticatorTransport
 	AuthenticatorAttachment protocol.AuthenticatorAttachment
-	ClientExtensionResults  map[string]any
+	ClientExtensionResults  extension.ClientOutputs
 }
 
 // AttestationTrustResult records the RP policy outcome.

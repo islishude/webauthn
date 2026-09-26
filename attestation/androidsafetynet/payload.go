@@ -8,106 +8,116 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strconv"
 	"time"
+
+	"github.com/islishude/webauthn/attestation"
 )
 
-func validatePayload(raw []byte, expectedNonce string, version string, policy Policy) (map[string]any, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-
-	var payload map[string]any
-	if err := decoder.Decode(&payload); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return nil, ErrInvalidPayload
-	}
-	if len(policy.AllowedVersions) != 0 && !slices.Contains(policy.AllowedVersions, version) {
-		return nil, ErrInvalidPayload
-	}
-
-	nonce, ok := payload["nonce"].(string)
-	if !ok || nonce == "" {
-		return nil, ErrInvalidPayload
-	}
-	if subtle.ConstantTimeCompare([]byte(nonce), []byte(expectedNonce)) != 1 {
-		return nil, ErrInvalidNonce
-	}
-
-	ctsProfileMatch, ctsPresent, err := booleanPayloadClaim(payload, "ctsProfileMatch")
-	if err != nil {
-		return nil, err
-	}
-	if policy.RequireCTSProfileMatch && (!ctsPresent || !ctsProfileMatch) {
-		return nil, ErrInvalidPayload
-	}
-	basicIntegrity, basicPresent, err := booleanPayloadClaim(payload, "basicIntegrity")
-	if err != nil {
-		return nil, err
-	}
-	if policy.RequireBasicIntegrity && (!basicPresent || !basicIntegrity) {
-		return nil, ErrInvalidPayload
-	}
-
-	timestamp, ok := payload["timestampMs"].(json.Number)
-	if !ok {
-		return nil, ErrInvalidPayload
-	}
-	timestampMilliseconds, err := strconv.ParseInt(timestamp.String(), 10, 64)
-	if err != nil || timestampMilliseconds <= 0 {
-		return nil, ErrInvalidPayload
-	}
-	timestampTime := time.UnixMilli(timestampMilliseconds)
-	now := policy.now()
-	if timestampTime.Before(now.Add(-policy.MaxAge)) || timestampTime.After(now.Add(policy.ClockSkew)) {
-		return nil, ErrInvalidPayload
-	}
-
-	packageName, ok := payload["apkPackageName"].(string)
-	if !ok || packageName != policy.ExpectedAPKPackageName {
-		return nil, ErrInvalidPayload
-	}
-	digests, err := parseCertificateDigests(payload["apkCertificateDigestSha256"])
-	if err != nil || !containsExpectedDigest(digests, policy.ExpectedAPKCertificateSHA256) {
-		return nil, ErrInvalidPayload
-	}
-
-	return map[string]any{
-		"version":                    version,
-		"timestamp":                  timestampTime,
-		"apkPackageName":             packageName,
-		"apkCertificateDigestSHA256": digests,
-		"ctsProfileMatch":            ctsProfileMatch,
-		"basicIntegrity":             basicIntegrity,
-	}, nil
+// Evidence contains verified SafetyNet application and integrity claims.
+type Evidence struct {
+	Version              string
+	Timestamp            time.Time
+	APKPackageName       string
+	APKCertificateSHA256 [][]byte
+	CTSProfileMatch      bool
+	BasicIntegrity       bool
 }
 
-func booleanPayloadClaim(payload map[string]any, name string) (bool, bool, error) {
+// CloneEvidence returns an independent copy of the verified claims.
+func (e Evidence) CloneEvidence() attestation.Evidence {
+	e.APKCertificateSHA256 = slices.Clone(e.APKCertificateSHA256)
+	for i := range e.APKCertificateSHA256 {
+		e.APKCertificateSHA256[i] = slices.Clone(e.APKCertificateSHA256[i])
+	}
+	return e
+}
+
+func validatePayload(raw []byte, expectedNonce string, version string, policy Policy) (Evidence, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	// Index exact claim names; struct decoding would also accept case variants.
+	var payload map[string]json.RawMessage
+	if err := decoder.Decode(&payload); err != nil {
+		return Evidence{}, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+	}
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return Evidence{}, ErrInvalidPayload
+	}
+	if len(policy.AllowedVersions) != 0 && !slices.Contains(policy.AllowedVersions, version) {
+		return Evidence{}, ErrInvalidPayload
+	}
+	nonce, err := payloadClaim[string](payload["nonce"])
+	if err != nil || nonce == "" {
+		return Evidence{}, ErrInvalidPayload
+	}
+	if subtle.ConstantTimeCompare([]byte(nonce), []byte(expectedNonce)) != 1 {
+		return Evidence{}, ErrInvalidNonce
+	}
+	cts, ctsPresent, err := booleanPayloadClaim(payload, "ctsProfileMatch")
+	if err != nil {
+		return Evidence{}, err
+	}
+	if policy.RequireCTSProfileMatch && (!ctsPresent || !cts) {
+		return Evidence{}, ErrInvalidPayload
+	}
+	basic, basicPresent, err := booleanPayloadClaim(payload, "basicIntegrity")
+	if err != nil {
+		return Evidence{}, err
+	}
+	if policy.RequireBasicIntegrity && (!basicPresent || !basic) {
+		return Evidence{}, ErrInvalidPayload
+	}
+	timestamp, err := payloadClaim[int64](payload["timestampMs"])
+	if err != nil || timestamp <= 0 {
+		return Evidence{}, ErrInvalidPayload
+	}
+	timestampTime := time.UnixMilli(timestamp)
+	now := policy.now()
+	if timestampTime.Before(now.Add(-policy.MaxAge)) || timestampTime.After(now.Add(policy.ClockSkew)) {
+		return Evidence{}, ErrInvalidPayload
+	}
+	packageName, err := payloadClaim[string](payload["apkPackageName"])
+	if err != nil || packageName != policy.ExpectedAPKPackageName {
+		return Evidence{}, ErrInvalidPayload
+	}
+	encodedDigests, err := payloadClaim[[]string](payload["apkCertificateDigestSha256"])
+	if err != nil {
+		return Evidence{}, err
+	}
+	digests, err := parseCertificateDigests(encodedDigests)
+	if err != nil || !containsExpectedDigest(digests, policy.ExpectedAPKCertificateSHA256) {
+		return Evidence{}, ErrInvalidPayload
+	}
+	return Evidence{Version: version, Timestamp: timestampTime, APKPackageName: packageName, APKCertificateSHA256: digests, CTSProfileMatch: cts, BasicIntegrity: basic}, nil
+}
+
+func payloadClaim[T any](raw json.RawMessage) (T, error) {
+	var value T
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return value, ErrInvalidPayload
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return value, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
+	}
+	return value, nil
+}
+
+func booleanPayloadClaim(payload map[string]json.RawMessage, name string) (bool, bool, error) {
 	raw, present := payload[name]
 	if !present {
 		return false, false, nil
 	}
-	value, ok := raw.(bool)
-	if !ok {
-		return false, true, ErrInvalidPayload
-	}
-	return value, true, nil
+	value, err := payloadClaim[bool](raw)
+	return value, true, err
 }
 
-func parseCertificateDigests(value any) ([][]byte, error) {
-	values, ok := value.([]any)
-	if !ok || len(values) == 0 {
+func parseCertificateDigests(values []string) ([][]byte, error) {
+	if len(values) == 0 {
 		return nil, ErrInvalidPayload
 	}
 	out := make([][]byte, len(values))
 	encoding := base64.StdEncoding.Strict()
-	for i, value := range values {
-		encoded, ok := value.(string)
-		if !ok || encoded == "" {
-			return nil, ErrInvalidPayload
-		}
+	for i, encoded := range values {
 		decoded, err := encoding.DecodeString(encoded)
 		if err != nil || len(decoded) != 32 || encoding.EncodeToString(decoded) != encoded {
 			return nil, ErrInvalidPayload
@@ -125,6 +135,5 @@ func containsExpectedDigest(actual [][]byte, expected [][]byte) bool {
 			}
 		}
 	}
-
 	return false
 }

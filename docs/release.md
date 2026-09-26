@@ -144,6 +144,27 @@ added.
 
 ## Pre-v1 migration notes
 
+The type-boundary refactor is source-breaking; see [type safety](type-safety.md).
+
+- Replace primitive/map values in `protocol.ExtensionInputs` with `BoolInput`,
+  `StringInput`, `PRFInput`, `LargeBlobInput`, or the explicit `NewRawInput`
+  adapter. Prefer `extension.SetInput(inputs, handler, value)` for compile-time
+  handler/input matching. Custom typed inputs implement `CloneExtensionInput`.
+- Core response `ClientExtensionResults` now contains `RawValue` entries in
+  `extension.ClientOutputs`; adapters can call `ClientOutputsFromRaw`.
+- Browser DTO extensions are `ExtensionJSON` (`json.RawMessage` values), and
+  both option-to-DTO converters return `(DTO, error)`.
+- Replace attestation evidence map lookups with `EvidenceAs[T]` and concrete
+  format fields. Custom evidence implements `CloneEvidence`. Compound paths
+  now use `TrustPathCompound`/`Statements`; other `Raw` paths are byte slices.
+- Supply certificate roots as `CertificateChain`. Move untyped certificate
+  `Policy` configuration into the injected verifier. Remove unused
+  `JWSVerification.ProtectedHeader` assignments; JWS verification must still
+  validate protected headers and allowed algorithms.
+- Storage envelopes remain v3 and built-in handler semantic revisions are
+  unchanged. Restored raw dictionaries are revalidated by the same handlers;
+  no stored credential or ceremony wire migration is introduced here.
+
 - Set `RegistrationStartOptions.ConditionalMediation` only when the browser call
   uses `mediation: "conditional"`; persist the returned state so the finish
   verifier can apply the Level 3 UP exception. The zero value remains ordinary

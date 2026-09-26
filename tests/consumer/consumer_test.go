@@ -7,6 +7,7 @@ import (
 
 	"github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
+	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/preset"
 	"github.com/islishude/webauthn/protocol"
 	storagejson "github.com/islishude/webauthn/storage/json"
@@ -26,11 +27,19 @@ func TestPublicConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registration, err := rp.StartRegistration(ctx, webauthn.RegistrationRequest{User: protocol.UserEntity{ID: user, Name: "account"}})
+	inputs := make(protocol.ExtensionInputs)
+	if err := extension.SetInput(inputs, extension.CredPropsHandler{}, true); err != nil {
+		t.Fatal(err)
+	}
+	registration, err := rp.StartRegistration(ctx, webauthn.RegistrationRequest{User: protocol.UserEntity{ID: user, Name: "account"}, Extensions: inputs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if browser.CredentialCreationOptionsFromProtocol(registration.Options).Challenge == "" {
+	creation, err := browser.CredentialCreationOptionsFromProtocol(registration.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creation.Challenge == "" {
 		t.Fatal("missing challenge")
 	}
 	raw, err := storagejson.MarshalRegistrationState(registration.State)
@@ -49,7 +58,11 @@ func TestPublicConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if browser.CredentialRequestOptionsFromProtocol(authentication.Options).RPID != "example.com" {
+	request, err := browser.CredentialRequestOptionsFromProtocol(authentication.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.RPID != "example.com" {
 		t.Fatal("wrong RP")
 	}
 	raw, err = storagejson.MarshalAuthenticationState(authentication.State)

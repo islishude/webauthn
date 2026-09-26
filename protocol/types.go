@@ -314,7 +314,7 @@ func (c *AuthenticatorSelectionCriteria) Clone() *AuthenticatorSelectionCriteria
 }
 
 // ExtensionInputs preserves client extension inputs by identifier.
-type ExtensionInputs map[string]any
+type ExtensionInputs map[string]ExtensionInput
 
 // ClientCapability identifies a client capability reported by WebAuthn Level 3.
 type ClientCapability string

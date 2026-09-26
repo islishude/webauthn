@@ -94,7 +94,7 @@ func BenchmarkStartRegistrationWithUnknownExtension(b *testing.B) {
 		OriginPolicy: webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		Challenge:    challenge,
 		Extensions: protocol.ExtensionInputs{
-			"benchmark": map[string]any{"bytes": bytes.Repeat([]byte{0x01}, 256)},
+			"benchmark": testInput(map[string]any{"bytes": bytes.Repeat([]byte{0x01}, 256)}),
 		},
 		ExtensionRegistry: registry,
 	}

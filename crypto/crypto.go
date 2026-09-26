@@ -54,8 +54,7 @@ type CertificateChain []Certificate
 type CertificateVerificationContext struct {
 	DNSName     string
 	CurrentTime time.Time
-	Roots       any
-	Policy      any
+	Roots       CertificateChain
 }
 
 // CertificateVerification is the adapter's certificate path result.
@@ -86,9 +85,8 @@ func (t JWSToken) Raw() []byte {
 
 // JWSVerification is the adapter's JWS/JWT verification result.
 type JWSVerification struct {
-	Payload         []byte
-	ProtectedHeader map[string]any
-	Certificates    CertificateChain
+	Payload      []byte
+	Certificates CertificateChain
 }
 
 // JWSVerifier verifies JWS/JWT statements through an injected dependency.

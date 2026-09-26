@@ -31,9 +31,9 @@ func TestVerifierAcceptsCompoundSubStatements(t *testing.T) {
 	if !result.CryptographicallyValid || result.Type != attestation.TypeUncertain {
 		t.Fatalf("result = %+v", result)
 	}
-	results, ok := result.TrustPath.Raw.([]attestation.VerificationResult)
-	if !ok || len(results) != 2 {
-		t.Fatalf("TrustPath.Raw = %#v, want two sub-results", result.TrustPath.Raw)
+	results := result.TrustPath.Statements
+	if result.TrustPath.Kind != attestation.TrustPathCompound || len(results) != 2 {
+		t.Fatalf("TrustPath.Raw = %#v, want two sub-results", result.TrustPath.Statements)
 	}
 }
 

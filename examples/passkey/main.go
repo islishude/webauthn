@@ -29,7 +29,8 @@ func beginPasskeyAuthentication(ctx context.Context, rp *webauthn.RelyingParty) 
 		return browser.CredentialRequestOptionsJSON{}, webauthn.AuthenticationState{}, err
 	}
 
-	return browser.CredentialRequestOptionsFromProtocol(start.Options), start.State, nil
+	dto, err := browser.CredentialRequestOptionsFromProtocol(start.Options)
+	return dto, start.State, err
 }
 
 // The caller atomically consumes state before calling this function. UpdateCredential

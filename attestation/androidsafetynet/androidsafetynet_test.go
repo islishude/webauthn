@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"maps"
 	"math/big"
 	"testing"
 	"time"
@@ -31,7 +30,6 @@ func TestVerifierAcceptsAndroidSafetyNetAttestation(t *testing.T) {
 		wantToken:  fixture.response,
 		payload:    safetyNetPayload(t, fixture.expectedNonce, true, json.Number("1700000000000")),
 		certChain:  webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
-		header:     map[string]any{"alg": "RS256"},
 		expectCall: true,
 	}, validPolicy())
 
@@ -50,7 +48,8 @@ func TestVerifierAcceptsAndroidSafetyNetAttestation(t *testing.T) {
 	if len(result.TrustPath.Certificates) != 1 || !bytes.Equal(result.TrustPath.Certificates[0].Raw(), fixture.certificate.raw) {
 		t.Fatalf("trust path = %+v, want leaf certificate", result.TrustPath)
 	}
-	if result.Evidence["apkPackageName"] != "com.example.authenticator" || result.Evidence["version"] != "1.0" {
+	evidence, ok := attestation.EvidenceAs[Evidence](result.Evidence)
+	if !ok || evidence.APKPackageName != "com.example.authenticator" || evidence.Version != "1.0" {
 		t.Fatalf("evidence = %#v", result.Evidence)
 	}
 }
@@ -211,6 +210,13 @@ func TestVerifierRejectsSafetyNetPolicyBindingFailures(t *testing.T) {
 		mutateStatement func(codec.AttestationStatement)
 		wantErr         error
 	}{
+		{name: "null optional boolean", mutatePayload: func(value map[string]any) { value["basicIntegrity"] = nil }, wantErr: ErrInvalidPayload},
+		{name: "quoted timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = "1700000000000" }, wantErr: ErrInvalidPayload},
+		{name: "null timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = nil }, wantErr: ErrInvalidPayload},
+		{name: "fractional timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1700000000000.0") }, wantErr: ErrInvalidPayload},
+		{name: "overflow timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("9223372036854775808") }, wantErr: ErrInvalidPayload},
+		{name: "case variant required claim", mutatePayload: func(value map[string]any) { value["Nonce"] = value["nonce"]; delete(value, "nonce") }, wantErr: ErrInvalidPayload},
+		{name: "null digest element", mutatePayload: func(value map[string]any) { value["apkCertificateDigestSha256"] = []any{nil} }, wantErr: ErrInvalidPayload},
 		{name: "stale timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1699999800000") }, wantErr: ErrInvalidPayload},
 		{name: "future timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1700000080000") }, wantErr: ErrInvalidPayload},
 		{name: "negative timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("-1") }, wantErr: ErrInvalidPayload},
@@ -431,7 +437,6 @@ type jwsVerifier struct {
 	t          *testing.T
 	wantToken  []byte
 	payload    []byte
-	header     map[string]any
 	certChain  webcrypto.CertificateChain
 	fail       bool
 	expectCall bool
@@ -451,9 +456,8 @@ func (v jwsVerifier) VerifyJWS(_ context.Context, token webcrypto.JWSToken) (web
 	}
 
 	return webcrypto.JWSVerification{
-		Payload:         append([]byte{}, v.payload...),
-		ProtectedHeader: maps.Clone(v.header),
-		Certificates:    cloneChain(v.certChain),
+		Payload:      append([]byte{}, v.payload...),
+		Certificates: cloneChain(v.certChain),
 	}, nil
 }
 

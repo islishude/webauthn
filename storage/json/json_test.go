@@ -258,7 +258,7 @@ func TestStorageJSONRejectsInvalidStateAndUnsupportedExtensionValue(t *testing.T
 	t.Parallel()
 
 	state := registrationStateFixture(t)
-	state.RequestedExtensions["unsupported"] = make(chan struct{})
+	state.RequestedExtensions["unsupported"] = unsupportedInput{}
 	if _, err := storagejson.MarshalRegistrationState(state); !errors.Is(err, storagejson.ErrUnsupportedExtensionValue) {
 		t.Fatalf("unsupported extension error = %v", err)
 	}
@@ -458,14 +458,14 @@ func credentialRecordFixture(t testing.TB, decoder *codeccbor.Decoder) webauthn.
 
 func extensionTree() protocol.ExtensionInputs {
 	return protocol.ExtensionInputs{
-		"future": map[string]any{
+		"future": testInput(map[string]any{
 			"bytes":       []byte{0x00, 0xff},
 			"signed":      int(-2),
 			"unsigned":    uint64(9),
 			"array":       []any{true, "value"},
 			"emptyArray":  []any{},
 			"emptyObject": map[string]any{},
-		},
+		}),
 		"largeBlob": extension.LargeBlobInput{Support: extension.LargeBlobSupportPreferred},
 	}
 }
@@ -477,7 +477,11 @@ func authenticationExtensionTree() protocol.ExtensionInputs {
 	return out
 }
 
-func assertExtensionTree(t *testing.T, value any) {
+func assertExtensionTree(t *testing.T, input protocol.ExtensionInput) {
+	value, err := extension.InputValue(input)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Helper()
 	object, ok := value.(map[string]any)
 	if !ok {
@@ -552,4 +556,10 @@ func decodeRegistration(data []byte) error {
 func decodeCredential(data []byte) error {
 	_, err := storagejson.UnmarshalCredentialRecord(data, codeccbor.MustNewDecoder())
 	return err
+}
+
+type unsupportedInput struct{}
+
+func (unsupportedInput) CloneExtensionInput() (protocol.ExtensionInput, error) {
+	return unsupportedInput{}, nil
 }

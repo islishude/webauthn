@@ -8,6 +8,7 @@ import (
 
 	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/internal/protocolidentifier"
+	"github.com/islishude/webauthn/protocol"
 )
 
 const (
@@ -50,7 +51,7 @@ type encodedValue struct {
 	Object *map[string]encodedValue `json:"object,omitempty"`
 }
 
-func encodeExtensionValues(values map[string]any) (map[string]encodedValue, error) {
+func encodeExtensionValues(values protocol.ExtensionInputs) (map[string]encodedValue, error) {
 	if values == nil {
 		return nil, nil
 	}
@@ -66,7 +67,11 @@ func encodeExtensionValues(values map[string]any) (map[string]encodedValue, erro
 		if err := budget.consume(1, len(id), ErrUnsupportedExtensionValue); err != nil {
 			return nil, err
 		}
-		encoded, err := encodeValueAt(normalizeBuiltInValue(value), 0, budget)
+		raw, err := extension.InputValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrUnsupportedExtensionValue, err)
+		}
+		encoded, err := encodeValueAt(normalizeBuiltInValue(raw), 0, budget)
 		if err != nil {
 			return nil, fmt.Errorf("%w: extension %s", err, id)
 		}
@@ -75,14 +80,14 @@ func encodeExtensionValues(values map[string]any) (map[string]encodedValue, erro
 	return out, nil
 }
 
-func decodeExtensionValues(values map[string]encodedValue) (map[string]any, error) {
+func decodeExtensionValues(values map[string]encodedValue) (protocol.ExtensionInputs, error) {
 	if values == nil {
 		return nil, nil
 	}
 	if len(values) > extension.MaxEntries {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidEnvelope, extension.ErrTooManyEntries)
 	}
-	out := make(map[string]any, len(values))
+	out := make(protocol.ExtensionInputs, len(values))
 	budget := &valueBudget{}
 	for id, value := range values {
 		if !protocolidentifier.Valid(id) {
@@ -95,7 +100,10 @@ func decodeExtensionValues(values map[string]encodedValue) (map[string]any, erro
 		if err != nil {
 			return nil, fmt.Errorf("%w: extension %s", err, id)
 		}
-		out[id] = decoded
+		out[id], err = extension.NormalizeInput(decoded)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidEnvelope, err)
+		}
 	}
 	return out, nil
 }

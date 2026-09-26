@@ -216,3 +216,21 @@ func mustUserHandle(t *testing.T, value []byte) protocol.UserHandle {
 func encode(value []byte) string {
 	return base64.RawURLEncoding.EncodeToString(value)
 }
+
+func TestOptionConversionFailureWritesNoResponse(t *testing.T) {
+	inputs := protocol.ExtensionInputs{"future": nil}
+	creation := httptest.NewRecorder()
+	if err := webauthnhttp.WriteCreationOptions(creation, protocol.PublicKeyCredentialCreationOptions{Extensions: inputs}); !errors.Is(err, webauthnhttp.ErrWriteResponse) {
+		t.Fatal(err)
+	}
+	if creation.Body.Len() != 0 || len(creation.Header()) != 0 {
+		t.Fatal("creation response was written before conversion succeeded")
+	}
+	request := httptest.NewRecorder()
+	if err := webauthnhttp.WriteRequestOptions(request, protocol.PublicKeyCredentialRequestOptions{Extensions: inputs}); !errors.Is(err, webauthnhttp.ErrWriteResponse) {
+		t.Fatal(err)
+	}
+	if request.Body.Len() != 0 || len(request.Header()) != 0 {
+		t.Fatal("request response was written before conversion succeeded")
+	}
+}

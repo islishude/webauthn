@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+
+	"github.com/islishude/webauthn/protocol"
 )
 
 const (
@@ -69,6 +71,9 @@ func (budget *cloneBudget) consume(nodes int, bytes int) error {
 }
 
 func cloneValueAt(value any, depth int, budget *cloneBudget) (any, error) {
+	if input, ok := value.(RawInput); ok {
+		return cloneValueAt(input.value.value, depth, budget)
+	}
 	if depth > budget.limits.MaxDepth {
 		return nil, fmt.Errorf("%w: extension value nesting too deep", ErrInvalidRequest)
 	}
@@ -80,6 +85,10 @@ func cloneValueAt(value any, depth int, budget *cloneBudget) (any, error) {
 		return nil, nil
 	}
 	switch typed := value.(type) {
+	case protocol.BoolInput:
+		return bool(typed), nil
+	case protocol.StringInput:
+		return string(typed), nil
 	case bool, string,
 		int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64,
@@ -107,6 +116,11 @@ func cloneValueAt(value any, depth int, budget *cloneBudget) (any, error) {
 		return typed, nil
 	case RemoteClientDataJSONResult:
 		return typed, nil
+	case protocol.ExtensionInput:
+		if nilLike(typed) {
+			return nil, ErrInvalidRequest
+		}
+		return typed.CloneExtensionInput()
 	}
 	if cloned, ok, err := cloneWithMethod(value); ok {
 		return cloned, err
@@ -174,6 +188,13 @@ func directCloneCost(value any) (int, int) {
 		return 1, 0
 	case string:
 		return 1, len(typed)
+	case protocol.StringInput:
+		return 1, len(typed)
+	case *protocol.StringInput:
+		if typed == nil {
+			return 1, 0
+		}
+		return 1, len(*typed)
 	case []byte:
 		return 1, len(typed)
 	case PRFValues:

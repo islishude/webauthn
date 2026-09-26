@@ -38,12 +38,20 @@ type ErrorResponse struct {
 
 // WriteCreationOptions writes browser JSON creation options with HTTP 200.
 func WriteCreationOptions(response http.ResponseWriter, options protocol.PublicKeyCredentialCreationOptions) error {
-	return WriteJSON(response, http.StatusOK, browser.CredentialCreationOptionsFromProtocol(options))
+	dto, err := browser.CredentialCreationOptionsFromProtocol(options)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrWriteResponse, err)
+	}
+	return WriteJSON(response, http.StatusOK, dto)
 }
 
 // WriteRequestOptions writes browser JSON request options with HTTP 200.
 func WriteRequestOptions(response http.ResponseWriter, options protocol.PublicKeyCredentialRequestOptions) error {
-	return WriteJSON(response, http.StatusOK, browser.CredentialRequestOptionsFromProtocol(options))
+	dto, err := browser.CredentialRequestOptionsFromProtocol(options)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrWriteResponse, err)
+	}
+	return WriteJSON(response, http.StatusOK, dto)
 }
 
 // ReadRegistrationResponse reads and decodes browser JSON registration response input.

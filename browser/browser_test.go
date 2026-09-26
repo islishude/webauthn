@@ -48,11 +48,11 @@ func TestCredentialCreationOptionsFromProtocolEncodesBinaryFields(t *testing.T) 
 		Extensions: protocol.ExtensionInputs{
 			extension.IDLargeBlob: extension.LargeBlobInput{Read: &read, Write: []byte("blob")},
 			extension.IDPRF:       extension.PRFInput{Eval: &extension.PRFValues{First: prfSalt}},
-			"future":              map[string]any{"unchanged": true},
+			"future":              testInput(map[string]any{"unchanged": true}),
 		},
 	}
 
-	dto := browser.CredentialCreationOptionsFromProtocol(options)
+	dto := creationDTO(t, options)
 	if dto.Challenge != encode([]byte("0123456789abcdef")) {
 		t.Fatalf("Challenge = %q", dto.Challenge)
 	}
@@ -62,17 +62,11 @@ func TestCredentialCreationOptionsFromProtocolEncodesBinaryFields(t *testing.T) 
 	if dto.ExcludeCredentials[0].ID != encode([]byte("credential-1")) {
 		t.Fatalf("ExcludeCredentials[0].ID = %q", dto.ExcludeCredentials[0].ID)
 	}
-	largeBlob, ok := dto.Extensions[extension.IDLargeBlob].(map[string]any)
-	if !ok {
-		t.Fatalf("largeBlob extension = %T", dto.Extensions[extension.IDLargeBlob])
-	}
+	largeBlob := jsonObject(t, dto.Extensions[extension.IDLargeBlob])
 	if largeBlob["write"] != encode([]byte("blob")) || largeBlob["read"] != true {
 		t.Fatalf("largeBlob extension = %#v", largeBlob)
 	}
-	prf, ok := dto.Extensions[extension.IDPRF].(map[string]any)
-	if !ok {
-		t.Fatalf("prf extension = %T", dto.Extensions[extension.IDPRF])
-	}
+	prf := jsonObject(t, dto.Extensions[extension.IDPRF])
 	prfEval := prf["eval"].(map[string]any)
 	if prfEval["first"] != encode(prfSalt) {
 		t.Fatalf("prf eval first = %#v", prfEval["first"])
@@ -107,7 +101,7 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 		},
 	}
 
-	dto := browser.CredentialRequestOptionsFromProtocol(options)
+	dto := requestDTO(t, options)
 	if dto.Challenge != encode([]byte("0123456789abcdef")) {
 		t.Fatalf("Challenge = %q", dto.Challenge)
 	}
@@ -117,7 +111,7 @@ func TestCredentialRequestOptionsFromProtocolEncodesCredentialDescriptors(t *tes
 	if len(dto.Hints) != 1 || dto.Hints[0] != protocol.HintHybrid {
 		t.Fatalf("Hints = %#v", dto.Hints)
 	}
-	prf := dto.Extensions[extension.IDPRF].(map[string]any)
+	prf := jsonObject(t, dto.Extensions[extension.IDPRF])
 	byCredential := prf["evalByCredential"].(map[string]any)
 	eval := byCredential[encode([]byte("credential-1"))].(map[string]any)
 	if eval["first"] != encode([]byte("salt")) {
@@ -130,10 +124,10 @@ func TestOptionConversionCopiesUnknownExtensionValues(t *testing.T) {
 
 	bytes := []byte{0x01}
 	options := protocol.PublicKeyCredentialRequestOptions{
-		Extensions: protocol.ExtensionInputs{"future": map[string]any{"bytes": bytes}},
+		Extensions: protocol.ExtensionInputs{"future": testInput(map[string]any{"bytes": bytes})},
 	}
-	dto := browser.CredentialRequestOptionsFromProtocol(options)
-	converted := dto.Extensions["future"].(map[string]any)["bytes"].([]byte)
+	dto := requestDTO(t, options)
+	converted := dto.Extensions["future"]
 	converted[0] = 0xff
 	if bytes[0] != 0x01 {
 		t.Fatal("converted unknown extension aliases protocol options")
@@ -143,12 +137,12 @@ func TestOptionConversionCopiesUnknownExtensionValues(t *testing.T) {
 func TestCredentialCreationOptionsPreservesEmptyPRFEvalByCredential(t *testing.T) {
 	t.Parallel()
 
-	dto := browser.CredentialCreationOptionsFromProtocol(protocol.PublicKeyCredentialCreationOptions{
+	dto := creationDTO(t, protocol.PublicKeyCredentialCreationOptions{
 		Extensions: protocol.ExtensionInputs{
 			extension.IDPRF: extension.PRFInput{EvalByCredential: map[string]extension.PRFValues{}},
 		},
 	})
-	prf := dto.Extensions[extension.IDPRF].(map[string]any)
+	prf := jsonObject(t, dto.Extensions[extension.IDPRF])
 	byCredential, present := prf["evalByCredential"]
 	if !present {
 		t.Fatal("evalByCredential member was dropped")
@@ -223,16 +217,16 @@ func TestRegistrationResponseFromJSON(t *testing.T) {
 	if response.PublicKeyAlgorithm != protocol.AlgorithmEdDSA {
 		t.Fatalf("public key algorithm = %d", response.PublicKeyAlgorithm)
 	}
-	largeBlob := response.ClientExtensionResults[extension.IDLargeBlob].(map[string]any)
+	largeBlob := rawObject(t, response.ClientExtensionResults[extension.IDLargeBlob])
 	if string(largeBlob["blob"].([]byte)) != "blob" {
 		t.Fatalf("largeBlob blob = %#v", largeBlob["blob"])
 	}
-	prf := response.ClientExtensionResults[extension.IDPRF].(map[string]any)
+	prf := rawObject(t, response.ClientExtensionResults[extension.IDPRF])
 	results := prf["results"].(map[string]any)
 	if string(results["first"].([]byte)) != string(bytesOf(0x01, 32)) {
 		t.Fatalf("prf results.first = %#v", results["first"])
 	}
-	if response.ClientExtensionResults["future"].(map[string]any)["unchanged"] != true {
+	if rawObject(t, response.ClientExtensionResults["future"])["unchanged"] != true {
 		t.Fatalf("future extension = %#v", response.ClientExtensionResults["future"])
 	}
 }
@@ -276,7 +270,7 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 	if response.AuthenticatorAttachment != protocol.AuthenticatorAttachmentCrossPlatform {
 		t.Fatalf("AuthenticatorAttachment = %q", response.AuthenticatorAttachment)
 	}
-	prf := response.ClientExtensionResults[extension.IDPRF].(map[string]any)
+	prf := rawObject(t, response.ClientExtensionResults[extension.IDPRF])
 	results := prf["results"].(map[string]any)
 	if string(results["first"].([]byte)) != string(bytesOf(0x03, 32)) {
 		t.Fatalf("prf results.first = %#v", results["first"])
@@ -478,5 +472,38 @@ func bytesOf(value byte, length int) []byte {
 		out[i] = value
 	}
 
+	return out
+}
+
+func creationDTO(t *testing.T, options protocol.PublicKeyCredentialCreationOptions) browser.CredentialCreationOptionsJSON {
+	t.Helper()
+	dto, err := browser.CredentialCreationOptionsFromProtocol(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dto
+}
+func requestDTO(t *testing.T, options protocol.PublicKeyCredentialRequestOptions) browser.CredentialRequestOptionsJSON {
+	t.Helper()
+	dto, err := browser.CredentialRequestOptionsFromProtocol(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dto
+}
+func jsonObject(t *testing.T, raw json.RawMessage) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+func rawObject(t *testing.T, raw extension.RawValue) map[string]any {
+	t.Helper()
+	out, ok := extension.As[map[string]any](raw)
+	if !ok {
+		t.Fatal("expected object")
+	}
 	return out
 }

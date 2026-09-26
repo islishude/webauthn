@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
@@ -128,11 +127,11 @@ func StartAuthentication(ctx context.Context, options AuthenticationStartOptions
 	if err := validateUserVerification(userVerification); err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
-	preparedExtensions, extensionBindings, err := prepareExtensionInputs(extension.OperationAuthentication, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, func(id string, value any) any {
+	preparedExtensions, extensionBindings, err := prepareExtensionInputs(extension.OperationAuthentication, options.Extensions, options.ExtensionRegistry, options.ExtensionInputPolicy, func(id string, value protocol.ExtensionInput) (protocol.ExtensionInput, error) {
 		if id == extension.IDPRF {
 			return attachAllowedCredentialIDsToPRFInput(value, options.AllowCredentials)
 		}
-		return value
+		return value, nil
 	})
 	if err != nil {
 		return AuthenticationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
@@ -203,7 +202,7 @@ type AuthenticationResponse struct {
 	Signature               protocol.Signature
 	UserHandle              protocol.UserHandle
 	AuthenticatorAttachment protocol.AuthenticatorAttachment
-	ClientExtensionResults  map[string]any
+	ClientExtensionResults  extension.ClientOutputs
 }
 
 // AuthenticationExtensionPolicy controls authentication extension behavior.
@@ -535,15 +534,15 @@ func verifyAuthenticationAuthenticatorData(state AuthenticationState, response A
 }
 
 func expectedAuthenticationRPIDHash(state AuthenticationState, response AuthenticationResponse, policy AuthenticationExtensionPolicy) ([]byte, bool) {
-	used, _ := response.ClientExtensionResults[extension.IDAppID].(bool)
+	used, _ := extension.As[bool](response.ClientExtensionResults[extension.IDAppID])
 	if !used {
 		rpIDHash := sha256.Sum256([]byte(state.RPID))
 		return rpIDHash[:], true
 	}
 
 	requestedAppID, requested := state.RequestedExtensions[extension.IDAppID]
-	appID, ok := requestedAppID.(string)
-	if !requested || !ok || appID == "" || policy.AppID == "" || appID != policy.AppID {
+	appID, ok := requestedAppID.(protocol.StringInput)
+	if !requested || !ok || appID == "" || policy.AppID == "" || string(appID) != policy.AppID {
 		return nil, false
 	}
 	appIDHash := sha256.Sum256([]byte(appID))
@@ -571,7 +570,7 @@ type authenticationExtensionInputs struct {
 	selectedCredentialID    protocol.CredentialID
 	policy                  AuthenticationExtensionPolicy
 	registry                *extension.Registry
-	clientExtensionResults  map[string]any
+	clientExtensionResults  extension.ClientOutputs
 	authenticatorExtensions codec.ExtensionMap
 	clientDataJSON          protocol.ClientDataJSON
 }
@@ -588,32 +587,21 @@ func verifyAuthenticationExtensions(ctx context.Context, inputs authenticationEx
 		registry:                inputs.registry,
 		clientExtensionResults:  inputs.clientExtensionResults,
 		authenticatorExtensions: inputs.authenticatorExtensions,
-		clientInputTransform: func(id string, clientInput any) any {
+		clientInputTransform: func(id string, clientInput protocol.ExtensionInput) (protocol.ExtensionInput, error) {
 			if id == extension.IDPRF {
 				return attachAllowedCredentialIDsToPRFInput(clientInput, inputs.state.AllowCredentials)
 			}
-			return clientInput
+			return clientInput, nil
 		},
 	})
 }
 
-func attachAllowedCredentialIDsToPRFInput(input any, credentials []protocol.CredentialDescriptor) any {
+func attachAllowedCredentialIDsToPRFInput(input protocol.ExtensionInput, credentials []protocol.CredentialDescriptor) (protocol.ExtensionInput, error) {
 	allowed := make([]string, len(credentials))
 	for i, credential := range credentials {
 		allowed[i] = base64.RawURLEncoding.EncodeToString(credential.ID.AppendTo(nil))
 	}
-
-	switch typed := input.(type) {
-	case extension.PRFInput:
-		typed.AllowCredentials = allowed
-		return typed
-	case map[string]any:
-		out := maps.Clone(typed)
-		out["allowCredentials"] = allowed
-		return out
-	default:
-		return input
-	}
+	return extension.PRFInputWithCredentials(input, allowed)
 }
 
 func verifyAuthenticationSignature(ctx context.Context, verifier webcrypto.SignatureVerifier, credential CredentialRecord, response AuthenticationResponse, clientDataHash []byte) error {

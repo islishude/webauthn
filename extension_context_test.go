@@ -32,7 +32,7 @@ func TestStartRegistrationValidatesRemoteClientDataChallenge(t *testing.T) {
 			{Type: protocol.CredentialTypePublicKey, Algorithm: protocol.AlgorithmES256},
 		},
 		Extensions: protocol.ExtensionInputs{
-			extension.IDRemoteClientDataJSON: string(registrationClientData(t, challenge.Bytes(), "https://remote.example", false)),
+			extension.IDRemoteClientDataJSON: testInput(string(registrationClientData(t, challenge.Bytes(), "https://remote.example", false))),
 		},
 		ExtensionRegistry: registry,
 	}
@@ -40,7 +40,7 @@ func TestStartRegistrationValidatesRemoteClientDataChallenge(t *testing.T) {
 		t.Fatalf("StartRegistration() error = %v", err)
 	}
 
-	options.Extensions[extension.IDRemoteClientDataJSON] = string(registrationClientData(t, bytes.Repeat([]byte{0x32}, protocol.RecommendedChallengeLength), "https://remote.example", false))
+	options.Extensions[extension.IDRemoteClientDataJSON] = protocol.StringInput(registrationClientData(t, bytes.Repeat([]byte{0x32}, protocol.RecommendedChallengeLength), "https://remote.example", false))
 	if _, err := webauthn.StartRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("StartRegistration() error = %v, want ErrInvalidConfiguration", err)
 	}
@@ -55,20 +55,20 @@ func TestFinishRegistrationBindsRemoteClientDataBytes(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	serialized := string(fixture.response.ClientDataJSON.Bytes())
-	fixture.start.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDRemoteClientDataJSON: serialized}
+	fixture.start.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDRemoteClientDataJSON: testInput(serialized)}
 	fixture.start.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDRemoteClientDataJSON)
-	fixture.response.ClientExtensionResults = map[string]any{extension.IDRemoteClientDataJSON: true}
+	fixture.response.ClientExtensionResults = testClientOutputs(map[string]any{extension.IDRemoteClientDataJSON: true})
 	options := fixture.finishOptions()
 	options.ExtensionRegistry = registry
 	if _, err := webauthn.FinishRegistration(context.Background(), options); err != nil {
 		t.Fatalf("FinishRegistration() error = %v", err)
 	}
 
-	options.Response.ClientExtensionResults = nil
+	options.Response.ClientExtensionResults = testClientOutputs(nil)
 	if _, err := webauthn.FinishRegistration(context.Background(), options); !errors.Is(err, webauthn.ErrExtensionPolicy) {
 		t.Fatalf("FinishRegistration() missing remote output error = %v, want ErrExtensionPolicy", err)
 	}
-	options.Response.ClientExtensionResults = map[string]any{extension.IDRemoteClientDataJSON: true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{extension.IDRemoteClientDataJSON: true})
 
 	changed := append([]byte{}, serialized[:len(serialized)-1]...)
 	changed = append(changed, []byte(`,"future":true}`)...)
@@ -83,7 +83,7 @@ func TestFinishRegistrationStopsExtensionWorkWhenContextCanceled(t *testing.T) {
 
 	fixture := newRegistrationFixture(t)
 	options := fixture.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{"future": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"future": true})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := webauthn.FinishRegistration(ctx, options); !errors.Is(err, context.Canceled) {

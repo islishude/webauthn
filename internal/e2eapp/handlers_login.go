@@ -123,10 +123,7 @@ func (a *app) loginFinish(response http.ResponseWriter, request *http.Request) {
 		writeGenericError(response, http.StatusInternalServerError)
 		return
 	}
-	_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]any{
-		"ok":   true,
-		"user": map[string]string{"email": user.Email},
-	})
+	_ = webauthnhttp.WriteJSON(response, http.StatusOK, authenticationResponse{OK: true, User: userResponse{Email: user.Email}})
 }
 
 func descriptorsFromCredentials(credentials []webauthn.CredentialRecord) []protocol.CredentialDescriptor {

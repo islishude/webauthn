@@ -2,6 +2,7 @@ package browser
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"maps"
 
 	"github.com/islishude/webauthn/extension"
@@ -54,7 +55,7 @@ type CredentialCreationOptionsJSON struct {
 	Hints                  []protocol.PublicKeyCredentialHint       `json:"hints,omitempty"`
 	Attestation            protocol.AttestationConveyancePreference `json:"attestation,omitempty"`
 	AttestationFormats     []string                                 `json:"attestationFormats,omitempty"`
-	Extensions             map[string]any                           `json:"extensions,omitempty"`
+	Extensions             ExtensionJSON                            `json:"extensions,omitempty"`
 }
 
 // CredentialRequestOptionsJSON is the browser JSON shape for request options.
@@ -65,11 +66,15 @@ type CredentialRequestOptionsJSON struct {
 	AllowCredentials    []CredentialDescriptorJSON           `json:"allowCredentials,omitempty"`
 	UserVerification    protocol.UserVerificationRequirement `json:"userVerification,omitempty"`
 	Hints               []protocol.PublicKeyCredentialHint   `json:"hints,omitempty"`
-	Extensions          map[string]any                       `json:"extensions,omitempty"`
+	Extensions          ExtensionJSON                        `json:"extensions,omitempty"`
 }
 
 // CredentialCreationOptionsFromProtocol converts transport-neutral creation options to browser JSON DTOs.
-func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialCreationOptions) CredentialCreationOptionsJSON {
+func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialCreationOptions) (CredentialCreationOptionsJSON, error) {
+	extensions, err := extensionInputsToJSON(options.Extensions)
+	if err != nil {
+		return CredentialCreationOptionsJSON{}, err
+	}
 	out := CredentialCreationOptionsJSON{
 		RP: RPEntityJSON{
 			ID:   options.RP.ID,
@@ -87,7 +92,7 @@ func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialC
 		Hints:               append([]protocol.PublicKeyCredentialHint(nil), options.Hints...),
 		Attestation:         options.Attestation,
 		AttestationFormats:  append([]string(nil), options.AttestationFormats...),
-		Extensions:          extensionInputsToJSON(options.Extensions),
+		Extensions:          extensions,
 	}
 	if options.AuthenticatorSelection != nil {
 		out.AuthenticatorSelection = &AuthenticatorSelectionCriteriaJSON{
@@ -98,11 +103,15 @@ func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialC
 		}
 	}
 
-	return out
+	return out, nil
 }
 
 // CredentialRequestOptionsFromProtocol converts transport-neutral request options to browser JSON DTOs.
-func CredentialRequestOptionsFromProtocol(options protocol.PublicKeyCredentialRequestOptions) CredentialRequestOptionsJSON {
+func CredentialRequestOptionsFromProtocol(options protocol.PublicKeyCredentialRequestOptions) (CredentialRequestOptionsJSON, error) {
+	extensions, err := extensionInputsToJSON(options.Extensions)
+	if err != nil {
+		return CredentialRequestOptionsJSON{}, err
+	}
 	return CredentialRequestOptionsJSON{
 		Challenge:           base64.RawURLEncoding.EncodeToString(options.Challenge.Bytes()),
 		TimeoutMilliseconds: options.TimeoutMilliseconds,
@@ -110,8 +119,8 @@ func CredentialRequestOptionsFromProtocol(options protocol.PublicKeyCredentialRe
 		AllowCredentials:    credentialDescriptorsToJSON(options.AllowCredentials),
 		UserVerification:    options.UserVerification,
 		Hints:               append([]protocol.PublicKeyCredentialHint(nil), options.Hints...),
-		Extensions:          extensionInputsToJSON(options.Extensions),
-	}
+		Extensions:          extensions,
+	}, nil
 }
 
 // CredentialDescriptorToJSON converts a protocol credential descriptor to browser JSON.
@@ -152,45 +161,51 @@ func credentialDescriptorsToJSON(descriptors []protocol.CredentialDescriptor) []
 	return out
 }
 
-func extensionInputsToJSON(inputs protocol.ExtensionInputs) map[string]any {
+func extensionInputsToJSON(inputs protocol.ExtensionInputs) (ExtensionJSON, error) {
 	if len(inputs) == 0 {
-		return nil
+		return nil, nil
 	}
-
-	out := make(map[string]any, len(inputs))
-	for id, value := range inputs {
-		if cloned, err := extension.CloneValue(value); err == nil {
-			value = cloned
-		}
-		if id == extension.IDLargeBlob {
-			out[id] = largeBlobInputToJSON(value)
-			continue
-		}
-		if id == extension.IDPRF {
-			out[id] = prfInputToJSON(value)
-			continue
-		}
-		out[id] = value
+	if len(inputs) > extension.MaxEntries {
+		return nil, protocolValueError("extensions", extension.ErrTooManyEntries)
 	}
-
-	return out
+	out := make(ExtensionJSON, len(inputs))
+	for id, input := range inputs {
+		value, err := extension.InputValue(input)
+		if err != nil {
+			return nil, protocolValueError("extensions."+id, err)
+		}
+		switch id {
+		case extension.IDLargeBlob:
+			value = largeBlobInputToJSON(value)
+		case extension.IDPRF:
+			value = prfInputToJSON(value)
+		}
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return nil, protocolValueError("extensions."+id, err)
+		}
+		out[id] = encoded
+	}
+	return out, nil
 }
 
 func prfInputToJSON(value any) any {
 	switch input := value.(type) {
 	case extension.PRFInput:
-		out := make(map[string]any, 2)
+		out := PRFInputJSON{}
 		if input.Eval != nil {
-			out["eval"] = prfValuesToJSON(*input.Eval)
+			values := prfValuesToJSON(*input.Eval)
+			out.Eval = &values
 		}
 		if input.EvalByCredential != nil {
-			byCredential := make(map[string]any, len(input.EvalByCredential))
+			byCredential := make(map[string]PRFValuesJSON, len(input.EvalByCredential))
 			for id, values := range input.EvalByCredential {
 				byCredential[id] = prfValuesToJSON(values)
 			}
-			out["evalByCredential"] = byCredential
+			out.EvalByCredential = &byCredential
 		}
 		return out
+
 	case map[string]any:
 		out := maps.Clone(input)
 		if raw, ok := out["eval"]; ok {
@@ -225,12 +240,11 @@ func prfValuesAnyToJSON(value any) any {
 	}
 }
 
-func prfValuesToJSON(values extension.PRFValues) map[string]any {
-	out := map[string]any{
-		"first": base64.RawURLEncoding.EncodeToString(values.First),
-	}
+func prfValuesToJSON(values extension.PRFValues) PRFValuesJSON {
+	out := PRFValuesJSON{First: base64.RawURLEncoding.EncodeToString(values.First)}
 	if values.Second != nil {
-		out["second"] = base64.RawURLEncoding.EncodeToString(values.Second)
+		second := base64.RawURLEncoding.EncodeToString(values.Second)
+		out.Second = &second
 	}
 	return out
 }
@@ -238,17 +252,13 @@ func prfValuesToJSON(values extension.PRFValues) map[string]any {
 func largeBlobInputToJSON(value any) any {
 	switch input := value.(type) {
 	case extension.LargeBlobInput:
-		out := make(map[string]any, 3)
-		if input.Support != "" {
-			out["support"] = input.Support
-		}
-		if input.Read != nil {
-			out["read"] = *input.Read
-		}
+		out := LargeBlobInputJSON{Support: input.Support, Read: input.Read}
 		if input.Write != nil {
-			out["write"] = base64.RawURLEncoding.EncodeToString(input.Write)
+			encoded := base64.RawURLEncoding.EncodeToString(input.Write)
+			out.Write = &encoded
 		}
 		return out
+
 	case map[string]any:
 		out := maps.Clone(input)
 		encodeLargeBlobByteField(out, "write")

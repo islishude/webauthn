@@ -92,7 +92,7 @@ func TestRelyingPartyRegistrationParityAndBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start, err := rp.StartRegistration(context.Background(), webauthn.RegistrationRequest{User: f.start.Options.User, Extensions: protocol.ExtensionInputs{extension.IDCredProps: true}})
+	start, err := rp.StartRegistration(context.Background(), webauthn.RegistrationRequest{User: f.start.Options.User, Extensions: protocol.ExtensionInputs{extension.IDCredProps: testInput(true)}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/islishude/webauthn/codec"
@@ -51,14 +50,16 @@ const (
 	TrustPathNone TrustPathKind = "none"
 	TrustPathX509 TrustPathKind = "x5c"
 	TrustPathRaw  TrustPathKind = "raw"
+	// TrustPathCompound contains independently verified sub-statements.
+	TrustPathCompound TrustPathKind = "compound"
 )
 
 // Known reports whether k is a trust-path representation understood by this
-// package. Format verifiers must use Raw for non-X.509 evidence instead of
-// inventing an unrecognized kind.
+// package. Compound results have their own kind; other non-X.509 paths
+// retain encoded bytes in Raw instead of inventing an unrecognized kind.
 func (k TrustPathKind) Known() bool {
 	switch k {
-	case TrustPathNone, TrustPathX509, TrustPathRaw:
+	case TrustPathNone, TrustPathX509, TrustPathRaw, TrustPathCompound:
 		return true
 	default:
 		return false
@@ -69,7 +70,8 @@ func (k TrustPathKind) Known() bool {
 type TrustPath struct {
 	Kind         TrustPathKind
 	Certificates webcrypto.CertificateChain
-	Raw          any
+	Raw          []byte
+	Statements   []VerificationResult
 }
 
 // VerificationRequest is the input passed to an attestation format verifier.
@@ -89,7 +91,7 @@ type VerificationResult struct {
 	TrustPath              TrustPath
 	CryptographicallyValid bool
 	Warnings               []string
-	Evidence               map[string]any
+	Evidence               Evidence
 }
 
 // Clone returns a result whose mutable metadata containers do not alias the
@@ -97,7 +99,7 @@ type VerificationResult struct {
 func (result VerificationResult) Clone() VerificationResult {
 	result.TrustPath = cloneTrustPath(result.TrustPath)
 	result.Warnings = slices.Clone(result.Warnings)
-	result.Evidence = maps.Clone(result.Evidence)
+	result.Evidence = cloneEvidence(result.Evidence)
 	return result
 }
 
@@ -128,13 +130,14 @@ func (result TrustResult) Clone() TrustResult {
 
 func cloneTrustPath(path TrustPath) TrustPath {
 	path.Certificates = slices.Clone(path.Certificates)
-	if results, ok := path.Raw.([]VerificationResult); ok {
-		cloned := make([]VerificationResult, len(results))
-		for i, result := range results {
-			cloned[i] = result.Clone()
+	path.Raw = slices.Clone(path.Raw)
+	if path.Statements != nil {
+		path.Statements = slices.Clone(path.Statements)
+		for i := range path.Statements {
+			path.Statements[i] = path.Statements[i].Clone()
 		}
-		path.Raw = cloned
 	}
+
 	return path
 }
 

@@ -90,7 +90,7 @@ func (f Fixture) RegistrationJSON(t *testing.T, state webauthn.RegistrationState
 	auth = f.Record.ID.AppendTo(auth)
 	auth = append(auth, f.Record.PublicKey.Raw()...)
 	object := encodeCBOR(t, map[string]any{"fmt": "none", "authData": auth, "attStmt": map[string]any{}})
-	return encodeJSON(t, browser.RegistrationCredentialJSON{ID: b64(f.Record.ID.Bytes()), RawID: b64(f.Record.ID.Bytes()), Type: protocol.CredentialTypePublicKey, ClientExtensionResults: map[string]any{}, Response: browser.AttestationResponseJSON{ClientDataJSON: b64(clientData(t, "webauthn.create", state.Challenge, state.OriginPolicy.AllowedOrigins[0])), AuthenticatorData: b64(auth), Transports: []protocol.AuthenticatorTransport{}, PublicKeyAlgorithm: protocol.AlgorithmEdDSA, AttestationObject: b64(object)}})
+	return encodeJSON(t, browser.RegistrationCredentialJSON{ID: b64(f.Record.ID.Bytes()), RawID: b64(f.Record.ID.Bytes()), Type: protocol.CredentialTypePublicKey, ClientExtensionResults: browser.ExtensionJSON{}, Response: browser.AttestationResponseJSON{ClientDataJSON: b64(clientData(t, "webauthn.create", state.Challenge, state.OriginPolicy.AllowedOrigins[0])), AuthenticatorData: b64(auth), Transports: []protocol.AuthenticatorTransport{}, PublicKeyAlgorithm: protocol.AlgorithmEdDSA, AttestationObject: b64(object)}})
 }
 
 // AuthenticationJSON includes an unknown signed authenticator extension. The
@@ -102,5 +102,5 @@ func (f Fixture) AuthenticationJSON(t *testing.T, state webauthn.AuthenticationS
 	hash := sha256.Sum256(client)
 	signed := append(append([]byte{}, auth...), hash[:]...)
 	user := b64(f.Record.UserHandle.Bytes())
-	return encodeJSON(t, browser.AuthenticationCredentialJSON{ID: b64(f.Record.ID.Bytes()), RawID: b64(f.Record.ID.Bytes()), Type: protocol.CredentialTypePublicKey, ClientExtensionResults: map[string]any{}, Response: browser.AssertionResponseJSON{ClientDataJSON: b64(client), AuthenticatorData: b64(auth), Signature: b64(ed25519.Sign(f.private, signed)), UserHandle: &user}})
+	return encodeJSON(t, browser.AuthenticationCredentialJSON{ID: b64(f.Record.ID.Bytes()), RawID: b64(f.Record.ID.Bytes()), Type: protocol.CredentialTypePublicKey, ClientExtensionResults: browser.ExtensionJSON{}, Response: browser.AssertionResponseJSON{ClientDataJSON: b64(client), AuthenticatorData: b64(auth), Signature: b64(ed25519.Sign(f.private, signed)), UserHandle: &user}})
 }

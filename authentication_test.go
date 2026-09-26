@@ -97,7 +97,7 @@ func TestAuthenticationRequiresMatchingStartHandlerBinding(t *testing.T) {
 		t.Fatalf("NewRegistry(finish) error = %v", err)
 	}
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": testInput(true)}
 	options.State.ExtensionBindings = mustExtensionBindings(t, startRegistry, "track")
 	options.ExtensionRegistry = finishRegistry
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
@@ -205,13 +205,13 @@ func TestAuthenticationStartRequiresRegisteredLargeBlobHandler(t *testing.T) {
 		ExtensionRegistry: registry,
 	}
 	base.Extensions = protocol.ExtensionInputs{
-		extension.IDLargeBlob: map[string]any{"read": true},
+		extension.IDLargeBlob: testInput(map[string]any{"read": true}),
 	}
 	if _, err := webauthn.StartAuthentication(context.Background(), base); !errors.Is(err, webauthn.ErrInvalidConfiguration) {
 		t.Fatalf("unregistered largeBlob error = %v, want ErrInvalidConfiguration", err)
 	}
 
-	base.Extensions = protocol.ExtensionInputs{"future": true}
+	base.Extensions = protocol.ExtensionInputs{"future": testInput(true)}
 	if _, err := webauthn.StartAuthentication(context.Background(), base); err != nil {
 		t.Fatalf("unknown extension StartAuthentication() error = %v", err)
 	}
@@ -414,7 +414,7 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 			name: "unsolicited extension rejected",
 			mutate: func(t *testing.T, _ *authenticationFixture, options *webauthn.AuthenticationFinishOptions) {
 				t.Helper()
-				options.Response.ClientExtensionResults = map[string]any{"credProps": true}
+				options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"credProps": true})
 				options.ExtensionPolicy.RejectUnrequested = true
 			},
 			wantErr: webauthn.ErrExtensionPolicy,
@@ -453,11 +453,11 @@ func TestAuthenticationAppIDHashAcceptedWithPolicyAndOutput(t *testing.T) {
 	fixture := newAuthenticationFixture(t, true)
 	options := fixture.finishOptions()
 	appID := "https://legacy.example/appid"
-	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: testInput(appID)}
 	options.ExtensionRegistry = mustLevel3Registry(t)
 	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDAppID)
 	options.ExtensionPolicy.AppID = appID
-	options.Response.ClientExtensionResults = map[string]any{extension.IDAppID: true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{extension.IDAppID: true})
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, appID, authenticationFlagUP, 8, nil))
 
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); err != nil {
@@ -471,11 +471,11 @@ func TestAuthenticationAppIDRejectsPolicyMismatch(t *testing.T) {
 	fixture := newAuthenticationFixture(t, true)
 	options := fixture.finishOptions()
 	appID := "https://legacy.example/appid"
-	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: testInput(appID)}
 	options.ExtensionRegistry = mustLevel3Registry(t)
 	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDAppID)
 	options.ExtensionPolicy.AppID = "https://other.example/appid"
-	options.Response.ClientExtensionResults = map[string]any{extension.IDAppID: true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{extension.IDAppID: true})
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, appID, authenticationFlagUP, 8, nil))
 
 	_, err := webauthn.FinishAuthentication(context.Background(), options)
@@ -513,11 +513,11 @@ func TestAuthenticationAppIDOutputBindsExpectedRPIDHash(t *testing.T) {
 				t.Fatalf("NewLevel3Registry() error = %v", err)
 			}
 			options := fixture.finishOptions()
-			options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: appID}
+			options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDAppID: testInput(appID)}
 			options.ExtensionPolicy.AppID = appID
 			options.ExtensionRegistry = registry
 			options.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDAppID)
-			options.Response.ClientExtensionResults = tt.output
+			options.Response.ClientExtensionResults = testClientOutputs(tt.output)
 			options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, tt.hashInput, authenticationFlagUP, 8, nil))
 
 			result, err := webauthn.FinishAuthentication(context.Background(), options)
@@ -640,9 +640,9 @@ func TestAuthenticationExtensionOutputRunsAfterSignatureVerification(t *testing.
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": testInput(true)}
 	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
-	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"track": true})
 	options.ExtensionRegistry = registry
 	options.SignatureVerifier = failingSignatureVerifier{}
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrInvalidSignature) {
@@ -663,9 +663,9 @@ func TestAuthenticationExtensionOutputDoesNotRunBeforeCloneRiskRejection(t *test
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{"track": testInput(true)}
 	options.State.ExtensionBindings = mustExtensionBindings(t, registry, "track")
-	options.Response.ClientExtensionResults = map[string]any{"track": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"track": true})
 	options.ExtensionRegistry = registry
 	options.Credential.SignCount = 8
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP, 7, nil))
@@ -683,14 +683,14 @@ func TestAuthenticationExtensionPolicyAllowsAbsentAndIgnoredUnrequestedExtension
 	t.Parallel()
 
 	requested := newAuthenticationFixture(t, true)
-	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": true}
+	requested.start.State.RequestedExtensions = protocol.ExtensionInputs{"future": testInput(true)}
 	if _, err := webauthn.FinishAuthentication(context.Background(), requested.finishOptions()); err != nil {
 		t.Fatalf("FinishAuthentication() with absent requested extension error = %v", err)
 	}
 
 	ignored := newAuthenticationFixture(t, true)
 	options := ignored.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{"credProps": true}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"credProps": true})
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); err != nil {
 		t.Fatalf("FinishAuthentication() with ignored unrequested extension error = %v", err)
 	}
@@ -702,9 +702,9 @@ func TestAuthenticationPreservesUnknownCompositeExtensionOutput(t *testing.T) {
 	fixture := newAuthenticationFixture(t, true)
 	bytes := []byte{0x01, 0x02}
 	options := fixture.finishOptions()
-	options.Response.ClientExtensionResults = map[string]any{
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		"future": map[any]any{int64(1): map[any]any{"bytes": bytes}},
-	}
+	})
 	result, err := webauthn.FinishAuthentication(context.Background(), options)
 	if err != nil {
 		t.Fatalf("FinishAuthentication() error = %v", err)
@@ -731,7 +731,7 @@ func TestAuthenticationPreservesUnknownCompositeExtensionOutput(t *testing.T) {
 	}
 
 	options.ExtensionPolicy.RejectUnknown = true
-	options.Response.ClientExtensionResults = map[string]any{"future": map[any]any{new(int): true}}
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{"future": true})
 	_, err = webauthn.FinishAuthentication(context.Background(), options)
 	if !errors.Is(err, webauthn.ErrExtensionPolicy) || err.Error() != webauthn.ErrExtensionPolicy.Error() {
 		t.Fatalf("FinishAuthentication() error = %v, want exact ErrExtensionPolicy", err)
@@ -743,7 +743,7 @@ func TestAuthenticationLevel2UVMExtension(t *testing.T) {
 
 	fixture := newAuthenticationFixture(t, true)
 	options := fixture.finishOptions()
-	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDUVM: true}
+	options.State.RequestedExtensions = protocol.ExtensionInputs{extension.IDUVM: testInput(true)}
 	options.Response.AuthenticatorData = mustAuthenticatorData(t, authenticationAuthenticatorData(t, "example.com", authenticationFlagUP|authenticationFlagED, 8, map[string]any{
 		extension.IDUVM: []any{[]any{uint64(2), uint64(4), uint64(2)}},
 	}))
@@ -772,9 +772,9 @@ func TestAuthenticationLevel2LargeBlobExtension(t *testing.T) {
 	options.State.RequestedExtensions = protocol.ExtensionInputs{
 		extension.IDLargeBlob: extension.LargeBlobInput{Read: &read},
 	}
-	options.Response.ClientExtensionResults = map[string]any{
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		extension.IDLargeBlob: map[string]any{"blob": []byte("blob")},
-	}
+	})
 	options.ExtensionRegistry = mustLevel2Registry(t)
 	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDLargeBlob)
 
@@ -800,11 +800,11 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 			credentialID: {First: []byte("salt")},
 		}},
 	}
-	options.Response.ClientExtensionResults = map[string]any{
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		extension.IDPRF: map[string]any{
 			"results": map[string]any{"first": bytes.Repeat([]byte{0x05}, 32)},
 		},
-	}
+	})
 	options.ExtensionRegistry = mustLevel3Registry(t)
 	options.State.ExtensionBindings = mustExtensionBindings(t, options.ExtensionRegistry, extension.IDPRF)
 
@@ -826,14 +826,14 @@ func TestAuthenticationLevel3PRFExtension(t *testing.T) {
 			},
 		},
 	}
-	options.Response.ClientExtensionResults = map[string]any{
+	options.Response.ClientExtensionResults = testClientOutputs(map[string]any{
 		extension.IDPRF: map[string]any{
 			"results": map[string]any{
 				"first":  bytes.Repeat([]byte{0x05}, 32),
 				"second": bytes.Repeat([]byte{0x06}, 32),
 			},
 		},
-	}
+	})
 	if _, err := webauthn.FinishAuthentication(context.Background(), options); !errors.Is(err, webauthn.ErrExtensionPolicy) {
 		t.Fatalf("FinishAuthentication() mismatched selected-credential PRF error = %v, want ErrExtensionPolicy", err)
 	}

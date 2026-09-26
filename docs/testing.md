@@ -606,3 +606,18 @@ line-ending checks, formatting and TypeScript checks, static analysis, unit
 tests, race tests, bounded fuzz smoke tests, example builds, dependency license
 checks, import graph checks, minimum-Go tests, module hygiene, and separate
 Chromium E2E.
+
+## Typed boundary regression coverage
+
+The existing unit and consumer gates cover typed extension construction,
+handler-inferred input types, byte/map copy isolation, explicit null versus
+absence, rejection of unsupported raw values and missing output values, JSON
+encoding errors, and empty/false optional browser members. String-input tests
+cover exact-limit acceptance, oversized registration/authentication rejection,
+pointer inputs, UTF-8 byte accounting, and custom/aggregate copy budgets.
+Attestation tests
+check nested compound/evidence copying and strict SafetyNet claim types,
+including null, case variants, numeric strings, fractions, and integer overflow.
+The independent consumer compiles `SetInput` and the error-returning browser
+converters and round-trips v3 state. These tests use independently authored
+values and existing project fixtures; no third-party WebAuthn test logic is used.

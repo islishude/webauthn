@@ -224,6 +224,13 @@ concrete CBOR, COSE, certificate, or metadata dependency types.
 
 ## Attestation boundary
 
+Format evidence implements `attestation.Evidence.CloneEvidence` and stays in
+its optional format package. `EvidenceAs[T]` returns a typed defensive copy.
+Compound results use `TrustPathCompound` and `TrustPath.Statements`; other raw
+paths contain bytes. Certificate roots use `crypto.CertificateChain`; custom
+certificate policy lives on the injected verifier. JWS adapters validate
+protected headers themselves and return only payload and certificate chain.
+
 Format verification and RP trust acceptance are separate. A verifier proves the
 statement is structurally and cryptographically valid. A trust policy decides
 whether the relying party accepts the result.
@@ -240,7 +247,7 @@ Optional verifiers are selected explicitly by callers:
 - `attestation/compound`.
 
 `attestation/compound` verifies normalized sub-statements by dispatching to a
-caller-supplied registry. It returns raw sub-results as evidence and does not
+caller-supplied registry. It returns typed `TrustPath.Statements` sub-results as evidence and does not
 make trust decisions for the relying party.
 
 `attestation.VerificationRequest.ConveyancePreference` carries registration
@@ -253,6 +260,16 @@ signing-certificate digest, freshness, version, and integrity policy; JWS
 verification does not replace those per-request bindings.
 
 ## Extension boundary
+
+`protocol.ExtensionInputs` contains `protocol.ExtensionInput` values with an
+explicit defensive-copy contract. Built-ins use `protocol.BoolInput`,
+`protocol.StringInput`, `extension.PRFInput`, and `extension.LargeBlobInput`.
+`extension.SetInput` binds the handler's ID and input type at construction;
+`extension.NewRawInput` is the explicit unknown/restored-wire escape hatch.
+Core `ClientExtensionResults` use `extension.ClientOutputs` containing copied
+`RawValue`s. Browser extension DTOs use `browser.ExtensionJSON` (JSON raw
+messages); both option-to-DTO converters now return errors. See
+[type safety](type-safety.md) for contracts and retained dynamic boundaries.
 
 Extensions have two boundaries: `ValidateInput` during option construction and
 `VerifyOutput` only after core signature or attestation verification succeeds.

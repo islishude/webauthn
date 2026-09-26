@@ -62,7 +62,7 @@ func (s *server) beginRegistration(ctx context.Context, sessionID string, user p
 		OriginPolicy:      webauthn.OriginPolicy{AllowedOrigins: []string{"https://example.com"}},
 		PubKeyCredParams:  protocol.RecommendedLevel3CredentialParameters(),
 		Attestation:       protocol.AttestationNone,
-		Extensions:        protocol.ExtensionInputs{extension.IDCredProps: true},
+		Extensions:        protocol.ExtensionInputs{extension.IDCredProps: protocol.BoolInput(true)},
 		ExtensionRegistry: s.extensions,
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *server) beginRegistration(ctx context.Context, sessionID string, user p
 	s.mu.Lock()
 	s.registrationStates[sessionID] = start.State
 	s.mu.Unlock()
-	return browser.CredentialCreationOptionsFromProtocol(start.Options), nil
+	return browser.CredentialCreationOptionsFromProtocol(start.Options)
 }
 
 func (s *server) finishRegistration(ctx context.Context, sessionID string, body []byte) (webauthn.CredentialRecord, error) {
@@ -131,7 +131,7 @@ func (s *server) beginAuthentication(ctx context.Context, sessionID string, cred
 	s.mu.Lock()
 	s.authenticationStates[sessionID] = start.State
 	s.mu.Unlock()
-	return browser.CredentialRequestOptionsFromProtocol(start.Options), nil
+	return browser.CredentialRequestOptionsFromProtocol(start.Options)
 }
 
 func (s *server) finishAuthentication(ctx context.Context, sessionID string, body []byte) (webauthn.AuthenticationResult, error) {

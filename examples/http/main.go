@@ -94,7 +94,7 @@ func (h *handler) beginRegistration(response http.ResponseWriter, request *http.
 	start, err := h.rp.StartRegistration(request.Context(), webauthn.RegistrationRequest{
 		User:               protocol.UserEntity{ID: h.userHandle, Name: "demo@example.com", DisplayName: "Demo User"},
 		ExcludeCredentials: h.credentialDescriptors(),
-		Extensions:         protocol.ExtensionInputs{extension.IDCredProps: true},
+		Extensions:         protocol.ExtensionInputs{extension.IDCredProps: protocol.BoolInput(true)},
 	})
 	if err != nil {
 		_ = webauthnhttp.WriteError(response, http.StatusBadRequest, err)

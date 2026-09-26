@@ -124,8 +124,5 @@ func (a *app) registerFinish(response http.ResponseWriter, request *http.Request
 		writeGenericError(response, http.StatusInternalServerError)
 		return
 	}
-	_ = webauthnhttp.WriteJSON(response, http.StatusOK, map[string]any{
-		"ok":   true,
-		"user": map[string]string{"email": input.Email},
-	})
+	_ = webauthnhttp.WriteJSON(response, http.StatusOK, authenticationResponse{OK: true, User: userResponse{Email: input.Email}})
 }

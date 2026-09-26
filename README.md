@@ -271,6 +271,7 @@ CI behavior is documented in `docs/ci.md`.
 - `docs/technical.md` describes architecture and package boundaries.
 - `docs/protocol-map.md` maps WebAuthn Level 3 protocol areas to packages.
 - `docs/api-boundaries.md` defines public API and transport boundaries.
+- `docs/type-safety.md` describes typed inputs, evidence, and explicit raw boundaries.
 - `docs/security-model.md` records security and privacy decisions.
 - `docs/testing.md` defines the test and conformance strategy.
 - `docs/ci.md` documents local and GitHub Actions quality gates.

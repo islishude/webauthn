@@ -388,7 +388,7 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return envelope{}, fmt.Errorf("%w: %w", ErrInvalidEnvelope, err)
 	}
-	var extra any
+	var extra stdjson.RawMessage
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return envelope{}, fmt.Errorf("%w: trailing data", ErrInvalidEnvelope)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/islishude/webauthn/extension"
 	"github.com/islishude/webauthn/internal/protocolidentifier"
+	"github.com/islishude/webauthn/protocol"
 )
 
 var (
@@ -88,7 +89,7 @@ func (state AuthenticationState) Validate() error {
 	return nil
 }
 
-func validateExtensionBindingState(inputs map[string]any, bindings []extension.Binding) error {
+func validateExtensionBindingState(inputs protocol.ExtensionInputs, bindings []extension.Binding) error {
 	if len(bindings) > extension.MaxEntries {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, extension.ErrTooManyEntries)
 	}
@@ -124,7 +125,7 @@ func validateExtensionBindingState(inputs map[string]any, bindings []extension.B
 	return nil
 }
 
-func validateRequestedExtensionIDs(inputs map[string]any) error {
+func validateRequestedExtensionIDs(inputs protocol.ExtensionInputs) error {
 	if len(inputs) > extension.MaxEntries {
 		return fmt.Errorf("%w: %w", ErrInvalidCeremonyState, extension.ErrTooManyEntries)
 	}
