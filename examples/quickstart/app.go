@@ -200,6 +200,11 @@ func (a *app) finishAuthentication(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnauthorized)
 		return
 	}
+	// This demo rejects risk signals; the library preset only reports clone risk.
+	if result.Counter.CloneRisk || result.UVInitializationPending {
+		fail(w, http.StatusUnauthorized)
+		return
+	}
 	if !a.store.update(result.Update) {
 		fail(w, http.StatusConflict)
 		return

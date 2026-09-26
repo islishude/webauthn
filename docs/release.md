@@ -12,6 +12,8 @@ This file records release-readiness checks for `github.com/islishude/webauthn`.
 - After the first tag is actually published, replace the baseline commit install
   command in README with that tag and remove the unreleased-API caveat.
 
+- Fixed-version installation passes without local replacements through
+  `make release-install-check RELEASE_VERSION=<published-revision>`.
 - Local `make ci` passes from a clean worktree.
 - GitHub Actions CI passes on the release branch.
 - Root package import graph does not include `net/http`, `browser`,
@@ -258,3 +260,32 @@ The type-boundary refactor is source-breaking; see [type safety](type-safety.md)
 - No production server, router, storage, session, cookie, CSRF, rate-limit, or account recovery adapter is shipped.
 - No hidden attestation trust roots, metadata network client, OCSP/CRL client, or enterprise enrollment default is shipped.
 - No root package dependency on browser JSON, `net/http`, optional transport helpers, or optional attestation formats is allowed.
+
+## Integration usability migration
+
+Authentication now preserves `ErrInvalidCredentialRecord` and its cause for
+incomplete/inconsistent stored credentials. Callers that previously classified
+these as `ErrUnsupportedAlgorithm` or `ErrCredentialNotAllowed` must update their
+`errors.Is` branches. Valid but disallowed algorithms and response ownership failures
+retain their own categories. The old incorrect matches are intentionally not retained.
+Classify storage errors before nested field/key causes; classify cancellation first.
+
+Non-empty unknown attachment, resident-key and UV selection configuration now fails
+at construction, low-level registration and browser conversion. Empty defaults and
+unknown response/hint compatibility remain. No ceremony or credential migration is
+needed; storage envelopes remain v3 with existing credential read compatibility.
+
+Use `CredentialRecord.Descriptor()` for copied selection hints and
+`CredentialUpdate.ApplyTo(record)` inside atomic persistence protection.
+Handle `ErrCredentialUpdateConflict` as a conflict, and `ErrInvalidCredentialUpdate`
+before its wrapped invalid-record cause. The helper does not introduce a row version;
+that is an optional application contract demonstrated by the integration example.
+Quickstart and business-example risk rejection is explicit example policy, not a
+change to the passkey preset.
+
+The development install path uses a local checkout replacement until a fixed
+published revision passes the installation gate. Remove the replacement and update
+README to the exact verified tag during release publication. Local checks on a dirty
+worktree do not satisfy the clean-worktree requirement, and neither local results nor
+workflow files establish remote CI success. SQL reference examples have no live
+PostgreSQL verification; non-Chromium browser compatibility remains unverified.

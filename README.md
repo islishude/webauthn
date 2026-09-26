@@ -8,18 +8,32 @@ relying-party library.
 Requires Go 1.25.0 or newer. The project is pre-v1 and licensed under
 [MIT](LICENSE); see [security reporting](SECURITY.md) and [changes](CHANGELOG.md).
 
-To install the existing published source baseline before a version tag exists:
+There are two source tracks. The fixed historical baseline below predates the
+unreleased RP/preset API and the integration helpers described on this page:
 
 ```sh
 go get github.com/islishude/webauthn@dc7e1c7edbc2ea1f1fa70c1344644b7df4e4da3f
 ```
 
-That baseline predates the unreleased RP/preset API described below. To try
-the new API and quickstart, use this checkout from its repository root:
+For the current development API, use a checkout containing these changes. In
+your application module, explicitly select that local checkout:
+
+```sh
+go mod edit -require=github.com/islishude/webauthn@v0.0.0
+go mod edit -replace=github.com/islishude/webauthn=/absolute/path/to/webauthn
+```
+
+Add your imports using the executable `ExampleNew` in `relying_party_test.go`,
+then run `go mod tidy` and your tests. The replacement is a development setup,
+not a published version. From the library checkout, run the browser demo:
 
 ```sh
 go run ./examples/quickstart
 ```
+
+After a release passes the fixed-version installation check, remove the local
+replacement and install that exact published tag. No tag is certified by this
+checkout; see [release requirements](docs/release.md).
 
 Open [the local demo](http://localhost:8080). It uses a single shared demo
 account and memory-only credentials/sessions. Restarting loses all data. A
@@ -35,7 +49,8 @@ and validate it once with `webauthn.New`. Then:
 4. Consume state, look up the credential, verify, persist the conditional update,
    and only then create your application session.
 
-Read the [integration guide](docs/integration.md) and the tested
+Read the [integration guide](docs/integration.md),
+[persistence contracts](docs/persistence.md) and the tested
 [passkey example](examples/passkey/main.go). Manual dependency wiring remains
 available through the original package-level functions.
 
@@ -155,6 +170,8 @@ format packages.
 Public examples are compiled by `make example-build` and by CI:
 
 - `examples/quickstart` is the runnable, browser-tested local passkey demo.
+- `examples/integration` tests existing-account enrollment, username-first and
+  discoverable login, encoded persistence, risk decisions and application row versions.
 
 - `examples/manual` shows framework-neutral registration and authentication
   wiring with caller-owned ceremony state and credential storage.

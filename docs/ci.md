@@ -53,7 +53,7 @@ golangci-lint version
 The integration gates add `make consumer-check` (an independent module under
 `tests/consumer`, with a local replace and readonly module resolution) to
 `make ci`. `make test-minimum` runs Go 1.25.0 tests and the consumer gate.
-GitHub's compatibility matrix runs Go 1.25.0 and 1.27 on Linux, macOS and Windows
+GitHub's compatibility matrix runs Go 1.25.0, 1.26 and 1.27 on Linux, macOS and Windows
 with toolchain auto-upgrade disabled. The matrix is separate from Linux-only
 lint, race, fuzz and browser jobs. Public quickstart Chromium coverage runs in
 the same `make e2e` gate with an additional localhost web server.
@@ -186,3 +186,25 @@ memory and must not be written to tracked files or uploaded artifacts.
 The Playwright e2e job is separate from browser fixture regeneration. It does
 not update committed fixtures and does not import optional browser or HTTP
 helpers into the root package.
+
+## Fixed-version release installation
+
+`make release-install-check RELEASE_VERSION=<fixed-version>` accepts an exact
+semantic tag/pseudo-version or full 40-character lowercase commit ID. Branch names,
+partial versions and `latest` are rejected. Run from the repository root. The tool
+copies the public consumer tests and committed browser fixture into a temporary
+directory, initializes a new module, resolves the requested version with `GOWORK=off`,
+checks that it has no replacement, and runs the consumer tests uncached. Temporary
+files are removed on exit; Go caches may be populated. This check intentionally
+requires network or an already populated module cache and is outside `make ci`.
+
+The manual `release installation` workflow accepts the same version input via an
+environment variable and runs on Go 1.25.0 with automatic toolchain upgrades disabled.
+It verifies the chosen source version; it creates no commit, tag or release. A version
+predating required public APIs fails the check. A successful local replacement consumer
+check alone is not evidence that an unpublished change can be installed remotely.
+
+`examples/integration` is included in the existing example, unit and race targets.
+Documentation presence/README checks include its guide, persistence contracts and
+release workflow. The compatibility matrix now pins exactly 1.25.0 and retains
+1.26 alongside the primary 1.27 line. Live browser E2E remains Chromium-only.

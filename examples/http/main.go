@@ -293,11 +293,7 @@ func (h *handler) credentialDescriptors() []protocol.CredentialDescriptor {
 	defer h.mu.Unlock()
 	descriptors := make([]protocol.CredentialDescriptor, 0, len(h.records))
 	for _, record := range h.records {
-		descriptors = append(descriptors, protocol.CredentialDescriptor{
-			Type:       record.Type,
-			ID:         record.ID,
-			Transports: append([]protocol.AuthenticatorTransport(nil), record.Transports...),
-		})
+		descriptors = append(descriptors, record.Descriptor())
 	}
 	return descriptors
 }
@@ -307,24 +303,14 @@ func (h *handler) applyCredentialUpdate(update webauthn.CredentialUpdate) bool {
 	defer h.mu.Unlock()
 	key := credentialKey(update.ID.Bytes())
 	record, ok := h.records[key]
-	if !ok || record.SignCount != update.PreviousSignCount ||
-		record.BackupState != update.PreviousBackupState ||
-		record.UVInitialized != update.PreviousUVInitialized ||
-		record.AuthenticatorAttachment != update.PreviousAuthenticatorAttachment {
+	if !ok {
 		return false
 	}
-	if update.SignCountChanged {
-		record.SignCount = update.SignCount
+	next, err := update.ApplyTo(record)
+	if err != nil {
+		return false
 	}
-	if update.BackupStateChanged {
-		record.BackupState = update.BackupState
-	}
-	if update.UVInitializedChanged {
-		record.UVInitialized = update.UVInitialized
-	}
-	if update.AuthenticatorAttachmentChanged {
-		record.AuthenticatorAttachment = update.AuthenticatorAttachment
-	}
+	record = next
 	h.records[key] = record
 	return true
 }

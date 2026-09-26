@@ -285,7 +285,7 @@ func TestAuthenticationRejectsInvalidInputs(t *testing.T) {
 				t.Helper()
 				options.Credential.Type = ""
 			},
-			wantErr: webauthn.ErrCredentialNotAllowed,
+			wantErr: webauthn.ErrInvalidCredentialRecord,
 		},
 		{
 			name: "credential rp id mismatch",

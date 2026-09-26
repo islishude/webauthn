@@ -1,0 +1,28 @@
+name: release installation
+
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact tag, pseudo-version, or full commit ID to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.0"
+      - name: Verify fixed revision from an independent module
+        run: make release-install-check
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          GOTOOLCHAIN: local
+          GOWORK: "off"

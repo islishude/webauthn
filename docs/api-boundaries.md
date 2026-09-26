@@ -354,3 +354,18 @@ state was restored with `storage/json` or a caller-owned schema.
 
 Storage backends, sessions, cookies, framework adapters, CLI tools, and
 conformance harness helpers remain outside the root API.
+
+## Integration helper contracts
+
+`AuthenticatorSelectionCriteria.Validate` accepts nil/empty defaults and rejects
+unknown explicit attachment, resident-key and UV preferences. Construction,
+low-level registration, creation option validation and browser conversion share
+it. Unknown browser response attachment and transport/hint compatibility remain.
+
+`CredentialRecord.Descriptor` returns copied transport hints. `CredentialUpdate.ApplyTo`
+validates the source, compares ID and all four previous fields, applies only changed
+fields to a copy, and validates the result. It returns `ErrCredentialUpdateConflict`
+or `ErrInvalidCredentialUpdate` as appropriate. These are pure data operations;
+storage atomicity and optional row versions belong to the caller. Root still has
+no storage or transport imports. Authentication preserves invalid-record errors
+instead of translating them into algorithm or credential-selection failures.

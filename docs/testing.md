@@ -621,3 +621,25 @@ including null, case variants, numeric strings, fractions, and integer overflow.
 The independent consumer compiles `SetInput` and the error-returning browser
 converters and round-trips v3 state. These tests use independently authored
 values and existing project fixtures; no third-party WebAuthn test logic is used.
+
+## Integration usability regression coverage
+
+`integration_api_test.go` covers selection validation across constructors, low-level
+registration, protocol options and browser conversion, including typed field errors
+and no random/clock calls on invalid configuration. It tests invalid-record error
+parity and conditional updates, conflict predicates, defensive copying, no-op values,
+invalid output and explicitly authorized counter rollback.
+
+`examples/integration` uses project-generated ephemeral signing keys with real
+verification. Tests cover account/session bindings, encoded storage round trips,
+revoked enrollment, both login modes, empty accounts, duplicates, consumed malformed
+attempts, expiry, clone risk, pending UV, storage failure and concurrent unique
+insert/one-time consume/versioned update. Error classification tests exercise actual
+API failures. External consumers exercise descriptors and conditional updates after
+fixture-based verification. No external library tests are used.
+
+The Go compatibility matrix pins 1.25.0 and also exercises 1.26/1.27 across the three
+supported CI operating systems. `make release-install-check RELEASE_VERSION=<fixed>`
+is an explicit network check outside default CI: a fresh module has no replacement
+and runs current public consumer tests against that published revision. It reuses
+only this project's committed browser fixture and never uploads private keys.

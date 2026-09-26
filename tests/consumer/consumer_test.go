@@ -74,7 +74,7 @@ func TestPublicConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = rp.FinishAuthentication(ctx, webauthn.AuthenticationVerification{State: authState})
-	if !errors.Is(err, webauthn.ErrUnsupportedAlgorithm) {
+	if !errors.Is(err, webauthn.ErrInvalidCredentialRecord) {
 		t.Fatal(err)
 	}
 	// Credential persistence APIs also remain available without an internal import.

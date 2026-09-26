@@ -83,6 +83,7 @@ func TestQuickstartStoreCASAndUniqueInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := testceremony.New(t, "localhost", a.user.ID)
+	f.Record.BackupEligible = true
 	if !a.store.insert(f.Record) || a.store.insert(f.Record) {
 		t.Fatal("insert not unique")
 	}
@@ -113,5 +114,39 @@ func TestQuickstartRejectsCrossOrigin(t *testing.T) {
 	a.routes().ServeHTTP(w, r)
 	if w.Code != 403 {
 		t.Fatal(w.Code)
+	}
+}
+
+func TestQuickstartRejectsRiskBeforePersistence(t *testing.T) {
+	for _, risk := range []string{"clone", "uv"} {
+		t.Run(risk, func(t *testing.T) {
+			a, err := newApp()
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := testceremony.New(t, "localhost", a.user.ID)
+			if risk == "clone" {
+				f.Record.SignCount = 1
+			} else {
+				f.Record.UVInitialized = false
+			}
+			if !a.store.insert(f.Record) {
+				t.Fatal("insert failed")
+			}
+			begin := request(t, a.routes(), "/login/options", []byte(`{}`))
+			c := findCookie(t, begin, authenticationCookie)
+			body := f.AuthenticationJSON(t, a.store.authentication[c.Value])
+			result := request(t, a.routes(), "/login/finish", body, c)
+			if result.Code != http.StatusUnauthorized || len(a.store.sessions) != 0 {
+				t.Fatal("risk created session")
+			}
+			stored := a.store.credentials[string(f.Record.ID.Bytes())]
+			if stored.SignCount != f.Record.SignCount || stored.UVInitialized != f.Record.UVInitialized {
+				t.Fatal("risk wrote credential")
+			}
+			if _, exists := a.store.authentication[c.Value]; exists {
+				t.Fatal("risk retained ceremony")
+			}
+		})
 	}
 }

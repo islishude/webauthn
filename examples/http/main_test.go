@@ -13,6 +13,7 @@ import (
 
 	webauthn "github.com/islishude/webauthn"
 	"github.com/islishude/webauthn/browser"
+	"github.com/islishude/webauthn/internal/testceremony"
 	"github.com/islishude/webauthn/protocol"
 )
 
@@ -101,7 +102,11 @@ func TestHTTPExampleConcurrentStartsAndConditionalCredentialUpdate(t *testing.T)
 	if err != nil {
 		t.Fatalf("NewUserHandle() error = %v", err)
 	}
-	record := webauthn.CredentialRecord{Type: protocol.CredentialTypePublicKey, ID: credentialID, UserHandle: userHandle, RPID: "example.com", SignCount: 7}
+	record := testceremony.New(t, "example.com", userHandle).Record
+	record.ID = credentialID
+	record.SignCount = 7
+	record.UVInitialized = false
+	record.BackupEligible = true
 	if !h.insertCredential(record) || h.insertCredential(record) {
 		t.Fatal("credential insertion was not atomic and unique")
 	}

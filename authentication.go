@@ -421,18 +421,8 @@ func validateAuthenticationDependencies(options AuthenticationFinishOptions) err
 	if options.AlgorithmPolicy != nil && interfaceutil.IsNil(options.AlgorithmPolicy) {
 		return fmt.Errorf("%w: algorithm policy is typed nil", ErrInvalidConfiguration)
 	}
-	if options.Credential.Type.Validate() != nil || options.Credential.ID.Len() == 0 || options.Credential.UserHandle.Len() == 0 {
-		return ErrCredentialNotAllowed
-	}
 	if err := options.Credential.Validate(); err != nil {
-		switch {
-		case errors.Is(err, ErrInvalidBackupState):
-			return ErrInvalidBackupState
-		case options.Credential.PublicKey.Validate() != nil:
-			return ErrUnsupportedAlgorithm
-		default:
-			return ErrCredentialNotAllowed
-		}
+		return err
 	}
 	if options.CounterPolicy.RejectCloneRisk && options.CounterPolicy.UpdateOnCloneRisk {
 		return fmt.Errorf("%w: clone-risk counter policy cannot reject and update", ErrInvalidConfiguration)

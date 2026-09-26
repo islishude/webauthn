@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Validate authenticator selection consistently before ceremony generation and
+  browser conversion; report stored credential failures as `ErrInvalidCredentialRecord`.
+  These tightened configuration/error contracts require the documented pre-v1 migration.
+- Add copied credential descriptors and conditional `CredentialUpdate.ApplyTo`
+  with explicit conflict/invalid-update errors; preserve existing counter policies.
+- Add tested multi-account application integration with encoded storage, atomic
+  consumption, row versions, explicit risk rejection and reference persistence SQL.
+- Clarify development installation, browser capability boundaries and fixed-version
+  release installation; pin minimum Go 1.25.0 and test 1.26/1.27 as well.
+
 - Replace untyped ceremony extension inputs/client outputs and browser DTO
   extension maps with typed input contracts, `ClientOutputs`, and raw JSON
   messages; add handler-inferred `SetInput`. Browser option conversion now

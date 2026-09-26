@@ -108,6 +108,9 @@ func (rp *RelyingParty) FinishAuthentication(ctx context.Context, request Authen
 	if !rp.matchesOrigin(s.RPID, s.OriginPolicy) || s.RequestedUserVerification != c.Authentication.UserVerification {
 		return AuthenticationResult{}, fmt.Errorf("%w: state does not match relying party configuration", ErrInvalidCeremonyState)
 	}
+	if err := request.Credential.Validate(); err != nil {
+		return AuthenticationResult{}, err
+	}
 	if !slices.Contains(rp.algorithms, request.Credential.PublicKey.Algorithm) {
 		return AuthenticationResult{}, ErrUnsupportedAlgorithm
 	}

@@ -335,3 +335,22 @@ SafetyNet payload parsing preserves exact claim names and rejects present null
 booleans, quoted/fractional/overflow timestamps, and malformed digest arrays.
 These changes do not relax handler revision checks, unknown-output policy,
 work budgets, signature checks, or explicit attestation trust acceptance.
+
+## Integration error and persistence contracts
+
+Authentication reports incomplete or inconsistent stored credentials through
+`ErrInvalidCredentialRecord`, preserving nested validation errors. Algorithm-policy
+rejection is distinct from malformed storage. HTTP errors remain generic.
+Selection configuration mistakes fail before challenge generation; permissive
+handling of unknown response attachment and protocol hints is unchanged.
+
+`CredentialUpdate.ApplyTo` must receive a verified update and run under caller-owned
+atomic storage protection. It validates before returning a copy, leaves its input
+unchanged, and never supplies a partial record on failure. An optional application
+row version detects intervening writes that the four previous values cannot.
+
+The new existing-account example and quickstart reject clone risk and pending UV
+initialization before updating credentials or creating sessions. This is explicit
+example policy; preset and low-level counter defaults remain unchanged. Enrollment
+in the business example requires current application authorization at both phases,
+and ceremony storage binds the browser session, operation, account and expiry.

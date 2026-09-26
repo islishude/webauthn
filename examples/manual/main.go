@@ -170,24 +170,14 @@ func (s *server) finishAuthentication(ctx context.Context, sessionID string, bod
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.credentials[string(result.Update.ID.Bytes())]
-	if !ok || current.SignCount != result.Update.PreviousSignCount ||
-		current.BackupState != result.Update.PreviousBackupState ||
-		current.UVInitialized != result.Update.PreviousUVInitialized ||
-		current.AuthenticatorAttachment != result.Update.PreviousAuthenticatorAttachment {
-		return webauthn.AuthenticationResult{}, errors.New("credential changed concurrently")
+	if !ok {
+		return webauthn.AuthenticationResult{}, webauthn.ErrCredentialUpdateConflict
 	}
-	if result.Update.SignCountChanged {
-		current.SignCount = result.Update.SignCount
+	next, err := result.Update.ApplyTo(current)
+	if err != nil {
+		return webauthn.AuthenticationResult{}, err
 	}
-	if result.Update.BackupStateChanged {
-		current.BackupState = result.Update.BackupState
-	}
-	if result.Update.UVInitializedChanged {
-		current.UVInitialized = result.Update.UVInitialized
-	}
-	if result.Update.AuthenticatorAttachmentChanged {
-		current.AuthenticatorAttachment = result.Update.AuthenticatorAttachment
-	}
+	current = next
 	s.credentials[string(result.Update.ID.Bytes())] = current
 	return result, nil
 }

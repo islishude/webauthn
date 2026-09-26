@@ -3,11 +3,13 @@ GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 PRETTIER ?= ./e2e/node_modules/.bin/prettier
 TSC ?= ./e2e/node_modules/.bin/tsc
+RELEASE_VERSION ?=
+export RELEASE_VERSION
 GOFLAGS ?=
 FUZZTIME ?= 10s
 PLAYWRIGHT_CHROMIUM_EXECUTABLE ?=
 
-.PHONY: help node-deps format format-check lint test test-race test-fuzz-smoke benchmark e2e-typecheck example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci test-minimum consumer-check
+.PHONY: help node-deps format format-check lint test test-race test-fuzz-smoke benchmark e2e-typecheck example-build import-graph-check license-check readme-check browser-fixtures e2e e2e-headed mod-check ci-docs ci test-minimum consumer-check release-install-check
 
 help:
 	@echo 'Targets:'
@@ -21,6 +23,7 @@ help:
 	@echo '  make e2e-typecheck    - run strict TypeScript checking'
 	@echo '  make example-build    - build public examples'
 	@echo '  make test-minimum     - run tests with Go 1.25.0'
+	@echo '  make release-install-check RELEASE_VERSION=<fixed-version> - test a published revision without replace'
 	@echo '  make consumer-check   - test an independent public-API consumer module'
 	@echo '  make import-graph-check - verify root import graph boundaries'
 	@echo '  make license-check    - verify dependency license manifest coverage'
@@ -78,6 +81,9 @@ test-minimum:
 	GOTOOLCHAIN=go1.25.0 $(GO) test $(GOFLAGS) ./...
 	GOTOOLCHAIN=go1.25.0 $(MAKE) consumer-check
 
+release-install-check:
+	$(GO) run ./tools/checkinstall
+
 consumer-check:
 	cd tests/consumer && GOWORK=off $(GO) test -mod=readonly $(GOFLAGS) ./...
 
@@ -97,7 +103,7 @@ license-check:
 	$(GO) run ./tools/checklicenses -manifest docs/dependencies.json
 
 readme-check:
-	@for path in examples/manual examples/http examples/passkey examples/attestation examples/quickstart docs/integration.md docs/release.md; do \
+	@for path in examples/manual examples/http examples/passkey examples/attestation examples/quickstart examples/integration docs/integration.md docs/release.md; do \
 		if ! grep -F "$$path" README.md >/dev/null; then \
 			echo "readme-check: README.md does not reference $$path"; \
 			exit 1; \
@@ -127,6 +133,9 @@ ci-docs:
 	@test -f LICENSE
 	@test -f SECURITY.md
 	@test -f CHANGELOG.md
+	@test -f docs/persistence.md
+	@test -f examples/integration/README.md
+	@test -f .github/workflows/release-install.yml
 	@test -f docs/integration.md
 	@test -f README.md
 	@test -f AGENTS.md

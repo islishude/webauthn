@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
@@ -135,6 +136,24 @@ func TestPublicBrowserFixtureLifecycle(t *testing.T) {
 		}
 		if !result.AuthenticatedAs.Equal(user) || !result.UserVerified || !result.Update.SignCountChanged {
 			t.Fatal("incomplete verified result")
+		}
+		descriptor := credential.Descriptor()
+		if !descriptor.ID.Equal(credential.ID) {
+			t.Fatal("descriptor identity changed")
+		}
+		updated, err := result.Update.ApplyTo(credential)
+		if err != nil || updated.SignCount != result.Credential.SignCount {
+			t.Fatalf("update: %v", err)
+		}
+		if _, err = result.Update.ApplyTo(updated); !errors.Is(err, webauthn.ErrCredentialUpdateConflict) {
+			t.Fatal("stale increment accepted")
+		}
+		raw, err = storagejson.MarshalCredentialRecord(updated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = storagejson.UnmarshalCredentialRecord(raw, config.CredentialPublicKeyDecoder); err != nil {
+			t.Fatal(err)
 		}
 		return
 	}

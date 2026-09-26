@@ -71,6 +71,9 @@ type CredentialRequestOptionsJSON struct {
 
 // CredentialCreationOptionsFromProtocol converts transport-neutral creation options to browser JSON DTOs.
 func CredentialCreationOptionsFromProtocol(options protocol.PublicKeyCredentialCreationOptions) (CredentialCreationOptionsJSON, error) {
+	if err := options.AuthenticatorSelection.Validate(); err != nil {
+		return CredentialCreationOptionsJSON{}, protocolValueError("authenticatorSelection", err)
+	}
 	extensions, err := extensionInputsToJSON(options.Extensions)
 	if err != nil {
 		return CredentialCreationOptionsJSON{}, err

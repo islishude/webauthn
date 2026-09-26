@@ -322,3 +322,17 @@ formatting, strict E2E TypeScript checks, linting, tests, race checks, fuzz smok
 checks, example builds, import graph checks, dependency license checks, and
 module hygiene. GitHub Actions adds an explicit Go 1.25 compatibility lane and
 the separate Chromium E2E job.
+
+## Application integration contracts
+
+Configuration selection validation is shared with protocol options and the browser
+adapter. Static selection mistakes fail before challenge generation. Authentication
+checks stored record validity before using its algorithm; invalid storage retains
+its error classification and validation cause.
+
+Pure root helpers derive credential descriptors and conditionally apply verified
+updates to copied records. They do not implement I/O or atomicity. The existing-account
+example uses optional storage envelopes plus application-owned account/session
+bindings, consumes state once, decides risk, and persists before creating sessions.
+Its row version detects intervening writes even when credential values are unchanged;
+the root update predicate deliberately remains a comparison of values.

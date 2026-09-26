@@ -155,6 +155,9 @@ func StartRegistration(ctx context.Context, options RegistrationStartOptions) (R
 	if err := validateRPIDOriginPolicy(options.RP.ID, options.OriginPolicy); err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
 	}
+	if err := options.AuthenticatorSelection.Validate(); err != nil {
+		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)
+	}
 	credentialParameters, err := registrationCredentialParameters(options.PubKeyCredParams)
 	if err != nil {
 		return RegistrationStartResult{}, fmt.Errorf("%w: %w", ErrInvalidConfiguration, err)

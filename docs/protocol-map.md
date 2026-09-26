@@ -184,3 +184,12 @@ stays explicit:
 - authenticator implementation;
 - CTAP device communication;
 - public WebAuthn library compatibility shims.
+
+## Integration boundaries
+
+The selection configuration validator rejects unsupported explicit attachment,
+resident-key and UV preferences without changing unknown transport/hint handling.
+Descriptor and conditional-update helpers are application integration utilities;
+they introduce no new wire fields, attestation policies or protocol algorithms.
+Stored-record error classification and application row-version examples likewise
+leave the Recommendation baseline and v3 storage envelopes unchanged.

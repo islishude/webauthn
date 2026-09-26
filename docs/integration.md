@@ -7,6 +7,21 @@ Go example attached to `New`, [passkey wiring](../examples/passkey/main.go),
 [quickstart](../examples/quickstart). The latter is one shared demo account,
 not an account-enrollment or account-recovery policy for a production service.
 
+## Data and example paths
+
+Root values are transport-neutral. Send `start.Options` through `browser` or
+`transport/http`; store `start.State` through `storage/json` or a complete
+application schema. Ordinary JSON serialization of root byte wrappers silently
+produces `{}` and loses their bytes. The storage codec has no replay prevention
+or client-cookie sealing. See [persistence contracts](persistence.md) for the
+executable codec lifecycle, conditional updates and reference SQL.
+
+The [existing-account example](../examples/integration) demonstrates authenticated
+passkey enrollment and both login modes, with application-owned interfaces and
+real signed tests. Run `go test -race ./examples/integration`. It rejects clone
+risk and pending UV initialization before persistence/session creation; those are
+explicit example decisions, not changes to the library or preset defaults.
+
 ## Choose policy once
 
 `Config` uses required RP/origin values, all three decoders, a signature
@@ -14,7 +29,9 @@ verifier, an algorithm policy, an attestation registry and an explicit trust
 policy. Registration and authentication defaults are grouped separately.
 The constructor validates values without generating challenges, calling the
 clock or performing cryptographic/trust verification. It queries the algorithm
-policy, which must accept every advertised algorithm. Custom adapters remain
+policy, which must accept every advertised algorithm. Non-empty authenticator selection fields are validated at construction and
+before low-level registration generates a challenge; invalid values return typed
+field errors. Custom adapters remain
 responsible for actually supporting those algorithms.
 
 The passkey preset requires discoverable credentials and UV for both ceremonies,
@@ -66,7 +83,10 @@ serialize root byte wrappers with ordinary JSON or place unsealed state in cooki
 After registration use a database uniqueness constraint on credential ID. After
 authentication apply `result.Update` conditionally: compare ID plus all of
 `PreviousSignCount`, `PreviousBackupState`, `PreviousUVInitialized`, and
-`PreviousAuthenticatorAttachment`, then update only the `*Changed` fields. Zero
+`PreviousAuthenticatorAttachment`, then update only the `*Changed` fields. `CredentialUpdate.ApplyTo` implements
+these comparisons and returns a validated copy; call it under a storage lock or
+implement the equivalent atomic database predicate. Use `CredentialRecord.Descriptor`
+for account selection/exclusion lists. Zero
 counters do not remove the other comparisons. A conflict must not be ignored;
 require a new attempt or an explicit application transaction/reverification
 strategy. The comparison checks values, not a database revision; applications
@@ -98,6 +118,20 @@ errors; see [executable error classification](../examples/passkey/errors_test.go
 Treat invalid configuration/state/credential storage as operator issues, expired
 state as a fresh-attempt condition, malformed input as a request failure, and
 signature/ownership/trust failures as authentication or policy rejections.
-Cancellation takes precedence when classifying wrapped adapter errors. Storage
+Stored-record errors now consistently retain `ErrInvalidCredentialRecord`;
+`ErrUnsupportedAlgorithm` describes a valid record rejected by algorithm policy.
+`ErrInvalidCredentialUpdate` is an application-update error and takes precedence
+over its nested record cause. `ErrCredentialUpdateConflict` requires a new attempt
+or an explicit re-verification strategy. Cancellation takes precedence when
+classifying wrapped adapter errors. Storage
 I/O and conflicts belong to the application. Helpers return generic client
 errors; do not log raw error chains containing adapter-supplied secrets.
+
+## Browser verification boundary
+
+The quickstart checks `PublicKeyCredential`, both native JSON parsing methods and
+`PublicKeyCredential.prototype.toJSON` before enabling credential operations.
+The server expects the complete Level 3 response JSON shape. A browser missing
+those capabilities receives an explanatory message; no polyfill is shipped.
+Automated live browser coverage is Chromium only. Other browser/device combinations
+are not certified by that gate; deployments should test their target environments.

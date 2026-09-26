@@ -142,7 +142,7 @@ func validateConfig(c Config) error {
 			return fmt.Errorf("%s is required", dependency.name)
 		}
 	}
-	if err := validateUserVerification(registrationUserVerification(c.Registration.AuthenticatorSelection)); err != nil {
+	if err := c.Registration.AuthenticatorSelection.Validate(); err != nil {
 		return err
 	}
 	if err := validateUserVerification(c.Authentication.UserVerification); err != nil {

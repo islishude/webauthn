@@ -299,6 +299,27 @@ type AuthenticatorSelectionCriteria struct {
 	UserVerification        UserVerificationRequirement
 }
 
+// Validate checks explicitly configured selection values; nil and empty fields
+// retain the browser and ceremony defaults.
+func (c *AuthenticatorSelectionCriteria) Validate() error {
+	if c == nil {
+		return nil
+	}
+	for _, field := range []struct {
+		name, value string
+		known       bool
+	}{
+		{"authenticatorAttachment", string(c.AuthenticatorAttachment), c.AuthenticatorAttachment.Known()},
+		{"residentKey", string(c.ResidentKey), c.ResidentKey.Known()},
+		{"userVerification", string(c.UserVerification), c.UserVerification.Known()},
+	} {
+		if field.value != "" && !field.known {
+			return ValueError{Field: field.name, Value: field.value}
+		}
+	}
+	return nil
+}
+
 // Clone returns a defensive copy of the criteria.
 func (c *AuthenticatorSelectionCriteria) Clone() *AuthenticatorSelectionCriteria {
 	if c == nil {
@@ -367,6 +388,9 @@ type PublicKeyCredentialCreationOptions struct {
 
 // Validate checks the required WebAuthn creation option fields.
 func (o PublicKeyCredentialCreationOptions) Validate() error {
+	if err := o.AuthenticatorSelection.Validate(); err != nil {
+		return err
+	}
 	if err := o.RP.Validate(); err != nil {
 		return err
 	}

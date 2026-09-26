@@ -73,7 +73,7 @@ func (s *memoryStore) descriptors() []protocol.CredentialDescriptor {
 	defer s.mu.Unlock()
 	out := make([]protocol.CredentialDescriptor, 0, len(s.credentials))
 	for _, c := range s.credentials {
-		out = append(out, protocol.CredentialDescriptor{Type: c.Type, ID: c.ID, Transports: c.Clone().Transports})
+		out = append(out, c.Descriptor())
 	}
 	return out
 }
@@ -83,21 +83,14 @@ func (s *memoryStore) update(u webauthn.CredentialUpdate) bool {
 	defer s.mu.Unlock()
 	key := string(u.ID.Bytes())
 	c, ok := s.credentials[key]
-	if !ok || c.SignCount != u.PreviousSignCount || c.BackupState != u.PreviousBackupState || c.UVInitialized != u.PreviousUVInitialized || c.AuthenticatorAttachment != u.PreviousAuthenticatorAttachment {
+	if !ok {
 		return false
 	}
-	if u.SignCountChanged {
-		c.SignCount = u.SignCount
+	next, err := u.ApplyTo(c)
+	if err != nil {
+		return false
 	}
-	if u.BackupStateChanged {
-		c.BackupState = u.BackupState
-	}
-	if u.UVInitializedChanged {
-		c.UVInitialized = u.UVInitialized
-	}
-	if u.AuthenticatorAttachmentChanged {
-		c.AuthenticatorAttachment = u.AuthenticatorAttachment
-	}
+	c = next
 	s.credentials[key] = c
 	return true
 }
