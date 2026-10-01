@@ -210,7 +210,7 @@ Dependencies must be minimal and compartmentalized. The root package should not 
 
 The implementation should prefer standard library support for SHA-256, X.509 parsing, ASN.1 parsing, ECDSA/RSA verification, and base64url handling where it is sufficient. CBOR, COSE, and JWS/JWT require explicit dependency decisions before implementation.
 
-Plan 03 adds `github.com/fxamacker/cbor/v2 v2.9.3` and `github.com/ldclabs/cose v1.4.0` only for the optional `codec/cbor` package. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
+The optional `codec/cbor` package uses `github.com/fxamacker/cbor/v2 v2.9.4` and `github.com/ldclabs/cose v1.4.0`, both MIT-licensed. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
 
 Plan 05's initial `attestation/packed` slice adds no dependency. It uses Go standard library X.509 parsing for packed attestation certificate shape checks and delegates attestation signature verification through `crypto.SignatureVerifier`. X.509 trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 
