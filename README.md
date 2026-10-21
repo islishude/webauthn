@@ -5,35 +5,22 @@ relying-party library.
 
 ## Start here
 
-Requires Go 1.25.0 or newer. The project is pre-v1 and licensed under
+Requires Go 1.25.0 or newer. The library is licensed under
 [MIT](LICENSE); see [security reporting](SECURITY.md) and [changes](CHANGELOG.md).
 
-There are two source tracks. The fixed historical baseline below predates the
-unreleased RP/preset API and the integration helpers described on this page:
+Install it in your application module:
 
 ```sh
-go get github.com/islishude/webauthn@dc7e1c7edbc2ea1f1fa70c1344644b7df4e4da3f
+go get github.com/islishude/webauthn
 ```
 
-For the current development API, use a checkout containing these changes. In
-your application module, explicitly select that local checkout:
-
-```sh
-go mod edit -require=github.com/islishude/webauthn@v0.0.0
-go mod edit -replace=github.com/islishude/webauthn=/absolute/path/to/webauthn
-```
-
-Add your imports using the executable `ExampleNew` in `relying_party_test.go`,
-then run `go mod tidy` and your tests. The replacement is a development setup,
-not a published version. From the library checkout, run the browser demo:
+Start with the executable [`ExampleNew`](relying_party_test.go) and the
+[integration guide](docs/integration.md). To try the browser demo from a
+library checkout, run:
 
 ```sh
 go run ./examples/quickstart
 ```
-
-After a release passes the fixed-version installation check, remove the local
-replacement and install that exact published tag. No tag is certified by this
-checkout; see [release requirements](docs/release.md).
 
 Open [the local demo](http://localhost:8080). It uses a single shared demo
 account and memory-only credentials/sessions. Restarting loses all data. A
@@ -59,7 +46,7 @@ registration and authentication ceremonies, then returns credential records,
 conditional credential updates, attestation results, extension results, and
 policy outcomes for the application to persist in its own storage.
 
-Current status: implementation is complete. The repository has
+The library provides
 transport-neutral registration and authentication APIs, optional attestation
 format packages, a 25 August 2026 WebAuthn Level 3 Recommendation
 baseline, strict CTAP2 canonical CBOR/COSE validation, Level 3 extension handlers
@@ -71,7 +58,14 @@ inventory, real-browser conformance tests, fuzz smoke targets, minimum-Go and
 TypeScript checks, import graph checks, dependency license checks, and release
 documentation.
 
-The release checklist is tracked in `docs/release.md`.
+Before v1, patch releases do not intentionally break the public API; minor
+releases may introduce incompatible changes with migration notes. Security
+fixes may tighten accepted behavior. See the [version policy and release
+checklist](docs/release.md).
+
+Live browser tests currently cover Chromium with virtual authenticators.
+Real hardware authenticators and broader OS/browser coverage remain future
+validation work; see [test coverage](docs/testing.md).
 
 ## What It Provides
 
@@ -250,7 +244,7 @@ compatibility, and its license.
 The module path is `github.com/islishude/webauthn`; `go.mod` records Go
 `1.25.0`.
 
-Run commands from the repository root.
+Run the local quality gate from the library repository root:
 
 ```sh
 make ci
@@ -292,7 +286,7 @@ CI behavior is documented in `docs/ci.md`.
 - `docs/security-model.md` records security and privacy decisions.
 - `docs/testing.md` defines the test and conformance strategy.
 - `docs/ci.md` documents local and GitHub Actions quality gates.
-- `docs/release.md` tracks release-readiness requirements and notes.
+- `docs/release.md` defines the release checklist and version policy.
 - `docs/dependencies.json` records module dependency licenses and scope.
 
 When scope, deliverables, tests, dependencies, package boundaries, or quality
@@ -300,10 +294,15 @@ gates change, update the relevant docs in the same change.
 
 ## Release Readiness
 
-A release candidate requires:
+The full checklist is maintained in
+[release requirements](docs/release.md). A release candidate requires:
 
+- fixed-version installation without local replacements, checked after tag
+  publication with `make release-install-check RELEASE_VERSION=<published-version>`;
 - local `make ci` passing from a clean worktree;
 - GitHub Actions passing on the release branch;
+- Go 1.25.0 compatibility, the independent consumer module, and Chromium E2E
+  passing in their dedicated gates;
 - root import graph independence from optional attestation, browser, HTTP,
   standard crypto, storage JSON, and `net/http` packages;
 - compile-checked examples for framework-neutral and optional HTTP integration;

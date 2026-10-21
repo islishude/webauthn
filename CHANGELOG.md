@@ -4,7 +4,7 @@
 
 - Validate authenticator selection consistently before ceremony generation and
   browser conversion; report stored credential failures as `ErrInvalidCredentialRecord`.
-  These tightened configuration/error contracts require the documented pre-v1 migration.
+  See the [integration contracts](docs/integration.md) for configuration and error handling.
 - Add copied credential descriptors and conditional `CredentialUpdate.ApplyTo`
   with explicit conflict/invalid-update errors; preserve existing counter policies.
 - Add tested multi-account application integration with encoded storage, atomic
@@ -19,7 +19,7 @@
 - Replace attestation evidence maps, compound raw sub-results, and untyped
   certificate roots with copyable typed evidence, explicit sub-statements, and
   certificate chains. Remove unused JWS header and certificate policy payloads.
-  See [migration notes](docs/release.md) for these source-breaking changes.
+  See [type safety](docs/type-safety.md) for these source-breaking changes.
 
 - Add reusable `Config`/`RelyingParty` APIs with startup validation and strict
   state/configuration matching; retain the low-level ceremony functions.
@@ -34,6 +34,3 @@ These changes do not alter the low-level empty algorithm defaults or the v3
 storage envelope. Low-level callers must update the changed type boundaries before compiling. The
 RP object requires explicit decoders, trust policy and algorithm policy.
 Changing its state-bound policy requires starting a fresh ceremony.
-
-Earlier implementation changes and pre-v1 migrations are recorded in
-[release notes](docs/release.md).
