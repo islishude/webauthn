@@ -256,7 +256,8 @@ and untrusted `FindRaw` access instead of `map[string]any`. The later public-bou
 with `protocol.ExtensionInput`, core client outputs with `extension.ClientOutputs`,
 and browser extension DTO values with `jsontext.Value`. Optional attestation
 formats own copyable typed evidence; certificate roots are a typed chain.
-The package directions and storage JSON v3 envelopes remain unchanged.
+The package directions remain unchanged. Storage JSON uses the sole v1 envelope
+format with strict validation of required fields.
 See [type safety](type-safety.md) for the concrete contracts and raw boundaries.
 
 The post-audit Recommendation remediation adds no dependency. It binds
@@ -267,8 +268,8 @@ Ed25519 certificate-to-credential binding for Android Key and Apple, and makes
 SafetyNet application identity and freshness explicit. The `browser` adapter
 now requires the Level 3 `toJSON()` members, PRF preserves optional-member
 presence, largeBlob authentication requires a registered handler and its state
-is revalidated at finish, and storage envelope v2
-records credential type while continuing to read v1.
+is revalidated at finish, and storage envelopes
+require an explicit credential type.
 
 Finish-state validation is strict even for caller-owned persistence mappings:
 missing expiry and unresolved user-verification policy are invalid rather than
@@ -296,8 +297,8 @@ completeness but is excluded from executable coverage because neither
 
 The 2026-09-04 full-repository remediation adds no dependency. It centralizes
 typed-nil validation, validates caller-stored ceremony and credential records,
-binds extension handler revisions across start and finish, advances storage
-state envelopes to v3, adds bounded CBOR/browser/extension/compound work,
+binds extension handler revisions across start and finish, persists those
+bindings in storage state envelopes, adds bounded CBOR/browser/extension/compound work,
 validates canonical origin/RP-ID configuration, strengthens credential-update
 compare-and-swap predicates, and removes redundant parsing and copying from hot
 paths. Optional browser, HTTP, storage, standard-crypto, and attestation format
@@ -345,8 +346,8 @@ Single-document reads use `Unmarshal`; the module inventory tool uses
 `jsontext.Decoder` and `UnmarshalDecode` for the `go list` JSON stream. Storage
 also enables `RejectUnknownMembers`. No compatibility options weaken duplicate
 name, UTF-8, or case-sensitive parsing defaults. Optional pointer tags preserve
-presence independently of their encoded value. Storage envelope versions and
-package dependency directions are unchanged; no external dependency is added.
+presence independently of their encoded value. Storage uses the sole v1 envelope
+format. Package dependency directions are unchanged; no external dependency is added.
 
 The higher Go baseline also enables existing modernize checks for standard-library
 iterators, error type extraction, string splitting, and expression allocation.

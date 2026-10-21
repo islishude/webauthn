@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+- Define v1 as the only storage envelope format, with explicit credential type,
+  extension handler bindings, and strict validation. See the
+  [storage format contract](docs/release.md#storage-envelope-v1).
+
 - Breaking, for the next minor release: require Go 1.27.0 and migrate all JSON
   codecs to `encoding/json/v2`. `browser.ExtensionJSON` now contains
   `jsontext.Value`; JSON parsing rejects duplicate names and invalid UTF-8 and
-  matches fields case-sensitively. Preserve optional field presence and storage
-  v3 with v1/v2 credential reads. See the [migration notes](docs/release.md#go-127-and-json-v2-migration).
+  matches fields case-sensitively. Preserve optional field presence. See the [migration notes](docs/release.md#go-127-and-json-v2-migration).
 
 - Update ECDSA adapters for current standard-library key APIs; require fixed-width
   coordinates from custom key adapters. Module tidy checks now use non-mutating
@@ -39,7 +42,6 @@
 - Add minimum-Go and cross-platform CI coverage, project MIT license and
   private vulnerability reporting instructions.
 
-These changes do not alter the low-level empty algorithm defaults or the v3
-storage envelope. Low-level callers must update the changed type boundaries before compiling. The
+These changes do not alter the low-level empty algorithm defaults. Low-level callers must update the changed type boundaries before compiling. The
 RP object requires explicit decoders, trust policy and algorithm policy.
 Changing its state-bound policy requires starting a fresh ceremony.

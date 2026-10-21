@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	// EnvelopeVersion is the current storage envelope version.
-	EnvelopeVersion = 3
+	// EnvelopeVersion is the only supported storage envelope version.
+	EnvelopeVersion = 1
 	// MaxEnvelopeBytes bounds storage input before JSON decoding.
 	MaxEnvelopeBytes = 1 << 20
 	// MaxStoredPublicKeyBytes bounds a persisted raw COSE credential key.
@@ -32,8 +32,6 @@ const (
 	kindRegistrationState   = "registration-state"
 	kindAuthenticationState = "authentication-state"
 	kindCredentialRecord    = "credential-record" //nolint:gosec // Public envelope discriminator, not a credential secret.
-	legacyEnvelopeVersion   = 1
-	previousEnvelopeVersion = 2
 )
 
 var (
@@ -165,9 +163,6 @@ func UnmarshalRegistrationState(data []byte) (webauthn.RegistrationState, error)
 	if err != nil {
 		return webauthn.RegistrationState{}, err
 	}
-	if envelope.Version < EnvelopeVersion && (len(extensions) != 0 || len(payload.ExtensionBindings) != 0 || payload.OriginPolicy.AllowRelatedOrigins) {
-		return webauthn.RegistrationState{}, fmt.Errorf("%w: legacy state contains v3-only policy or extension bindings", ErrInvalidEnvelope)
-	}
 	algorithms := make([]protocol.COSEAlgorithmIdentifier, len(payload.AllowedAlgorithms))
 	for i, algorithm := range payload.AllowedAlgorithms {
 		algorithms[i] = protocol.COSEAlgorithmIdentifier(algorithm)
@@ -239,9 +234,6 @@ func UnmarshalAuthenticationState(data []byte) (webauthn.AuthenticationState, er
 	if err != nil {
 		return webauthn.AuthenticationState{}, err
 	}
-	if envelope.Version < EnvelopeVersion && (len(extensions) != 0 || len(payload.ExtensionBindings) != 0 || payload.OriginPolicy.AllowRelatedOrigins) {
-		return webauthn.AuthenticationState{}, fmt.Errorf("%w: legacy state contains v3-only policy or extension bindings", ErrInvalidEnvelope)
-	}
 	descriptors, err := descriptorsFromDTO(payload.AllowCredentials)
 	if err != nil {
 		return webauthn.AuthenticationState{}, err
@@ -301,7 +293,7 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 		return webauthn.CredentialRecord{}, err
 	}
 	payload := envelope.CredentialRecord
-	credentialType, err := credentialRecordType(envelope.Version, payload.Type)
+	credentialType, err := credentialRecordType(payload.Type)
 	if err != nil {
 		return webauthn.CredentialRecord{}, err
 	}
@@ -352,11 +344,8 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 	return record, nil
 }
 
-func credentialRecordType(version int, raw jsontext.Value) (protocol.PublicKeyCredentialType, error) {
+func credentialRecordType(raw jsontext.Value) (protocol.PublicKeyCredentialType, error) {
 	if len(raw) == 0 {
-		if version == legacyEnvelopeVersion {
-			return protocol.CredentialTypePublicKey, nil
-		}
 		return "", fmt.Errorf("%w: credential type is required", ErrInvalidEnvelope)
 	}
 
@@ -386,7 +375,7 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	if err := stdjson.Unmarshal(data, &value, stdjson.RejectUnknownMembers(true)); err != nil {
 		return envelope{}, fmt.Errorf("%w: %w", ErrInvalidEnvelope, err)
 	}
-	if value.Version != EnvelopeVersion && value.Version != previousEnvelopeVersion && value.Version != legacyEnvelopeVersion {
+	if value.Version != EnvelopeVersion {
 		return envelope{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, value.Version)
 	}
 	if value.Kind != expectedKind {

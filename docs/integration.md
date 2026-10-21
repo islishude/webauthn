@@ -77,7 +77,7 @@ Atomically consume each ceremony state before finish, even when parsing or
 verification will fail. Bind it to the initiating browser/session and account
 where applicable; enforce expiry, capacity limits and endpoint rate limits.
 `storage/json` preserves required fields and extension bindings but provides no
-storage I/O, sealing or replay prevention. Persist the complete v3 state; do not
+storage I/O, sealing or replay prevention. Persist the complete v1 state; do not
 serialize root byte wrappers with ordinary JSON or place unsealed state in cookies.
 
 After registration use a database uniqueness constraint on credential ID. After

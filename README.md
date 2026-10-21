@@ -91,7 +91,7 @@ Implemented areas:
 | Browser transport   | Optional JSON DTO conversion helpers in `browser` using unpadded base64url for WebAuthn binary fields and Level 3 DTOs.                             |
 | HTTP transport      | Optional bounded JSON read/write helpers in `transport/http`.                                                                                       |
 | Signature verifier  | Optional standard-library verifier for common EC, RFC 8230-bounded RSA PKCS#1/PSS, and Ed25519 algorithms; Ed448 routes through caller adapters.    |
-| Server storage JSON | Optional v3 bounded encoding with extension-handler bindings; credential reads retain v1/v2 compatibility.                                          |
+| Server storage JSON | Optional v1-only bounded encoding with extension-handler bindings and strict credential type validation.                                            |
 | Examples            | Compile-checked manual, HTTP, passkey, and attestation examples.                                                                                    |
 | Quality gates       | Formatting, TypeScript, linting, unit/race/fuzz tests, minimum Go, examples, import graph, and license checks.                                      |
 

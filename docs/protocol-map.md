@@ -164,7 +164,7 @@ production acceptance.
 | Attestation privacy       | Defaults do not require identifying attestation unless RP policy opts in.                                   |
 | Credential ID privacy     | Discoverable credentials and account-agnostic starts are allowed where configured.                          |
 | Signature counters        | Clone-risk signals are surfaced for caller policy.                                                          |
-| Server-side serialization | Optional v3 storage JSON with bounded strict decoding and v1/v2 credential compatibility.                   |
+| Server-side serialization | Optional v1-only storage JSON with bounded strict decoding and required credential type.                    |
 | Origin and RP ID scoping  | Canonical explicit origin, top-origin, related-origin, and RP ID policy; no request-header inference.       |
 | Transport hints           | Hints are preserved as UI hints, not security proof.                                                        |
 
@@ -192,4 +192,5 @@ resident-key and UV preferences without changing unknown transport/hint handling
 Descriptor and conditional-update helpers are application integration utilities;
 they introduce no new wire fields, attestation policies or protocol algorithms.
 Stored-record error classification and application row-version examples likewise
-leave the Recommendation baseline and v3 storage envelopes unchanged.
+preserve the Recommendation baseline and storage field semantics. Storage
+envelopes use the sole v1 format.

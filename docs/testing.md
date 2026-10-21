@@ -64,7 +64,7 @@ storage state through the repository's browser and HTTP adapter packages.
 
 `relying_party_test.go` tests construction, nil dependencies, copied configuration,
 concurrent reuse, lower-level parity, state/config mismatches, extension bindings
-and storage v3 round trips. Explicit preset tests exercise required UV, none
+and storage v1 round trips. Explicit preset tests exercise required UV, none
 acceptance and other-format rejection. `internal/testceremony` independently
 generates ephemeral Ed25519 credentials and signed unknown extensions using Go
 crypto and CTAP2 CBOR; public example tests exercise these responses end to end.
@@ -410,8 +410,8 @@ The pre-v1 Level 3 security cleanup added tests and checks for:
 - typed COSE key validation and optional `crypto/standard` ECDSA, RSA PKCS#1,
   RSA-PSS, Ed25519, tampering, policy, and key-mismatch cases;
 - optional `storage/json` registration/authentication/credential round trips,
-  v2 credential-type persistence, absent-only v1 type migration, explicit
-  empty/null type rejection, version and shape rejection, binary and integer
+  v1 credential-type persistence, missing/empty/null type rejection,
+  version and shape rejection, binary and integer
   extension preservation, damaged COSE rejection, and server-side storage
   fuzzing;
 - the public HTTP example's per-session state isolation, one-time consumption,
@@ -477,7 +477,7 @@ The 2026-08-28 section-by-section audit remediation added:
   policy plus Android Key/Apple Ed25519 certificate binding;
 - Level 3 required response-member and `id`/`rawId` checks, PRF empty-member
   presence rejection, and finish-time largeBlob state revalidation;
-- credential type persistence in storage envelope v2 with v1 read compatibility.
+- required credential type persistence in storage envelopes.
 
 The 2026-09-04 full-repository remediation added:
 
@@ -487,7 +487,7 @@ The 2026-09-04 full-repository remediation added:
   rejection, defensive credential copies, and four-field credential-update CAS
   coverage;
 - exact extension handler revision bindings, reserved built-in enforcement,
-  storage envelope v3 migration checks, and legacy extension-state rejection;
+  storage extension-state validation and missing-binding rejection;
 - bounded CBOR maps/arrays/depth/bytes, compound attestation statements,
   recursive extension clones, storage values, browser JSON, HTTP bodies, and
   total extension IDs;
@@ -619,7 +619,7 @@ Attestation tests
 check nested compound/evidence copying and strict SafetyNet claim types,
 including null, case variants, numeric strings, fractions, and integer overflow.
 The independent consumer compiles `SetInput` and the error-returning browser
-converters and round-trips v3 state. These tests use independently authored
+converters and round-trips v1 state. These tests use independently authored
 values and existing project fixtures; no third-party WebAuthn test logic is used.
 
 ## Integration usability regression coverage
@@ -666,3 +666,16 @@ Go-baseline compatibility tests cover ECDSA material conversion for P-256,
 P-384, and P-521, nil/incomplete keys, mismatched coordinates, invalid point
 encodings, and incorrect coordinate widths. Existing algorithm and attestation
 suites continue to verify signatures with independently generated keys.
+
+## Storage envelope v1
+
+Storage tests assert literal version 1 output and successful decoding for
+registration state, authentication state, and credential records. Each decoder
+rejects every tested non-v1 version, including zero, negative, and unsupported
+positive integers. Round trips cover
+extension bindings, related-origin policy, and states without extensions.
+Credential tests reject missing, empty, null, incorrectly typed, and unsupported
+types; ceremony tests reject missing required extension bindings. Strict JSON
+tests retain duplicate/unknown member, invalid UTF-8, missing/null version, and
+trailing-data rejection, with assertions that fixture mutations take effect.
+These cases run through the existing unit and fuzz smoke gates in `make ci`.

@@ -2,8 +2,8 @@
 
 Application-facing ceremony inputs and verified evidence use domain types.
 Unknown wire formats remain explicitly raw. These are pre-v1 source-breaking
-changes; the JSON storage envelope remains v3 with the same handler revisions
-and validation rules. No dependency or package direction changes are required.
+changes; the JSON storage envelope uses the sole v1 format with the current
+handler revisions and validation rules. No dependency or package direction changes are required.
 
 ## Extension inputs
 

@@ -47,8 +47,8 @@ signed client-data bytes, and error sentinels remain intact. Underlying JSON
 error types and messages may change; applications should use package sentinels.
 
 Optional DTO pointers preserve explicit empty strings, empty containers, false,
-and zero values through `omitzero` tags. Storage writes remain v3, with existing
-v1/v2 credential read compatibility; no stored-data rewrite is required.
+and zero values through `omitzero` tags. Storage uses the sole v1 envelope
+format described below; the JSON codec version and envelope version are independent.
 Generic JSON output follows v2 defaults: nil maps/slices encode as empty
 objects/arrays, map ordering is unspecified, and custom marshaling follows v2
 method dispatch. HTTP helpers retain HTML escaping and a final newline, and
@@ -60,3 +60,16 @@ The standard signature adapter now requires fixed-width EC2 coordinates (32, 48,
 or 66 bytes for P-256, P-384, or P-521) before standard-library point parsing.
 The bundled COSE decoder already produces this representation; custom decoder
 adapters must do so as well. Malformed coordinates fail as invalid public keys.
+
+## Storage envelope v1
+
+Version 1 is the only supported storage envelope format. All three encoders write
+version 1, and all decoders reject other integer versions with
+`ErrUnsupportedVersion`. The payload includes credential type, extension handler
+bindings, and related-origin policy, and enforces the documented validation and
+size limits. Credential type must be explicit and equal to `public-key`.
+
+Persist the complete format using the current storage API. Ceremony states must
+include all required policy and extension bindings; applications remain
+responsible for expiry enforcement and single-use consumption. Envelope decoding
+validates the current schema and does not infer missing required values.

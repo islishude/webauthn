@@ -341,14 +341,12 @@ authentication, cookie sealing, or replay prevention and is only for trusted
 server-side storage. Registration state serialization preserves the
 conditional-mediation binding and treats its absent zero value as ordinary,
 UP-required registration.
-Envelope v3 persists extension handler bindings and
-`OriginPolicy.AllowRelatedOrigins`. Credential record decoding remains
-compatible with v1 and v2: an absent type in a v1 credential is interpreted as
-`public-key`, while explicit empty/null values and invalid records remain
-malformed. A v1 or v2 ceremony state containing extension inputs has no safe
-semantic binding and is rejected; legacy state without extensions remains
-readable for short-term migration only when it also contains no v3-only
-related-origin policy.
+Envelope v1 is the only supported format and persists extension handler bindings
+and `OriginPolicy.AllowRelatedOrigins`. Other integer versions are rejected with
+`ErrUnsupportedVersion`. Credential records require an explicit `public-key`
+type; missing, empty, null, incorrectly typed, or unsupported values are malformed.
+Ceremony states must satisfy the current extension binding and policy validation.
+Required values are validated without implicit defaults.
 Finish rejects a missing expiry or unresolved user-verification policy whether
 state was restored with `storage/json` or a caller-owned schema.
 

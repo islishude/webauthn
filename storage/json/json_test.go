@@ -7,6 +7,7 @@ import (
 	stdjson "encoding/json/v2"
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ func TestRegistrationStateRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	state := registrationStateFixture(t)
+	state.OriginPolicy.AllowRelatedOrigins = true
 	encoded, err := storagejson.MarshalRegistrationState(state)
 	if err != nil {
 		t.Fatalf("MarshalRegistrationState() error = %v", err)
@@ -32,7 +34,7 @@ func TestRegistrationStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalRegistrationState() error = %v", err)
 	}
-	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ConditionalMediation || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
+	if !reflect.DeepEqual(decoded.OriginPolicy, state.OriginPolicy) || !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ConditionalMediation || !decoded.UserHandle.Equal(state.UserHandle) || !decoded.ExpiresAt.Equal(state.ExpiresAt) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
@@ -63,6 +65,7 @@ func TestAuthenticationStateRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	state := authenticationStateFixture(t)
+	state.OriginPolicy.AllowRelatedOrigins = true
 	encoded, err := storagejson.MarshalAuthenticationState(state)
 	if err != nil {
 		t.Fatalf("MarshalAuthenticationState() error = %v", err)
@@ -71,7 +74,7 @@ func TestAuthenticationStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalAuthenticationState() error = %v", err)
 	}
-	if !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ExpectedUserHandle.Equal(state.ExpectedUserHandle) || len(decoded.AllowCredentials) != 1 || !decoded.AllowCredentials[0].ID.Equal(state.AllowCredentials[0].ID) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
+	if !reflect.DeepEqual(decoded.OriginPolicy, state.OriginPolicy) || !decoded.Challenge.Equal(state.Challenge) || decoded.RPID != state.RPID || !decoded.ExpectedUserHandle.Equal(state.ExpectedUserHandle) || len(decoded.AllowCredentials) != 1 || !decoded.AllowCredentials[0].ID.Equal(state.AllowCredentials[0].ID) || !reflect.DeepEqual(decoded.ExtensionBindings, state.ExtensionBindings) {
 		t.Fatalf("decoded state = %+v", decoded)
 	}
 	assertExtensionTree(t, decoded.RequestedExtensions["future"])
@@ -102,70 +105,62 @@ func TestCredentialRecordRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCredentialRecordVersionOneDefaultsPublicKeyType(t *testing.T) {
+func TestCredentialRecordRequiresPublicKeyType(t *testing.T) {
 	t.Parallel()
-
 	decoder := codeccbor.MustNewDecoder()
 	encoded, err := storagejson.MarshalCredentialRecord(credentialRecordFixture(t, decoder))
 	if err != nil {
-		t.Fatalf("MarshalCredentialRecord() error = %v", err)
+		t.Fatal(err)
 	}
-	var document map[string]any
-	if err := stdjson.Unmarshal(encoded, &document); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v", err)
-	}
-	document["version"] = float64(1)
-	payload := document["credentialRecord"].(map[string]any)
-	delete(payload, "type")
-	legacy, err := stdjson.Marshal(document)
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
-
-	decoded, err := storagejson.UnmarshalCredentialRecord(legacy, decoder)
-	if err != nil {
-		t.Fatalf("UnmarshalCredentialRecord() error = %v", err)
-	}
-	if decoded.Type != protocol.CredentialTypePublicKey {
-		t.Fatalf("Type = %q, want public-key", decoded.Type)
-	}
-
 	for _, tt := range []struct {
 		name  string
 		value any
 	}{
-		{name: "empty", value: ""},
-		{name: "null", value: nil},
+		{"missing", nil}, {"empty", ""}, {"null", nil}, {"number", 1},
+		{"boolean", true}, {"object", map[string]any{}}, {"array", []any{}},
+		{"unsupported", "future-credential"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			payload["type"] = tt.value
-			invalid, err := stdjson.Marshal(document)
-			if err != nil {
-				t.Fatalf("json.Marshal() error = %v", err)
-			}
+			invalid := mutateEnvelope(t, encoded, func(document map[string]any) {
+				payload := document["credentialRecord"].(map[string]any)
+				if tt.name == "missing" {
+					delete(payload, "type")
+				} else {
+					payload["type"] = tt.value
+				}
+			})
 			if _, err := storagejson.UnmarshalCredentialRecord(invalid, decoder); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
-				t.Fatalf("UnmarshalCredentialRecord() error = %v, want ErrInvalidEnvelope", err)
+				t.Fatalf("error = %v, want ErrInvalidEnvelope", err)
 			}
 		})
 	}
 }
 
-func TestCredentialRecordVersionTwoStillDecodes(t *testing.T) {
+func TestStorageJSONOnlySupportsVersionOne(t *testing.T) {
 	t.Parallel()
-
-	decoder := codeccbor.MustNewDecoder()
-	record := credentialRecordFixture(t, decoder)
-	encoded, err := storagejson.MarshalCredentialRecord(record)
-	if err != nil {
-		t.Fatalf("MarshalCredentialRecord() error = %v", err)
-	}
-	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
-	decoded, err := storagejson.UnmarshalCredentialRecord(legacy, decoder)
-	if err != nil {
-		t.Fatalf("UnmarshalCredentialRecord(v2) error = %v", err)
-	}
-	if decoded.Type != record.Type || !decoded.ID.Equal(record.ID) || !bytes.Equal(decoded.PublicKey.Raw(), record.PublicKey.Raw()) {
-		t.Fatalf("decoded v2 credential = %+v", decoded)
+	for _, tt := range storageEnvelopeFixtures(t) {
+		t.Run(tt.name, func(t *testing.T) {
+			var document struct {
+				Version int `json:"version"`
+			}
+			if err := stdjson.Unmarshal(tt.data, &document); err != nil {
+				t.Fatal(err)
+			}
+			if document.Version != 1 || storagejson.EnvelopeVersion != 1 {
+				t.Fatalf("encoded version = %d, EnvelopeVersion = %d, want 1", document.Version, storagejson.EnvelopeVersion)
+			}
+			if err := tt.decode(tt.data); err != nil {
+				t.Fatalf("decode v1: %v", err)
+			}
+			for _, version := range []int{2, 3, 0, -1, 4, 999} {
+				t.Run(strconv.Itoa(version), func(t *testing.T) {
+					invalid := mutateEnvelope(t, tt.data, func(document map[string]any) { document["version"] = version })
+					if err := tt.decode(invalid); !errors.Is(err, storagejson.ErrUnsupportedVersion) {
+						t.Fatalf("error = %v, want ErrUnsupportedVersion", err)
+					}
+				})
+			}
+		})
 	}
 }
 
@@ -189,7 +184,7 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 	}{
 		{
 			name:    "unknown version",
-			data:    bytes.Replace(registration, []byte(`"version":3`), []byte(`"version":4`), 1),
+			data:    bytes.Replace(registration, []byte(`"version":1`), []byte(`"version":4`), 1),
 			decode:  decodeRegistration,
 			wantErr: storagejson.ErrUnsupportedVersion,
 		},
@@ -224,7 +219,7 @@ func TestStorageJSONRejectsInvalidEnvelopes(t *testing.T) {
 			wantErr: storagejson.ErrInvalidEnvelope,
 		},
 		{
-			name:    "missing v2 credential type",
+			name:    "missing credential type",
 			data:    bytes.Replace(credential, []byte(`"type":"public-key",`), nil, 1),
 			decode:  decodeCredential,
 			wantErr: storagejson.ErrInvalidEnvelope,
@@ -279,55 +274,52 @@ func TestStorageJSONRejectsInvalidStateAndUnsupportedExtensionValue(t *testing.T
 	}
 }
 
-func TestStorageJSONRejectsLegacyExtensionStateWithoutBindings(t *testing.T) {
+func TestStorageJSONRejectsMissingExtensionBindings(t *testing.T) {
 	t.Parallel()
-
-	encoded, err := storagejson.MarshalAuthenticationState(authenticationStateFixture(t))
-	if err != nil {
-		t.Fatalf("MarshalAuthenticationState() error = %v", err)
-	}
-	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
-	if _, err := storagejson.UnmarshalAuthenticationState(legacy); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
-		t.Fatalf("UnmarshalAuthenticationState(v2 extensions) error = %v, want ErrInvalidEnvelope", err)
+	for _, tt := range storageEnvelopeFixtures(t) {
+		if tt.name == "credentialRecord" {
+			continue
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			invalid := mutateEnvelope(t, tt.data, func(document map[string]any) {
+				delete(document[tt.name].(map[string]any), "extensionBindings")
+			})
+			if err := tt.decode(invalid); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
+				t.Fatalf("error = %v, want ErrInvalidEnvelope", err)
+			}
+		})
 	}
 }
 
-func TestStorageJSONReadsLegacyStateWithoutExtensions(t *testing.T) {
+func TestStorageJSONStateWithoutExtensions(t *testing.T) {
 	t.Parallel()
-
-	state := registrationStateFixture(t)
-	state.RequestedExtensions = nil
-	state.ExtensionBindings = nil
-	encoded, err := storagejson.MarshalRegistrationState(state)
+	registration := registrationStateFixture(t)
+	registration.RequestedExtensions = nil
+	registration.ExtensionBindings = nil
+	encoded, err := storagejson.MarshalRegistrationState(registration)
 	if err != nil {
-		t.Fatalf("MarshalRegistrationState() error = %v", err)
+		t.Fatal(err)
 	}
-	for _, version := range []byte{'1', '2'} {
-		legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":`+string(version)), 1)
-		decoded, err := storagejson.UnmarshalRegistrationState(legacy)
-		if err != nil {
-			t.Fatalf("UnmarshalRegistrationState(v%c) error = %v", version, err)
-		}
-		if len(decoded.RequestedExtensions) != 0 || len(decoded.ExtensionBindings) != 0 {
-			t.Fatalf("decoded v%c extensions = %#v bindings = %#v", version, decoded.RequestedExtensions, decoded.ExtensionBindings)
-		}
-	}
-}
-
-func TestStorageJSONRejectsLegacyRelatedOriginPolicy(t *testing.T) {
-	t.Parallel()
-
-	state := registrationStateFixture(t)
-	state.RequestedExtensions = nil
-	state.ExtensionBindings = nil
-	state.OriginPolicy.AllowRelatedOrigins = true
-	encoded, err := storagejson.MarshalRegistrationState(state)
+	restoredRegistration, err := storagejson.UnmarshalRegistrationState(encoded)
 	if err != nil {
-		t.Fatalf("MarshalRegistrationState() error = %v", err)
+		t.Fatal(err)
 	}
-	legacy := bytes.Replace(encoded, []byte(`"version":3`), []byte(`"version":2`), 1)
-	if _, err := storagejson.UnmarshalRegistrationState(legacy); !errors.Is(err, storagejson.ErrInvalidEnvelope) {
-		t.Fatalf("UnmarshalRegistrationState(v2 related origin) error = %v, want ErrInvalidEnvelope", err)
+	if !reflect.DeepEqual(restoredRegistration, registration) {
+		t.Fatal("registration state changed")
+	}
+	authentication := authenticationStateFixture(t)
+	authentication.RequestedExtensions = nil
+	authentication.ExtensionBindings = nil
+	encoded, err = storagejson.MarshalAuthenticationState(authentication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredAuthentication, err := storagejson.UnmarshalAuthenticationState(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(restoredAuthentication, authentication) {
+		t.Fatal("authentication state changed")
 	}
 }
 
@@ -571,4 +563,55 @@ type unsupportedInput struct{}
 
 func (unsupportedInput) CloneExtensionInput() (protocol.ExtensionInput, error) {
 	return unsupportedInput{}, nil
+}
+
+// mutateEnvelope changes a valid fixture and checks that the mutation took effect.
+func mutateEnvelope(t *testing.T, data []byte, mutate func(map[string]any)) []byte {
+	t.Helper()
+	var document map[string]any
+	if err := stdjson.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	before, err := stdjson.Marshal(document, stdjson.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutate(document)
+	after, err := stdjson.Marshal(document, stdjson.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(before, after) {
+		t.Fatal("fixture mutation had no effect")
+	}
+	return after
+}
+
+func storageEnvelopeFixtures(t *testing.T) []struct {
+	name   string
+	data   []byte
+	decode func([]byte) error
+} {
+	t.Helper()
+	registration, err := storagejson.MarshalRegistrationState(registrationStateFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authentication, err := storagejson.MarshalAuthenticationState(authenticationStateFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := storagejson.MarshalCredentialRecord(credentialRecordFixture(t, codeccbor.MustNewDecoder()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []struct {
+		name   string
+		data   []byte
+		decode func([]byte) error
+	}{
+		{"registrationState", registration, decodeRegistration},
+		{"authenticationState", authentication, func(data []byte) error { _, err := storagejson.UnmarshalAuthenticationState(data); return err }},
+		{"credentialRecord", credential, decodeCredential},
+	}
 }
