@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
-	"io"
 	"slices"
 	"time"
 
@@ -33,15 +33,9 @@ func (e Evidence) CloneEvidence() attestation.Evidence {
 }
 
 func validatePayload(raw []byte, expectedNonce string, version string, policy Policy) (Evidence, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	// Index exact claim names; struct decoding would also accept case variants.
-	var payload map[string]json.RawMessage
-	if err := decoder.Decode(&payload); err != nil {
+	var payload map[string]jsontext.Value
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return Evidence{}, fmt.Errorf("%w: %w", ErrInvalidPayload, err)
-	}
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return Evidence{}, ErrInvalidPayload
 	}
 	if len(policy.AllowedVersions) != 0 && !slices.Contains(policy.AllowedVersions, version) {
 		return Evidence{}, ErrInvalidPayload
@@ -91,7 +85,7 @@ func validatePayload(raw []byte, expectedNonce string, version string, policy Po
 	return Evidence{Version: version, Timestamp: timestampTime, APKPackageName: packageName, APKCertificateSHA256: digests, CTSProfileMatch: cts, BasicIntegrity: basic}, nil
 }
 
-func payloadClaim[T any](raw json.RawMessage) (T, error) {
+func payloadClaim[T any](raw jsontext.Value) (T, error) {
 	var value T
 	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return value, ErrInvalidPayload
@@ -102,7 +96,7 @@ func payloadClaim[T any](raw json.RawMessage) (T, error) {
 	return value, nil
 }
 
-func booleanPayloadClaim(payload map[string]json.RawMessage, name string) (bool, bool, error) {
+func booleanPayloadClaim(payload map[string]jsontext.Value, name string) (bool, bool, error) {
 	raw, present := payload[name]
 	if !present {
 		return false, false, nil

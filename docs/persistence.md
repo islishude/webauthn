@@ -22,9 +22,9 @@ including authorized counter rollback; they do not make risk decisions.
 | `browser` DTOs           | Browser-facing JSON only                                   |
 | `storage/json` envelopes | Complete trusted server-side state and credential encoding |
 
-Ordinary `encoding/json` marshaling of a root `Challenge` produces `{}` without
-an error because its bytes are private. Marshaling a root state directly therefore
-loses required fields. Use `MarshalRegistrationState`, `MarshalAuthenticationState`
+Direct `encoding/json/v2` marshaling of a root `Challenge` fails because
+its bytes are private and it has no exported JSON fields. Root ceremony values
+are not persistence DTOs. Use `MarshalRegistrationState`, `MarshalAuthenticationState`
 and `MarshalCredentialRecord`, then their corresponding unmarshal functions.
 Credential restoration takes the selected COSE decoder. None of these functions
 provide encryption, integrity protection, storage I/O or replay prevention.

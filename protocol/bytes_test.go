@@ -171,8 +171,7 @@ func TestAppendToAppendsWithoutExposingStoredBytes(t *testing.T) {
 func assertByteLengthError(t *testing.T, err error) {
 	t.Helper()
 
-	var lengthErr protocol.ByteLengthError
-	if !errors.As(err, &lengthErr) {
+	if _, ok := errors.AsType[protocol.ByteLengthError](err); !ok {
 		t.Fatalf("error = %v, want ByteLengthError", err)
 	}
 }

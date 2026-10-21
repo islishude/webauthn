@@ -3,7 +3,8 @@ package browser_test
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -491,7 +492,7 @@ func requestDTO(t *testing.T, options protocol.PublicKeyCredentialRequestOptions
 	}
 	return dto
 }
-func jsonObject(t *testing.T, raw json.RawMessage) map[string]any {
+func jsonObject(t *testing.T, raw jsontext.Value) map[string]any {
 	t.Helper()
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {

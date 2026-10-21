@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"net/http"
 	"time"
 
@@ -19,8 +19,8 @@ type registerOptionsRequest struct {
 }
 
 type registerFinishRequest struct {
-	Email      string          `json:"email"`
-	Credential json.RawMessage `json:"credential"`
+	Email      string         `json:"email"`
+	Credential jsontext.Value `json:"credential"`
 }
 
 func (a *app) registerOptions(response http.ResponseWriter, request *http.Request) {

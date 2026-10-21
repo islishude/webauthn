@@ -2,7 +2,7 @@ package browser
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -33,7 +33,7 @@ type AttestationResponseJSON struct {
 	ClientDataJSON     string                            `json:"clientDataJSON"`
 	AuthenticatorData  string                            `json:"authenticatorData"`
 	Transports         []protocol.AuthenticatorTransport `json:"transports"`
-	PublicKey          *string                           `json:"publicKey,omitempty"`
+	PublicKey          *string                           `json:"publicKey,omitzero"`
 	PublicKeyAlgorithm protocol.COSEAlgorithmIdentifier  `json:"publicKeyAlgorithm"`
 	AttestationObject  string                            `json:"attestationObject"`
 }
@@ -53,7 +53,7 @@ type AssertionResponseJSON struct {
 	ClientDataJSON    string  `json:"clientDataJSON"`
 	AuthenticatorData string  `json:"authenticatorData"`
 	Signature         string  `json:"signature"`
-	UserHandle        *string `json:"userHandle,omitempty"`
+	UserHandle        *string `json:"userHandle,omitzero"`
 }
 
 type registrationCredentialWire struct {
@@ -69,7 +69,7 @@ type attestationResponseWire struct {
 	ClientDataJSON     *string                            `json:"clientDataJSON"`
 	AuthenticatorData  *string                            `json:"authenticatorData"`
 	Transports         *[]protocol.AuthenticatorTransport `json:"transports"`
-	PublicKey          *string                            `json:"publicKey,omitempty"`
+	PublicKey          *string                            `json:"publicKey,omitzero"`
 	PublicKeyAlgorithm *protocol.COSEAlgorithmIdentifier  `json:"publicKeyAlgorithm"`
 	AttestationObject  *string                            `json:"attestationObject"`
 }
@@ -87,7 +87,7 @@ type assertionResponseWire struct {
 	ClientDataJSON    *string `json:"clientDataJSON"`
 	AuthenticatorData *string `json:"authenticatorData"`
 	Signature         *string `json:"signature"`
-	UserHandle        *string `json:"userHandle,omitempty"`
+	UserHandle        *string `json:"userHandle,omitzero"`
 }
 
 // RegistrationResponseFromJSON decodes browser registration JSON into transport-neutral input.

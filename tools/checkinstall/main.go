@@ -4,7 +4,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -92,7 +93,7 @@ func check(version string) (resultErr error) {
 type moduleResolution struct {
 	Path    string
 	Version string
-	Replace json.RawMessage
+	Replace jsontext.Value
 }
 
 func resolve(ctx context.Context, consumer string) (moduleResolution, error) {

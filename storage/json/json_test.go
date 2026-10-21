@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/elliptic"
 	"encoding/base64"
-	stdjson "encoding/json"
+	stdjson "encoding/json/v2"
 	"errors"
 	"reflect"
 	"testing"
@@ -464,6 +464,12 @@ func extensionTree() protocol.ExtensionInputs {
 			"unsigned":    uint64(9),
 			"array":       []any{true, "value"},
 			"emptyArray":  []any{},
+			"emptyString": "",
+			"emptyBytes":  []byte{},
+			"false":       false,
+			"zeroInt":     int64(0),
+			"zeroUint":    uint64(0),
+			"zeroFloat":   float64(0),
 			"emptyObject": map[string]any{},
 		}),
 		"largeBlob": extension.LargeBlobInput{Support: extension.LargeBlobSupportPreferred},
@@ -489,6 +495,9 @@ func assertExtensionTree(t *testing.T, input protocol.ExtensionInput) {
 	}
 	if !bytes.Equal(object["bytes"].([]byte), []byte{0x00, 0xff}) || object["signed"] != int64(-2) || object["unsigned"] != uint64(9) {
 		t.Fatalf("extension object = %#v", object)
+	}
+	if object["emptyString"] != "" || object["false"] != false || object["zeroInt"] != int64(0) || object["zeroUint"] != uint64(0) || object["zeroFloat"] != float64(0) || len(object["emptyBytes"].([]byte)) != 0 {
+		t.Fatalf("zero extension values = %#v", object)
 	}
 	if len(object["emptyArray"].([]any)) != 0 || len(object["emptyObject"].(map[string]any)) != 0 {
 		t.Fatalf("empty extension containers = %#v", object)

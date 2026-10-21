@@ -267,8 +267,8 @@ explicit defensive-copy contract. Built-ins use `protocol.BoolInput`,
 `extension.SetInput` binds the handler's ID and input type at construction;
 `extension.NewRawInput` is the explicit unknown/restored-wire escape hatch.
 Core `ClientExtensionResults` use `extension.ClientOutputs` containing copied
-`RawValue`s. Browser extension DTOs use `browser.ExtensionJSON` (JSON raw
-messages); both option-to-DTO converters now return errors. See
+`RawValue`s. Browser extension DTOs use `browser.ExtensionJSON` (`map[string]jsontext.Value` from
+`encoding/json/jsontext`); both option-to-DTO converters now return errors. See
 [type safety](type-safety.md) for contracts and retained dynamic boundaries.
 
 Extensions have two boundaries: `ValidateInput` during option construction and
@@ -369,3 +369,13 @@ or `ErrInvalidCredentialUpdate` as appropriate. These are pure data operations;
 storage atomicity and optional row versions belong to the caller. Root still has
 no storage or transport imports. Authentication preserves invalid-record errors
 instead of translating them into algorithm or credential-selection failures.
+
+## JSON codec baseline
+
+Go 1.27.0 is the minimum toolchain. JSON processing uses standard-library
+`encoding/json/v2` and `encoding/json/jsontext`, including the public browser
+extension raw-value boundary. No third-party codec types enter the root API.
+Optional DTO pointers use `omitzero` where presence distinguishes empty values
+from absence. The HTTP helper retains buffered serialization, HTML escaping,
+and newline termination. See the [migration notes](release.md#go-127-and-json-v2-migration)
+for source and encoding behavior changes.

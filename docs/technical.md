@@ -254,7 +254,7 @@ and unknown-extension boundaries. `Register` performs the one internal erasure
 needed by a heterogeneous registry, and ceremony results expose typed `Find`
 and untrusted `FindRaw` access instead of `map[string]any`. The later public-boundary refinement replaces protocol extension-map values
 with `protocol.ExtensionInput`, core client outputs with `extension.ClientOutputs`,
-and browser extension DTO values with `json.RawMessage`. Optional attestation
+and browser extension DTO values with `jsontext.Value`. Optional attestation
 formats own copyable typed evidence; certificate roots are a typed chain.
 The package directions and storage JSON v3 envelopes remain unchanged.
 See [type safety](type-safety.md) for the concrete contracts and raw boundaries.
@@ -320,7 +320,7 @@ The local quality gate is `make ci`. It validates documentation and
 configuration immediately, then enforces README checks, Go and repository
 formatting, strict E2E TypeScript checks, linting, tests, race checks, fuzz smoke
 checks, example builds, import graph checks, dependency license checks, and
-module hygiene. GitHub Actions adds an explicit Go 1.25 compatibility lane and
+module hygiene. GitHub Actions adds an explicit Go 1.27 compatibility lane and
 the separate Chromium E2E job.
 
 ## Application integration contracts
@@ -336,3 +336,19 @@ example uses optional storage envelopes plus application-owned account/session
 bindings, consumes state once, decides risk, and persists before creating sessions.
 Its row version detects intervening writes even when credential values are unchanged;
 the root update predicate deliberately remains a comparison of values.
+
+## Standard-library JSON v2
+
+The Go baseline is 1.27.0. JSON foundations are provided by `encoding/json/v2`
+and `encoding/json/jsontext` throughout runtime code, tests, examples, and tools.
+Single-document reads use `Unmarshal`; the module inventory tool uses
+`jsontext.Decoder` and `UnmarshalDecode` for the `go list` JSON stream. Storage
+also enables `RejectUnknownMembers`. No compatibility options weaken duplicate
+name, UTF-8, or case-sensitive parsing defaults. Optional pointer tags preserve
+presence independently of their encoded value. Storage envelope versions and
+package dependency directions are unchanged; no external dependency is added.
+
+The higher Go baseline also enables existing modernize checks for standard-library
+iterators, error type extraction, string splitting, and expression allocation.
+ECDSA adapters use standard-library public-key byte encoding/parsing instead of
+raw coordinate access; validation and curve arithmetic remain delegated to Go.

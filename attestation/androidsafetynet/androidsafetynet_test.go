@@ -9,7 +9,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"math/big"
 	"testing"
@@ -28,7 +29,7 @@ func TestVerifierAcceptsAndroidSafetyNetAttestation(t *testing.T) {
 	verifier := New(jwsVerifier{
 		t:          t,
 		wantToken:  fixture.response,
-		payload:    safetyNetPayload(t, fixture.expectedNonce, true, json.Number("1700000000000")),
+		payload:    safetyNetPayload(t, fixture.expectedNonce, true, jsontext.Value("1700000000000")),
 		certChain:  webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
 		expectCall: true,
 	}, validPolicy())
@@ -122,7 +123,7 @@ func TestVerifierAcceptsConfiguredBasicIntegrityPolicy(t *testing.T) {
 	policy.RequireBasicIntegrity = true
 	verifier := New(jwsVerifier{
 		t:         t,
-		payload:   safetyNetPayload(t, fixture.expectedNonce, false, json.Number("1700000000000")),
+		payload:   safetyNetPayload(t, fixture.expectedNonce, false, jsontext.Value("1700000000000")),
 		certChain: webcrypto.CertificateChain{webcrypto.NewCertificate(fixture.certificate.raw)},
 	}, policy)
 	if _, err := verifier.VerifyAttestation(context.Background(), attestation.VerificationRequest{
@@ -161,9 +162,9 @@ func TestVerifierRejectsPayloadFailures(t *testing.T) {
 		wantErr error
 	}{
 		{name: "malformed json", payload: []byte("{"), wantErr: ErrInvalidPayload},
-		{name: "nonce mismatch", payload: safetyNetPayload(t, "wrong-nonce", true, json.Number("1700000000000")), wantErr: ErrInvalidNonce},
-		{name: "missing ctsProfileMatch", payload: safetyNetPayloadMap(t, map[string]any{"nonce": fixture.expectedNonce, "timestampMs": json.Number("1700000000000")}), wantErr: ErrInvalidPayload},
-		{name: "false ctsProfileMatch", payload: safetyNetPayload(t, fixture.expectedNonce, false, json.Number("1700000000000")), wantErr: ErrInvalidPayload},
+		{name: "nonce mismatch", payload: safetyNetPayload(t, "wrong-nonce", true, jsontext.Value("1700000000000")), wantErr: ErrInvalidNonce},
+		{name: "missing ctsProfileMatch", payload: safetyNetPayloadMap(t, map[string]any{"nonce": fixture.expectedNonce, "timestampMs": jsontext.Value("1700000000000")}), wantErr: ErrInvalidPayload},
+		{name: "false ctsProfileMatch", payload: safetyNetPayload(t, fixture.expectedNonce, false, jsontext.Value("1700000000000")), wantErr: ErrInvalidPayload},
 		{name: "missing timestampMs", payload: safetyNetPayloadMap(t, map[string]any{"nonce": fixture.expectedNonce, "ctsProfileMatch": true}), wantErr: ErrInvalidPayload},
 		{name: "non-numeric timestampMs", payload: safetyNetPayloadMap(t, map[string]any{"nonce": fixture.expectedNonce, "ctsProfileMatch": true, "timestampMs": "now"}), wantErr: ErrInvalidPayload},
 	}
@@ -198,7 +199,7 @@ func TestVerifierRejectsSafetyNetPolicyBindingFailures(t *testing.T) {
 			"nonce":                      fixture.expectedNonce,
 			"ctsProfileMatch":            true,
 			"basicIntegrity":             true,
-			"timestampMs":                json.Number("1700000000000"),
+			"timestampMs":                jsontext.Value("1700000000000"),
 			"apkPackageName":             "com.example.authenticator",
 			"apkCertificateDigestSha256": []string{base64.StdEncoding.EncodeToString(testCertificateDigest())},
 		}
@@ -213,13 +214,13 @@ func TestVerifierRejectsSafetyNetPolicyBindingFailures(t *testing.T) {
 		{name: "null optional boolean", mutatePayload: func(value map[string]any) { value["basicIntegrity"] = nil }, wantErr: ErrInvalidPayload},
 		{name: "quoted timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = "1700000000000" }, wantErr: ErrInvalidPayload},
 		{name: "null timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = nil }, wantErr: ErrInvalidPayload},
-		{name: "fractional timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1700000000000.0") }, wantErr: ErrInvalidPayload},
-		{name: "overflow timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("9223372036854775808") }, wantErr: ErrInvalidPayload},
+		{name: "fractional timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = jsontext.Value("1700000000000.0") }, wantErr: ErrInvalidPayload},
+		{name: "overflow timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = jsontext.Value("9223372036854775808") }, wantErr: ErrInvalidPayload},
 		{name: "case variant required claim", mutatePayload: func(value map[string]any) { value["Nonce"] = value["nonce"]; delete(value, "nonce") }, wantErr: ErrInvalidPayload},
 		{name: "null digest element", mutatePayload: func(value map[string]any) { value["apkCertificateDigestSha256"] = []any{nil} }, wantErr: ErrInvalidPayload},
-		{name: "stale timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1699999800000") }, wantErr: ErrInvalidPayload},
-		{name: "future timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("1700000080000") }, wantErr: ErrInvalidPayload},
-		{name: "negative timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = json.Number("-1") }, wantErr: ErrInvalidPayload},
+		{name: "stale timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = jsontext.Value("1699999800000") }, wantErr: ErrInvalidPayload},
+		{name: "future timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = jsontext.Value("1700000080000") }, wantErr: ErrInvalidPayload},
+		{name: "negative timestamp", mutatePayload: func(value map[string]any) { value["timestampMs"] = jsontext.Value("-1") }, wantErr: ErrInvalidPayload},
 		{name: "wrong package", mutatePayload: func(value map[string]any) { value["apkPackageName"] = "com.attacker" }, wantErr: ErrInvalidPayload},
 		{name: "wrong certificate digest", mutatePayload: func(value map[string]any) {
 			value["apkCertificateDigestSha256"] = []string{base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x99}, 32))}
@@ -290,7 +291,7 @@ func TestVerifierRejectsCertificateFailures(t *testing.T) {
 
 			_, err := New(jwsVerifier{
 				t:         t,
-				payload:   safetyNetPayload(t, fixture.expectedNonce, true, json.Number("1700000000000")),
+				payload:   safetyNetPayload(t, fixture.expectedNonce, true, jsontext.Value("1700000000000")),
 				certChain: tt.chain,
 			}, validPolicy()).VerifyAttestation(context.Background(), attestation.VerificationRequest{
 				Format:            "android-safetynet",
@@ -377,7 +378,7 @@ func newCertificate(t *testing.T, dnsName string) testCertificate {
 	return testCertificate{leaf: leaf, raw: raw}
 }
 
-func safetyNetPayload(t *testing.T, nonce string, ctsProfileMatch bool, timestamp json.Number) []byte {
+func safetyNetPayload(t *testing.T, nonce string, ctsProfileMatch bool, timestamp jsontext.Value) []byte {
 	t.Helper()
 
 	return safetyNetPayloadMap(t, map[string]any{

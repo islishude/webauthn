@@ -5,7 +5,7 @@ type userResponse struct {
 }
 type sessionResponse struct {
 	Authenticated bool          `json:"authenticated"`
-	User          *userResponse `json:"user,omitempty"`
+	User          *userResponse `json:"user,omitzero"`
 }
 type authenticationResponse struct {
 	OK   bool         `json:"ok"`

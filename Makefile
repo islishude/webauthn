@@ -22,7 +22,7 @@ help:
 	@echo '  make benchmark        - run allocation-reporting Go benchmarks'
 	@echo '  make e2e-typecheck    - run strict TypeScript checking'
 	@echo '  make example-build    - build public examples'
-	@echo '  make test-minimum     - run tests with Go 1.25.0'
+	@echo '  make test-minimum     - run tests with Go 1.27.0'
 	@echo '  make release-install-check RELEASE_VERSION=<fixed-version> - test a published revision without replace'
 	@echo '  make consumer-check   - test an independent public-API consumer module'
 	@echo '  make import-graph-check - verify root import graph boundaries'
@@ -31,7 +31,7 @@ help:
 	@echo '  make browser-fixtures - regenerate virtual-authenticator browser fixtures'
 	@echo '  make e2e              - run Playwright browser e2e tests'
 	@echo '  make e2e-headed       - run Playwright browser e2e tests headed'
-	@echo '  make mod-check        - run go mod tidy and verify go.mod/go.sum are clean'
+	@echo '  make mod-check        - verify module tidy without modifying files'
 	@echo '  make ci               - run the local CI gate'
 
 node-deps:
@@ -79,8 +79,8 @@ example-build:
 	$(GO) test $(GOFLAGS) ./examples/...
 
 test-minimum:
-	GOTOOLCHAIN=go1.25.0 $(GO) test $(GOFLAGS) ./...
-	GOTOOLCHAIN=go1.25.0 $(MAKE) consumer-check
+	GOTOOLCHAIN=go1.27.0 $(GO) test $(GOFLAGS) ./...
+	GOTOOLCHAIN=go1.27.0 $(MAKE) consumer-check
 
 release-install-check:
 	$(GO) run ./tools/checkinstall
@@ -127,8 +127,7 @@ e2e-headed: node-deps
 	npm --prefix e2e run test:headed
 
 mod-check:
-	$(GO) mod tidy
-	@if command -v git >/dev/null 2>&1; then git diff --exit-code -- go.mod go.sum; fi
+	$(GO) mod tidy -diff
 
 ci-docs:
 	@test -f LICENSE

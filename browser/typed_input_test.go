@@ -3,6 +3,7 @@ package browser_test
 import (
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/islishude/webauthn/browser"
@@ -29,10 +30,10 @@ func TestTypedJSONPreservesEmptyBinaryAndFalse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(dto.Extensions[extension.IDLargeBlob]) != `{"read":false,"write":""}` {
+	if !reflect.DeepEqual(jsonObject(t, dto.Extensions[extension.IDLargeBlob]), map[string]any{"read": false, "write": ""}) {
 		t.Fatalf("largeBlob: %s", dto.Extensions[extension.IDLargeBlob])
 	}
-	if string(dto.Extensions[extension.IDPRF]) != `{"eval":{"first":"","second":""}}` {
+	if !reflect.DeepEqual(jsonObject(t, dto.Extensions[extension.IDPRF]), map[string]any{"eval": map[string]any{"first": "", "second": ""}}) {
 		t.Fatalf("prf: %s", dto.Extensions[extension.IDPRF])
 	}
 }

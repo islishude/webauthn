@@ -2,7 +2,7 @@ package browser
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"maps"
 
 	"github.com/islishude/webauthn/extension"
@@ -39,7 +39,7 @@ type CredentialDescriptorJSON struct {
 type AuthenticatorSelectionCriteriaJSON struct {
 	AuthenticatorAttachment protocol.AuthenticatorAttachment     `json:"authenticatorAttachment,omitempty"`
 	ResidentKey             protocol.ResidentKeyRequirement      `json:"residentKey,omitempty"`
-	RequireResidentKey      bool                                 `json:"requireResidentKey,omitempty"`
+	RequireResidentKey      bool                                 `json:"requireResidentKey,omitzero"`
 	UserVerification        protocol.UserVerificationRequirement `json:"userVerification,omitempty"`
 }
 
@@ -49,9 +49,9 @@ type CredentialCreationOptionsJSON struct {
 	User                   UserEntityJSON                           `json:"user"`
 	Challenge              string                                   `json:"challenge"`
 	PubKeyCredParams       []CredentialParameterJSON                `json:"pubKeyCredParams"`
-	TimeoutMilliseconds    uint32                                   `json:"timeout,omitempty"`
+	TimeoutMilliseconds    uint32                                   `json:"timeout,omitzero"`
 	ExcludeCredentials     []CredentialDescriptorJSON               `json:"excludeCredentials,omitempty"`
-	AuthenticatorSelection *AuthenticatorSelectionCriteriaJSON      `json:"authenticatorSelection,omitempty"`
+	AuthenticatorSelection *AuthenticatorSelectionCriteriaJSON      `json:"authenticatorSelection,omitzero"`
 	Hints                  []protocol.PublicKeyCredentialHint       `json:"hints,omitempty"`
 	Attestation            protocol.AttestationConveyancePreference `json:"attestation,omitempty"`
 	AttestationFormats     []string                                 `json:"attestationFormats,omitempty"`
@@ -61,7 +61,7 @@ type CredentialCreationOptionsJSON struct {
 // CredentialRequestOptionsJSON is the browser JSON shape for request options.
 type CredentialRequestOptionsJSON struct {
 	Challenge           string                               `json:"challenge"`
-	TimeoutMilliseconds uint32                               `json:"timeout,omitempty"`
+	TimeoutMilliseconds uint32                               `json:"timeout,omitzero"`
 	RPID                string                               `json:"rpId,omitempty"`
 	AllowCredentials    []CredentialDescriptorJSON           `json:"allowCredentials,omitempty"`
 	UserVerification    protocol.UserVerificationRequirement `json:"userVerification,omitempty"`

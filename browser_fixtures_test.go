@@ -8,11 +8,10 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"hash"
-	"math/big"
 	"os"
 	"testing"
 
@@ -78,7 +77,7 @@ func verifyBrowserFixtureRegistration(t *testing.T, fixture browserFixture) weba
 		PubKeyCredParams: []protocol.CredentialParameter{
 			{Type: protocol.CredentialTypePublicKey, Algorithm: -7},
 		},
-		AuthenticatorSelection: &fixture.Registration.AuthenticatorSelection,
+		AuthenticatorSelection: (*protocol.AuthenticatorSelectionCriteria)(&fixture.Registration.AuthenticatorSelection),
 		Attestation:            protocol.AttestationNone,
 	})
 	if err != nil {
@@ -188,10 +187,10 @@ func (v browserFixtureSignatureVerifier) VerifySignature(_ context.Context, inpu
 	if err != nil {
 		return err
 	}
-	x := new(big.Int).SetBytes(material.EC2.X)
-	y := new(big.Int).SetBytes(material.EC2.Y)
-	publicKey := &ecdsa.PublicKey{Curve: curve, X: x, Y: y}
-	if _, err := publicKey.ECDH(); err != nil {
+	encoded := append([]byte{4}, material.EC2.X...)
+	encoded = append(encoded, material.EC2.Y...)
+	publicKey, err := ecdsa.ParseUncompressedPublicKey(curve, encoded)
+	if err != nil {
 		return fmt.Errorf("fixture public key coordinates are invalid: %w", err)
 	}
 
@@ -354,15 +353,15 @@ type browserFixtureMetadata struct {
 }
 
 type browserFixture struct {
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	RPID           string         `json:"rpID"`
-	Origin         string         `json:"origin"`
-	Flow           string         `json:"flow"`
-	Authenticator  map[string]any `json:"authenticator"`
-	User           browserUser    `json:"user"`
-	Registration   browserRegistration
-	Authentication browserAuthentication
+	Name           string                `json:"name"`
+	Description    string                `json:"description"`
+	RPID           string                `json:"rpID"`
+	Origin         string                `json:"origin"`
+	Flow           string                `json:"flow"`
+	Authenticator  map[string]any        `json:"authenticator"`
+	User           browserUser           `json:"user"`
+	Registration   browserRegistration   `json:"registration"`
+	Authentication browserAuthentication `json:"authentication"`
 }
 
 type browserUser struct {
@@ -372,15 +371,15 @@ type browserUser struct {
 }
 
 type browserRegistration struct {
-	Challenge              string                                  `json:"challenge"`
-	UserVerification       protocol.UserVerificationRequirement    `json:"userVerification"`
-	AuthenticatorSelection protocol.AuthenticatorSelectionCriteria `json:"authenticatorSelection"`
-	Type                   protocol.PublicKeyCredentialType        `json:"type"`
-	RawID                  string                                  `json:"rawID"`
-	ClientDataJSON         string                                  `json:"clientDataJSON"`
-	AttestationObject      string                                  `json:"attestationObject"`
-	Transports             []protocol.AuthenticatorTransport       `json:"transports"`
-	ClientExtensionResults map[string]any                          `json:"clientExtensionResults"`
+	Challenge              string                               `json:"challenge"`
+	UserVerification       protocol.UserVerificationRequirement `json:"userVerification"`
+	AuthenticatorSelection browserSelection                     `json:"authenticatorSelection"`
+	Type                   protocol.PublicKeyCredentialType     `json:"type"`
+	RawID                  string                               `json:"rawID"`
+	ClientDataJSON         string                               `json:"clientDataJSON"`
+	AttestationObject      string                               `json:"attestationObject"`
+	Transports             []protocol.AuthenticatorTransport    `json:"transports"`
+	ClientExtensionResults map[string]any                       `json:"clientExtensionResults"`
 }
 
 type browserAuthentication struct {
@@ -394,4 +393,12 @@ type browserAuthentication struct {
 	Signature              string                               `json:"signature"`
 	UserHandle             string                               `json:"userHandle"`
 	ClientExtensionResults map[string]any                       `json:"clientExtensionResults"`
+}
+
+// browserSelection mirrors the collected browser dictionary with exact JSON names.
+type browserSelection struct {
+	AuthenticatorAttachment protocol.AuthenticatorAttachment     `json:"authenticatorAttachment"`
+	ResidentKey             protocol.ResidentKeyRequirement      `json:"residentKey"`
+	RequireResidentKey      bool                                 `json:"requireResidentKey"`
+	UserVerification        protocol.UserVerificationRequirement `json:"userVerification"`
 }

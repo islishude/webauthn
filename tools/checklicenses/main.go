@@ -3,7 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -112,19 +113,22 @@ func goListModules() ([]listedModule, error) {
 	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-json", "all")
 	output, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, fmt.Errorf("go list -m -json all failed: %w\n%s", err, exitErr.Stderr)
 		}
 
 		return nil, err
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(output))
+	return decodeModules(output)
+}
+
+func decodeModules(output []byte) ([]listedModule, error) {
+	decoder := jsontext.NewDecoder(bytes.NewReader(output))
 	var modules []listedModule
 	for {
 		var module listedModule
-		if err := decoder.Decode(&module); err != nil {
+		if err := json.UnmarshalDecode(decoder, &module); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}

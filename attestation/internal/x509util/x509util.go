@@ -12,7 +12,6 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"math/big"
 
 	"github.com/islishude/webauthn/codec"
 	webcrypto "github.com/islishude/webauthn/crypto"
@@ -136,19 +135,11 @@ func rawItems(data []byte) ([]asn1.RawValue, error) {
 func ValidatePublicKey(publicKey any, material codec.CredentialPublicKeyMaterial, unsupported error, mismatch error) error {
 	switch typed := publicKey.(type) {
 	case *ecdsa.PublicKey:
-		if typed == nil || typed.X == nil || typed.Y == nil {
+		actual, ok := PublicKeyMaterial(typed)
+		if !ok || material.EC2 == nil || actual.EC2.Curve != material.EC2.Curve {
 			return unsupported
 		}
-		if material.EC2 == nil {
-			return unsupported
-		}
-		curve, coordinateLength, ok := curveMaterial(typed)
-		if !ok || curve != material.EC2.Curve {
-			return unsupported
-		}
-		x := fixedBytes(typed.X, coordinateLength)
-		y := fixedBytes(typed.Y, coordinateLength)
-		if !bytes.Equal(x, material.EC2.X) || !bytes.Equal(y, material.EC2.Y) {
+		if !bytes.Equal(actual.EC2.X, material.EC2.X) || !bytes.Equal(actual.EC2.Y, material.EC2.Y) {
 			return mismatch
 		}
 	case *rsa.PublicKey:
@@ -184,17 +175,21 @@ func ValidatePublicKey(publicKey any, material codec.CredentialPublicKeyMaterial
 func PublicKeyMaterial(publicKey any) (codec.CredentialPublicKeyMaterial, bool) {
 	switch typed := publicKey.(type) {
 	case *ecdsa.PublicKey:
-		if typed == nil || typed.X == nil || typed.Y == nil {
+		if typed == nil || typed.X == nil || typed.Y == nil { //nolint:staticcheck // Bytes requires non-nil coordinates; reject malformed caller keys before encoding.
 			return codec.CredentialPublicKeyMaterial{}, false
 		}
 		curve, coordinateLength, ok := curveMaterial(typed)
 		if !ok {
 			return codec.CredentialPublicKeyMaterial{}, false
 		}
+		encoded, err := typed.Bytes()
+		if err != nil {
+			return codec.CredentialPublicKeyMaterial{}, false
+		}
 		return codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{
 			Curve: curve,
-			X:     fixedBytes(typed.X, coordinateLength),
-			Y:     fixedBytes(typed.Y, coordinateLength),
+			X:     encoded[1 : 1+coordinateLength],
+			Y:     encoded[1+coordinateLength:],
 		}}, true
 	case *rsa.PublicKey:
 		if typed == nil || typed.N == nil || typed.N.BitLen() < codec.MinRSAModulusBits || typed.N.BitLen() > codec.MaxRSAModulusBits || typed.E < 3 || typed.E%2 == 0 || uint64(typed.E) > uint64(^uint32(0)) {
@@ -232,18 +227,4 @@ func curveMaterial(publicKey *ecdsa.PublicKey) (string, int, bool) {
 	default:
 		return "", 0, false
 	}
-}
-
-func fixedBytes(value *big.Int, length int) []byte {
-	if value == nil {
-		return nil
-	}
-	bytes := value.Bytes()
-	if len(bytes) >= length {
-		return bytes[len(bytes)-length:]
-	}
-	out := make([]byte, length)
-	copy(out[length-len(bytes):], bytes)
-
-	return out
 }

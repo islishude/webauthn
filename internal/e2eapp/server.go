@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -12,7 +11,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"hash"
@@ -164,12 +163,14 @@ func (v signatureVerifier) VerifySignature(_ context.Context, input webcrypto.Si
 		if err != nil {
 			return err
 		}
-		publicKey := &ecdsa.PublicKey{
-			Curve: curve,
-			X:     new(big.Int).SetBytes(material.EC2.X),
-			Y:     new(big.Int).SetBytes(material.EC2.Y),
+		coordinateLength := (curve.Params().BitSize + 7) / 8
+		if len(material.EC2.X) != coordinateLength || len(material.EC2.Y) != coordinateLength {
+			return errors.New("invalid EC2 coordinate length")
 		}
-		if _, err := publicKey.ECDH(); err != nil {
+		encoded := append([]byte{4}, material.EC2.X...)
+		encoded = append(encoded, material.EC2.Y...)
+		publicKey, err := ecdsa.ParseUncompressedPublicKey(curve, encoded)
+		if err != nil {
 			return fmt.Errorf("invalid EC2 coordinates: %w", err)
 		}
 		digest := digest(input.Signed, hashFactory)
@@ -217,13 +218,5 @@ func decodeJSON(request *http.Request, target any) error {
 	if int64(len(data)) > webauthnhttp.DefaultMaxBodyBytes {
 		return webauthnhttp.ErrRequestBodyTooLarge
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return errors.New("trailing json data")
-	}
-	return nil
+	return json.Unmarshal(data, target)
 }

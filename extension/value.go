@@ -302,8 +302,8 @@ func immutableMapKeyType(value reflect.Type) bool {
 	case reflect.Array:
 		return immutableMapKeyType(value.Elem())
 	case reflect.Struct:
-		for i := range value.NumField() {
-			if !immutableMapKeyType(value.Field(i).Type) {
+		for field := range value.Fields() {
+			if !immutableMapKeyType(field.Type) {
 				return false
 			}
 		}

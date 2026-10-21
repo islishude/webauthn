@@ -220,3 +220,21 @@ func digest(hash stdcrypto.Hash, signed []byte) []byte {
 		panic("unsupported hash")
 	}
 }
+
+func TestVerifierRejectsMalformedEC2Coordinates(t *testing.T) {
+	verifier, err := standard.NewVerifier(protocol.AlgorithmES256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sizes := range [][2]int{{0, 0}, {31, 33}, {33, 31}, {32, 32}} {
+		material := codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{
+			Curve: codec.EC2CurveP256, X: make([]byte, sizes[0]), Y: make([]byte, sizes[1]),
+		}}
+		err := verifier.VerifySignature(context.Background(), webcrypto.SignatureInput{
+			Algorithm: protocol.AlgorithmES256, PublicKey: material, Signed: []byte("payload"), Signature: mustSignature(t, []byte("signature")),
+		})
+		if !errors.Is(err, standard.ErrInvalidPublicKey) {
+			t.Fatalf("sizes %v: %v", sizes, err)
+		}
+	}
+}

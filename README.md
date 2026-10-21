@@ -5,7 +5,9 @@ relying-party library.
 
 ## Start here
 
-Requires Go 1.25.0 or newer. The library is licensed under
+Requires Go 1.27.0 or newer, with the standard-library `encoding/json/v2` codec.
+See the [JSON v2 migration notes](docs/release.md#go-127-and-json-v2-migration).
+The library is licensed under
 [MIT](LICENSE); see [security reporting](SECURITY.md) and [changes](CHANGELOG.md).
 
 Install it in your application module:
@@ -242,7 +244,7 @@ compatibility, and its license.
 ## Development
 
 The module path is `github.com/islishude/webauthn`; `go.mod` records Go
-`1.25.0`.
+`1.27.0`.
 
 Run the local quality gate from the library repository root:
 
@@ -272,7 +274,7 @@ Useful narrower targets:
 - `make browser-fixtures` writes a reviewable `fixtures.next.json` by default;
   set `BROWSER_FIXTURE_OUTPUT` only when deliberately selecting another path.
 - `make e2e` runs Chromium native-CDP and Playwright Credentials passkey tests.
-- `make mod-check` runs `go mod tidy` and verifies module file cleanliness.
+- `make mod-check` runs `go mod tidy -diff` and rejects module drift without rewriting files.
 
 CI behavior is documented in `docs/ci.md`.
 
@@ -301,7 +303,7 @@ The full checklist is maintained in
   publication with `make release-install-check RELEASE_VERSION=<published-version>`;
 - local `make ci` passing from a clean worktree;
 - GitHub Actions passing on the release branch;
-- Go 1.25.0 compatibility, the independent consumer module, and Chromium E2E
+- Go 1.27.0 compatibility, the independent consumer module, and Chromium E2E
   passing in their dedicated gates;
 - root import graph independence from optional attestation, browser, HTTP,
   standard crypto, storage JSON, and `net/http` packages;

@@ -45,7 +45,7 @@ a present map entry is rejected. Copying is not verification: only registered
 handlers produce typed, verified `extension.Results` accessed with `Find`.
 
 Browser DTO extension fields use `browser.ExtensionJSON`, a map of
-`json.RawMessage`. Known PRF and largeBlob input dictionaries have concrete
+`jsontext.Value`. Known PRF and largeBlob input dictionaries have concrete
 `PRFInputJSON`, `PRFValuesJSON`, and `LargeBlobInputJSON` types. Optional pointers
 retain explicit false, empty writes, and empty `evalByCredential` objects.
 The core still receives bytes rather than browser base64url strings.

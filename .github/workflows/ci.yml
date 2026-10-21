@@ -74,7 +74,7 @@ jobs:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           install-only: true
 
-      - name: Module tidy check
+      - name: Verify module tidy without modifying files
         run: make mod-check
 
       - name: Lint check
@@ -126,7 +126,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ["1.25", "1.26", "1.27"]
+        go: ["1.27.0", "1.27"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

@@ -2,6 +2,8 @@ package consumer_test
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"testing"
 
@@ -83,5 +85,20 @@ func TestPublicConsumer(t *testing.T) {
 	}
 	if _, err = storagejson.UnmarshalCredentialRecord([]byte(`{}`), config.CredentialPublicKeyDecoder); err == nil {
 		t.Fatal("empty envelope accepted")
+	}
+}
+
+func TestPublicExtensionJSON(t *testing.T) {
+	extensions := browser.ExtensionJSON{"future": jsontext.Value(`{"enabled":false}`)}
+	encoded, err := json.Marshal(extensions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded browser.ExtensionJSON
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded["future"]) != `{"enabled":false}` {
+		t.Fatalf("extensions = %s", encoded)
 	}
 }

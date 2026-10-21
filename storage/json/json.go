@@ -6,10 +6,10 @@ package storagejson
 import (
 	"bytes"
 	"encoding/base64"
-	stdjson "encoding/json"
+	"encoding/json/jsontext"
+	stdjson "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"time"
 
@@ -48,23 +48,23 @@ var (
 type envelope struct {
 	Version             int                     `json:"version"`
 	Kind                string                  `json:"kind"`
-	RegistrationState   *registrationStateDTO   `json:"registrationState,omitempty"`
-	AuthenticationState *authenticationStateDTO `json:"authenticationState,omitempty"`
-	CredentialRecord    *credentialRecordDTO    `json:"credentialRecord,omitempty"`
+	RegistrationState   *registrationStateDTO   `json:"registrationState,omitzero"`
+	AuthenticationState *authenticationStateDTO `json:"authenticationState,omitzero"`
+	CredentialRecord    *credentialRecordDTO    `json:"credentialRecord,omitzero"`
 }
 
 type originPolicyDTO struct {
 	AllowedOrigins                   []string `json:"allowedOrigins"`
 	AllowedTopOrigins                []string `json:"allowedTopOrigins,omitempty"`
-	AllowCrossOriginWithoutTopOrigin bool     `json:"allowCrossOriginWithoutTopOrigin,omitempty"`
-	AllowRelatedOrigins              bool     `json:"allowRelatedOrigins,omitempty"`
+	AllowCrossOriginWithoutTopOrigin bool     `json:"allowCrossOriginWithoutTopOrigin,omitzero"`
+	AllowRelatedOrigins              bool     `json:"allowRelatedOrigins,omitzero"`
 }
 
 type registrationStateDTO struct {
 	Challenge                 string                  `json:"challenge"`
 	RPID                      string                  `json:"rpId"`
 	OriginPolicy              originPolicyDTO         `json:"originPolicy"`
-	ConditionalMediation      bool                    `json:"conditionalMediation,omitempty"`
+	ConditionalMediation      bool                    `json:"conditionalMediation,omitzero"`
 	UserHandle                string                  `json:"userHandle"`
 	RequestedUserVerification string                  `json:"requestedUserVerification"`
 	RequestedExtensions       map[string]encodedValue `json:"requestedExtensions,omitempty"`
@@ -98,19 +98,19 @@ type extensionBindingDTO struct {
 }
 
 type credentialRecordDTO struct {
-	Type                    stdjson.RawMessage `json:"type,omitempty"`
-	ID                      string             `json:"id"`
-	PublicKeyCOSE           string             `json:"publicKeyCose"`
-	UserHandle              string             `json:"userHandle"`
-	RPID                    string             `json:"rpId"`
-	AAGUID                  string             `json:"aaguid"`
-	SignCount               uint32             `json:"signCount"`
-	Transports              []string           `json:"transports,omitempty"`
-	BackupEligible          bool               `json:"backupEligible"`
-	BackupState             bool               `json:"backupState"`
-	UVInitialized           bool               `json:"uvInitialized"`
-	AuthenticatorAttachment string             `json:"authenticatorAttachment,omitempty"`
-	AttestationType         string             `json:"attestationType"`
+	Type                    jsontext.Value `json:"type,omitempty"`
+	ID                      string         `json:"id"`
+	PublicKeyCOSE           string         `json:"publicKeyCose"`
+	UserHandle              string         `json:"userHandle"`
+	RPID                    string         `json:"rpId"`
+	AAGUID                  string         `json:"aaguid"`
+	SignCount               uint32         `json:"signCount"`
+	Transports              []string       `json:"transports,omitempty"`
+	BackupEligible          bool           `json:"backupEligible"`
+	BackupState             bool           `json:"backupState"`
+	UVInitialized           bool           `json:"uvInitialized"`
+	AuthenticatorAttachment string         `json:"authenticatorAttachment,omitempty"`
+	AttestationType         string         `json:"attestationType"`
 }
 
 // MarshalRegistrationState encodes registration state for trusted server-side storage.
@@ -352,7 +352,7 @@ func UnmarshalCredentialRecord(data []byte, decoder codec.COSEKeyDecoder) (webau
 	return record, nil
 }
 
-func credentialRecordType(version int, raw stdjson.RawMessage) (protocol.PublicKeyCredentialType, error) {
+func credentialRecordType(version int, raw jsontext.Value) (protocol.PublicKeyCredentialType, error) {
 	if len(raw) == 0 {
 		if version == legacyEnvelopeVersion {
 			return protocol.CredentialTypePublicKey, nil
@@ -382,15 +382,9 @@ func unmarshalEnvelope(data []byte, expectedKind string) (envelope, error) {
 	if len(data) == 0 || len(data) > MaxEnvelopeBytes {
 		return envelope{}, fmt.Errorf("%w: envelope size", ErrInvalidEnvelope)
 	}
-	decoder := stdjson.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var value envelope
-	if err := decoder.Decode(&value); err != nil {
+	if err := stdjson.Unmarshal(data, &value, stdjson.RejectUnknownMembers(true)); err != nil {
 		return envelope{}, fmt.Errorf("%w: %w", ErrInvalidEnvelope, err)
-	}
-	var extra stdjson.RawMessage
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return envelope{}, fmt.Errorf("%w: trailing data", ErrInvalidEnvelope)
 	}
 	if value.Version != EnvelopeVersion && value.Version != previousEnvelopeVersion && value.Version != legacyEnvelopeVersion {
 		return envelope{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, value.Version)

@@ -354,3 +354,14 @@ initialization before updating credentials or creating sessions. This is explici
 example policy; preset and low-level counter defaults remain unchanged. Enrollment
 in the business example requires current application authorization at both phases,
 and ceremony storage binds the browser session, operation, account and expiry.
+
+## JSON v2 parsing
+
+All JSON entry points use Go 1.27's standard-library v2 codec. Duplicate object
+names (including nested objects) and invalid UTF-8 are rejected. Struct member
+names match exactly: case variants do not populate known fields. Browser and
+collected client data continue to ignore unknown members for forward
+compatibility, while storage rejects them. Required fields, explicit null
+checks, one-document parsing, and existing work budgets still apply. Parsing
+client data never replaces the original signed bytes with re-encoded JSON;
+the existing leading-BOM parsing rule and verbatim hashing remain unchanged.

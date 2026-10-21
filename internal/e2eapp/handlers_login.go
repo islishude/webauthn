@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"net/http"
 	"time"
 
@@ -18,8 +18,8 @@ type loginOptionsRequest struct {
 }
 
 type loginFinishRequest struct {
-	Email      string          `json:"email"`
-	Credential json.RawMessage `json:"credential"`
+	Email      string         `json:"email"`
+	Credential jsontext.Value `json:"credential"`
 }
 
 func (a *app) loginOptions(response http.ResponseWriter, request *http.Request) {

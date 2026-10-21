@@ -2,7 +2,8 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/islishude/webauthn/codec"
@@ -19,11 +20,11 @@ func normalizePlaywrightRegistrationJSON(data []byte, decoder codec.AttestationO
 	if interfaceutil.IsNil(decoder) {
 		return nil, errors.New("attestation object decoder is required")
 	}
-	var root map[string]json.RawMessage
+	var root map[string]jsontext.Value
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
 	}
-	var response map[string]json.RawMessage
+	var response map[string]jsontext.Value
 	if err := json.Unmarshal(root["response"], &response); err != nil || response == nil {
 		return nil, errors.New("registration response is required")
 	}
@@ -62,7 +63,7 @@ func normalizePlaywrightRegistrationJSON(data []byte, decoder codec.AttestationO
 	return json.Marshal(root)
 }
 
-func sameJSONString(left json.RawMessage, right json.RawMessage) bool {
+func sameJSONString(left jsontext.Value, right jsontext.Value) bool {
 	var leftValue string
 	var rightValue string
 	return json.Unmarshal(left, &leftValue) == nil &&

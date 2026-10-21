@@ -3,7 +3,7 @@ package webauthnhttp_test
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"math"
 	"net/http"
@@ -232,5 +232,15 @@ func TestOptionConversionFailureWritesNoResponse(t *testing.T) {
 	}
 	if request.Body.Len() != 0 || len(request.Header()) != 0 {
 		t.Fatal("request response was written before conversion succeeded")
+	}
+}
+
+func TestWriteJSONPreservesEscapingAndNewline(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	if err := webauthnhttp.WriteJSON(recorder, http.StatusOK, "<>&"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := recorder.Body.String(), "\"\\u003c\\u003e\\u0026\"\n"; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
 	}
 }

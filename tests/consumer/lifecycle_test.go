@@ -3,7 +3,7 @@ package consumer_test
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"testing"
@@ -21,13 +21,27 @@ func TestPublicBrowserFixtureLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	type response struct{ Challenge, RawID, ClientDataJSON, AttestationObject, AuthenticatorData, Signature, UserHandle string }
+	type response struct {
+		Challenge         string `json:"challenge"`
+		RawID             string `json:"rawID"`
+		ClientDataJSON    string `json:"clientDataJSON"`
+		AttestationObject string `json:"attestationObject"`
+		AuthenticatorData string `json:"authenticatorData"`
+		Signature         string `json:"signature"`
+		UserHandle        string `json:"userHandle"`
+	}
 	var document struct {
 		Fixtures []struct {
-			Name, RPID, Origin           string
-			User                         struct{ ID, Name string }
-			Registration, Authentication response
-		}
+			Name   string `json:"name"`
+			RPID   string `json:"rpID"`
+			Origin string `json:"origin"`
+			User   struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"user"`
+			Registration   response `json:"registration"`
+			Authentication response `json:"authentication"`
+		} `json:"fixtures"`
 	}
 	if err = json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)

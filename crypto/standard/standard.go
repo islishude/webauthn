@@ -105,10 +105,14 @@ func verifyECDSA(material codec.CredentialPublicKeyMaterial, curveName string, c
 	if material.EC2 == nil || material.RSA != nil || material.OKP != nil || material.EC2.Curve != curveName {
 		return ErrInvalidPublicKey
 	}
-	x := new(big.Int).SetBytes(material.EC2.X)
-	y := new(big.Int).SetBytes(material.EC2.Y)
-	publicKey := &ecdsa.PublicKey{Curve: curve, X: x, Y: y}
-	if _, err := publicKey.ECDH(); err != nil {
+	coordinateLength := (curve.Params().BitSize + 7) / 8
+	if len(material.EC2.X) != coordinateLength || len(material.EC2.Y) != coordinateLength {
+		return ErrInvalidPublicKey
+	}
+	encoded := append([]byte{4}, material.EC2.X...)
+	encoded = append(encoded, material.EC2.Y...)
+	publicKey, err := ecdsa.ParseUncompressedPublicKey(curve, encoded)
+	if err != nil {
 		return ErrInvalidPublicKey
 	}
 	digest := digest(hash, signed)

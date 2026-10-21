@@ -41,14 +41,14 @@ func (budget *valueBudget) consume(nodes int, bytes int, invalid error) error {
 
 type encodedValue struct {
 	Type   string                   `json:"type"`
-	Bool   *bool                    `json:"bool,omitempty"`
-	String *string                  `json:"string,omitempty"`
-	Bytes  *string                  `json:"bytes,omitempty"`
-	Int    *int64                   `json:"int,omitempty"`
-	Uint   *uint64                  `json:"uint,omitempty"`
-	Float  *float64                 `json:"float,omitempty"`
-	Array  *[]encodedValue          `json:"array,omitempty"`
-	Object *map[string]encodedValue `json:"object,omitempty"`
+	Bool   *bool                    `json:"bool,omitzero"`
+	String *string                  `json:"string,omitzero"`
+	Bytes  *string                  `json:"bytes,omitzero"`
+	Int    *int64                   `json:"int,omitzero"`
+	Uint   *uint64                  `json:"uint,omitzero"`
+	Float  *float64                 `json:"float,omitzero"`
+	Array  *[]encodedValue          `json:"array,omitzero"`
+	Object *map[string]encodedValue `json:"object,omitzero"`
 }
 
 func encodeExtensionValues(values protocol.ExtensionInputs) (map[string]encodedValue, error) {
@@ -165,9 +165,9 @@ func encodeValueAt(value any, depth int, budget *valueBudget) (encodedValue, err
 	}
 	switch typed := value.(type) {
 	case bool:
-		return encodedValue{Type: valueBool, Bool: pointer(typed)}, nil
+		return encodedValue{Type: valueBool, Bool: new(typed)}, nil
 	case string:
-		return encodedValue{Type: valueString, String: pointer(typed)}, nil
+		return encodedValue{Type: valueString, String: new(typed)}, nil
 	case []byte:
 		encoded := base64.RawURLEncoding.EncodeToString(typed)
 		return encodedValue{Type: valueBytes, Bytes: &encoded}, nil
@@ -348,8 +348,4 @@ func validateEncodedValue(value encodedValue) error {
 		return fmt.Errorf("%w: value fields do not match type", ErrInvalidEnvelope)
 	}
 	return nil
-}
-
-func pointer[T any](value T) *T {
-	return &value
 }

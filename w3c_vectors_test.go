@@ -2,7 +2,7 @@ package webauthn_test
 
 import (
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"strings"
 	"testing"

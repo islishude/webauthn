@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Breaking, for the next minor release: require Go 1.27.0 and migrate all JSON
+  codecs to `encoding/json/v2`. `browser.ExtensionJSON` now contains
+  `jsontext.Value`; JSON parsing rejects duplicate names and invalid UTF-8 and
+  matches fields case-sensitively. Preserve optional field presence and storage
+  v3 with v1/v2 credential reads. See the [migration notes](docs/release.md#go-127-and-json-v2-migration).
+
+- Update ECDSA adapters for current standard-library key APIs; require fixed-width
+  coordinates from custom key adapters. Module tidy checks now use non-mutating
+  `go mod tidy -diff`.
 - Validate authenticator selection consistently before ceremony generation and
   browser conversion; report stored credential failures as `ErrInvalidCredentialRecord`.
   See the [integration contracts](docs/integration.md) for configuration and error handling.
@@ -10,7 +19,7 @@
 - Add tested multi-account application integration with encoded storage, atomic
   consumption, row versions, explicit risk rejection and reference persistence SQL.
 - Clarify development installation, browser capability boundaries and fixed-version
-  release installation; pin minimum Go 1.25.0 and test 1.26/1.27 as well.
+  release installation; pin minimum Go 1.27.0 and test the latest 1.27 patch as well.
 
 - Replace untyped ceremony extension inputs/client outputs and browser DTO
   extension maps with typed input contracts, `ClientOutputs`, and raw JSON

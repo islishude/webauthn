@@ -500,7 +500,7 @@ The 2026-09-04 full-repository remediation added:
   shared extension registries, and browser authenticator-data transport;
 - allocation-reporting benchmarks for client data, CBOR, browser response,
   extension clone, and start-operation hot paths;
-- pinned Prettier, strict unused TypeScript checks, and the minimum Go 1.25 CI
+- pinned Prettier, strict unused TypeScript checks, and the minimum Go 1.27 CI
   lane.
 
 ## Fuzzing targets
@@ -598,7 +598,7 @@ Before release, CI should run:
 - dependency license checks;
 - import graph checks proving root package does not import optional attestation or transport packages;
 - example build checks for public integration examples;
-- minimum supported Go 1.25 package tests;
+- minimum supported Go 1.27 package tests;
 - README checks proving usage references point to compile-checked examples.
 
 The workflow now includes documentation/config checks, README checks,
@@ -638,8 +638,31 @@ insert/one-time consume/versioned update. Error classification tests exercise ac
 API failures. External consumers exercise descriptors and conditional updates after
 fixture-based verification. No external library tests are used.
 
-The Go compatibility matrix pins 1.25.0 and also exercises 1.26/1.27 across the three
+The Go compatibility matrix pins 1.27.0 and also exercises the latest 1.27 patch across the three
 supported CI operating systems. `make release-install-check RELEASE_VERSION=<fixed>`
 is an explicit network check outside default CI: a fresh module has no replacement
 and runs current public consumer tests against that published revision. It reuses
 only this project's committed browser fixture and never uploads private keys.
+
+## JSON v2 migration coverage
+
+Project-authored JSON mutations cover duplicate and nested duplicate names,
+invalid UTF-8, case variants, unknown members, trailing documents, missing fields,
+and explicit null across client data, browser responses, storage, and SafetyNet.
+Existing browser fixtures are unchanged; their Go readers declare exact JSON
+names, and the consumer lifecycle test requires its named fixture to be found.
+Storage round trips retain false, zero integers/floats, empty strings/bytes and
+empty containers. Browser regressions retain empty PRF dictionaries and binary
+values, false largeBlob reads, and empty optional response strings. HTTP tests
+cover escaping, newline termination, pre-header serialization failure, and short
+writes. Tool tests cover the multi-document module stream; the independent
+consumer exercises `browser.ExtensionJSON` with `jsontext.Value`.
+
+Run `make ci`, `make test-minimum`, and `make e2e` for this migration. The minimum
+lane pins Go 1.27.0; the primary lane uses the latest Go 1.27 patch without JSON
+experiment flags. Remote workflow results remain separate release evidence.
+
+Go-baseline compatibility tests cover ECDSA material conversion for P-256,
+P-384, and P-521, nil/incomplete keys, mismatched coordinates, invalid point
+encodings, and incorrect coordinate widths. Existing algorithm and attestation
+suites continue to verify signatures with independently generated keys.

@@ -12,11 +12,11 @@ The local workflow is controlled by the root `Makefile`. The GitHub workflow is 
 
 Action major versions and trigger branches are defined only in
 `.github/workflows/ci.yml` to avoid duplicated version drift. CI uses Go 1.27
-for primary jobs, Go 1.25.0 for the minimum-version lane, Node.js 24,
+for primary jobs, Go 1.27.0 for the minimum-version lane, Node.js 24,
 Playwright `1.64.0`, golangci-lint `v2.14.0`, and
 `.golangci.yml` version 2.
 
-`go.mod` records minimum supported Go version `1.25.0`. The separate
+`go.mod` records minimum supported Go version `1.27.0`. The separate
 `compatibility` matrix runs `go test ./...` with that exact toolchain rather than
 assuming success from the newer primary lane.
 
@@ -59,8 +59,8 @@ under `modules`. It has no protocol surface or public API impact.
 
 The integration gates add `make consumer-check` (an independent module under
 `tests/consumer`, with a local replace and readonly module resolution) to
-`make ci`. `make test-minimum` runs Go 1.25.0 tests and the consumer gate.
-GitHub's compatibility matrix runs Go 1.25.0, 1.26 and 1.27 on Linux, macOS and Windows
+`make ci`. `make test-minimum` runs Go 1.27.0 tests and the consumer gate.
+GitHub's compatibility matrix runs Go 1.27.0 and the latest 1.27 patch on Linux, macOS and Windows
 with toolchain auto-upgrade disabled. The matrix is separate from Linux-only
 lint, race, fuzz and browser jobs. Public quickstart Chromium coverage runs in
 the same `make e2e` gate with an additional localhost web server.
@@ -72,27 +72,27 @@ module files; the gate itself uses `-mod=readonly`.
 
 Run these commands from the repository root.
 
-| Command                   | Purpose                                                                                 | Mutates files                        |
-| ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------ |
-| `make node-deps`          | Install the exact `e2e/package-lock.json` dependency graph with `npm ci`.               | Recreates `e2e/node_modules`         |
-| `make format`             | Run configured Go formatters and pinned local Prettier.                                 | Yes                                  |
-| `make format-check`       | Fail if Go or pinned Prettier formatting differs.                                       | No                                   |
-| `make lint`               | Print the linter build version, then run `golangci-lint run ./...`.                     | No                                   |
-| `make test`               | Run `go test ./...`.                                                                    | No                                   |
-| `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
-| `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
-| `make benchmark`          | Run all Go benchmarks with allocation reporting and no unit tests.                      | No                                   |
-| `make e2e-typecheck`      | Run strict TypeScript checking without emitting files.                                  | No                                   |
-| `make example-build`      | Build public examples with `go test ./examples/...`.                                    | No                                   |
-| `make import-graph-check` | Verify root excludes optional attestation, transport, standard crypto, and storage.     | No                                   |
-| `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                                   |
-| `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                                   |
-| `make browser-fixtures`   | Write reviewable Playwright/Chrome fixture output to `fixtures.next.json` by default.   | Installs e2e npm dependencies        |
-| `make e2e`                | Run Playwright Chromium tests against the test-only RP app.                             | Installs e2e npm dependencies        |
-| `make e2e-headed`         | Run Playwright Chromium tests against the test-only RP app in headed mode.              | Installs e2e npm dependencies        |
-| `make mod-check`          | Run `go mod tidy` and verify `go.mod`/`go.sum` have no diff.                            | Yes, then must be clean              |
-| `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                                   |
-| `make ci`                 | Run the full local quality gate.                                                        | `mod-check` may rewrite module files |
+| Command                   | Purpose                                                                                 | Mutates files                 |
+| ------------------------- | --------------------------------------------------------------------------------------- | ----------------------------- |
+| `make node-deps`          | Install the exact `e2e/package-lock.json` dependency graph with `npm ci`.               | Recreates `e2e/node_modules`  |
+| `make format`             | Run configured Go formatters and pinned local Prettier.                                 | Yes                           |
+| `make format-check`       | Fail if Go or pinned Prettier formatting differs.                                       | No                            |
+| `make lint`               | Print the linter build version, then run `golangci-lint run ./...`.                     | No                            |
+| `make test`               | Run `go test ./...`.                                                                    | No                            |
+| `make test-race`          | Run `go test -race ./...`.                                                              | No                            |
+| `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                            |
+| `make benchmark`          | Run all Go benchmarks with allocation reporting and no unit tests.                      | No                            |
+| `make e2e-typecheck`      | Run strict TypeScript checking without emitting files.                                  | No                            |
+| `make example-build`      | Build public examples with `go test ./examples/...`.                                    | No                            |
+| `make import-graph-check` | Verify root excludes optional attestation, transport, standard crypto, and storage.     | No                            |
+| `make license-check`      | Verify `docs/dependencies.json` covers every module in `go list -m all`.                | No                            |
+| `make readme-check`       | Verify README references compile-checked examples and contains no untested Go snippets. | No                            |
+| `make browser-fixtures`   | Write reviewable Playwright/Chrome fixture output to `fixtures.next.json` by default.   | Installs e2e npm dependencies |
+| `make e2e`                | Run Playwright Chromium tests against the test-only RP app.                             | Installs e2e npm dependencies |
+| `make e2e-headed`         | Run Playwright Chromium tests against the test-only RP app in headed mode.              | Installs e2e npm dependencies |
+| `make mod-check`          | Run `go mod tidy -diff` and reject required module changes.                             | No                            |
+| `make ci-docs`            | Verify required documentation and quality config files exist.                           | No                            |
+| `make ci`                 | Run the full local quality gate.                                                        | No tracked files              |
 
 `make ci` is the required pre-PR command. It runs documentation presence checks
 including required Level 3 documentation, README checks, formatting, linting, unit tests,
@@ -154,7 +154,7 @@ The workflow has five jobs:
    checks.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
 4. `compatibility` runs public packages, examples and the external consumer on
-   Go 1.25.0, 1.26 and 1.27 across Linux, macOS and Windows.
+   Go 1.27.0 and the latest 1.27 patch across Linux, macOS and Windows.
 5. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
    Playwright browser cache from `~/.cache/ms-playwright`, runs `make e2e`
    against `https://localhost:8443` and the public `http://localhost:8080` demo, and uploads the Playwright HTML report on
@@ -206,12 +206,26 @@ files are removed on exit; Go caches may be populated. This check intentionally
 requires network or an already populated module cache and is outside `make ci`.
 
 The manual `release installation` workflow accepts the same version input via an
-environment variable and runs on Go 1.25.0 with automatic toolchain upgrades disabled.
+environment variable and runs on Go 1.27.0 with automatic toolchain upgrades disabled.
 It verifies the chosen source version; it creates no commit, tag or release. A version
 predating required public APIs fails the check. A successful local replacement consumer
 check alone is not evidence that an unpublished change can be installed remotely.
 
 `examples/integration` is included in the existing example, unit and race targets.
 Documentation presence/README checks include its guide, persistence contracts and
-release workflow. The compatibility matrix now pins exactly 1.25.0 and retains
-1.26 alongside the primary 1.27 line. Live browser E2E remains Chromium-only.
+release workflow. The compatibility matrix pins exactly 1.27.0 and also selects the latest
+1.27 patch. Both lanes disable automatic toolchain upgrades during testing. Live browser E2E remains Chromium-only.
+
+## JSON v2 toolchain baseline
+
+The root and independent consumer modules both declare Go 1.27.0. The
+compatibility matrix tests exact 1.27.0 and latest 1.27 on Linux, macOS, and
+Windows; the release-install workflow pins 1.27.0. No `GOEXPERIMENT` setting is
+needed for the standard-library JSON v2 packages. Migration acceptance includes
+`make ci`, `make test-minimum`, and `make e2e`; parsing regression tests run in
+the existing unit, race, and fuzz gates.
+
+`make mod-check` uses `go mod tidy -diff`: required tidy changes fail the gate
+without rewriting files. An intentional uncommitted Go baseline change is not
+itself module drift. The separate clean-worktree release requirement still
+applies before publication.

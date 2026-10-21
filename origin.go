@@ -119,11 +119,10 @@ func canonicalOriginPort(host string) (int, bool, bool) {
 	rawPort := ""
 	explicit := false
 	if strings.HasPrefix(host, "[") {
-		closing := strings.LastIndexByte(host, ']')
-		if closing < 0 {
+		_, suffix, ok := strings.CutLast(host, "]")
+		if !ok {
 			return 0, false, false
 		}
-		suffix := host[closing+1:]
 		if suffix != "" {
 			if !strings.HasPrefix(suffix, ":") {
 				return 0, false, false
@@ -131,12 +130,12 @@ func canonicalOriginPort(host string) (int, bool, bool) {
 			explicit = true
 			rawPort = suffix[1:]
 		}
-	} else if separator := strings.LastIndexByte(host, ':'); separator >= 0 {
-		if strings.Contains(host[:separator], ":") {
+	} else if before, after, ok := strings.CutLast(host, ":"); ok {
+		if strings.Contains(before, ":") {
 			return 0, false, false
 		}
 		explicit = true
-		rawPort = host[separator+1:]
+		rawPort = after
 	}
 	if !explicit {
 		return 0, false, true

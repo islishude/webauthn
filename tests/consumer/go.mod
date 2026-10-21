@@ -1,6 +1,6 @@
 module example.com/webauthn-consumer
 
-go 1.25.0
+go 1.27.0
 
 require github.com/islishude/webauthn v0.0.0
 

@@ -3,7 +3,8 @@ package protocol
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"slices"
 )
@@ -18,12 +19,15 @@ var (
 // preserving the original serialized bytes for hashing.
 func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 	var decoded struct {
-		Type         ClientDataType  `json:"type"`
-		Challenge    string          `json:"challenge"`
-		Origin       string          `json:"origin"`
-		CrossOrigin  json.RawMessage `json:"crossOrigin"`
-		TopOrigin    json.RawMessage `json:"topOrigin"`
-		TokenBinding *TokenBinding   `json:"tokenBinding"`
+		Type         ClientDataType `json:"type"`
+		Challenge    string         `json:"challenge"`
+		Origin       string         `json:"origin"`
+		CrossOrigin  jsontext.Value `json:"crossOrigin"`
+		TopOrigin    jsontext.Value `json:"topOrigin"`
+		TokenBinding *struct {
+			Status TokenBindingStatus `json:"status"`
+			ID     string             `json:"id"`
+		} `json:"tokenBinding"`
 	}
 
 	// WebAuthn's UTF-8 decode step strips one leading byte-order mark for JSON
@@ -59,13 +63,17 @@ func ParseCollectedClientData(raw ClientDataJSON) (CollectedClientData, error) {
 			return CollectedClientData{}, ErrMalformedClientData
 		}
 	}
+	var tokenBinding *TokenBinding
+	if decoded.TokenBinding != nil {
+		tokenBinding = &TokenBinding{Status: decoded.TokenBinding.Status, ID: decoded.TokenBinding.ID}
+	}
 	return CollectedClientData{
 		Type:         decoded.Type,
 		Challenge:    decoded.Challenge,
 		Origin:       decoded.Origin,
 		CrossOrigin:  crossOrigin,
 		TopOrigin:    topOrigin,
-		TokenBinding: decoded.TokenBinding,
+		TokenBinding: tokenBinding,
 		Raw:          raw,
 		topOriginSet: topOriginSet,
 	}, nil
