@@ -46,6 +46,7 @@ format-check: node-deps
 	$(PRETTIER) --ignore-path .gitignore --check .
 
 lint:
+	$(GOLANGCI_LINT) version
 	$(GOLANGCI_LINT) run ./...
 
 test:

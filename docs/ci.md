@@ -13,7 +13,7 @@ The local workflow is controlled by the root `Makefile`. The GitHub workflow is 
 Action major versions and trigger branches are defined only in
 `.github/workflows/ci.yml` to avoid duplicated version drift. CI uses Go 1.27
 for primary jobs, Go 1.25.0 for the minimum-version lane, Node.js 24,
-Playwright `1.62.1`, golangci-lint `v2.13.1`, and
+Playwright `1.64.0`, golangci-lint `v2.14.0`, and
 `.golangci.yml` version 2.
 
 `go.mod` records minimum supported Go version `1.25.0`. The separate
@@ -28,18 +28,18 @@ Required local tools:
 - a Go toolchain compatible with the `go.mod` minimum version;
 - Node.js 24 with npm for the pinned Prettier, TypeScript, fixtures, and E2E
   dependencies;
-- `golangci-lint v2.13.1` for `make format`, `make lint`, and full `make ci`.
+- `golangci-lint v2.14.0` for `make format`, `make lint`, and full `make ci`.
 
 Do not add golangci-lint as a project runtime dependency. Prefer the official binary installer for local development:
 
 ```sh
-curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.1
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.14.0
 ```
 
 A source install can be used as a fallback, but it should remain a developer-machine concern rather than a project dependency:
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 ```
 
 Verify the local binary before linting:
@@ -47,6 +47,13 @@ Verify the local binary before linting:
 ```sh
 golangci-lint version
 ```
+
+The lint baseline is v2.14.0 because v2.13.1 cannot read the Go 1.27
+export-data format (version 5). `make lint` prints the installed version and
+build toolchain before analysis to make incompatibilities visible in CI logs.
+The linter is a GPL-3.0 development tool recorded separately under `tools` in
+`docs/dependencies.json`; the license gate checks the runtime/test module graph
+under `modules`. It has no protocol surface or public API impact.
 
 ## Local commands
 
@@ -70,7 +77,7 @@ Run these commands from the repository root.
 | `make node-deps`          | Install the exact `e2e/package-lock.json` dependency graph with `npm ci`.               | Recreates `e2e/node_modules`         |
 | `make format`             | Run configured Go formatters and pinned local Prettier.                                 | Yes                                  |
 | `make format-check`       | Fail if Go or pinned Prettier formatting differs.                                       | No                                   |
-| `make lint`               | Run `golangci-lint run ./...`.                                                          | No                                   |
+| `make lint`               | Print the linter build version, then run `golangci-lint run ./...`.                     | No                                   |
 | `make test`               | Run `go test ./...`.                                                                    | No                                   |
 | `make test-race`          | Run `go test -race ./...`.                                                              | No                                   |
 | `make test-fuzz-smoke`    | Discover fuzz targets and run each one with bounded fuzz time.                          | No                                   |
@@ -107,7 +114,7 @@ Formatting has three layers:
 
 1. `gofmt` is the baseline formatter and is checked by `make format-check`.
 2. `golangci-lint` formatters enforce import grouping and formatter configuration in `.golangci.yml`.
-3. Prettier `3.9.6` from the locked E2E dependency graph formats Markdown and
+3. Prettier `3.9.10` from the locked E2E dependency graph formats Markdown and
    other supported repository text files; CI invokes that same local binary.
 
 The Go formatter set is intentionally small: `gofmt` and `goimports`. The local
@@ -147,7 +154,7 @@ The workflow has five jobs:
    checks.
 3. `test` runs after `docs-and-config`. It sets up Go, then runs `make test`, `make example-build`, `make test-race`, `make test-fuzz-smoke`, `make import-graph-check`, and `make license-check`.
 4. `compatibility` runs public packages, examples and the external consumer on
-   Go 1.25.0 and 1.27 across Linux, macOS and Windows.
+   Go 1.25.0, 1.26 and 1.27 across Linux, macOS and Windows.
 5. `e2e` runs after `docs-and-config`. It sets up Go and Node.js, restores the
    Playwright browser cache from `~/.cache/ms-playwright`, runs `make e2e`
    against `https://localhost:8443` and the public `http://localhost:8080` demo, and uploads the Playwright HTML report on

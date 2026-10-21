@@ -1,4 +1,13 @@
 {
+  "tools": [
+    {
+      "path": "github.com/golangci/golangci-lint/v2",
+      "version": "v2.14.0",
+      "license": "GPL-3.0",
+      "scope": "development and CI only",
+      "notes": "Runs static analysis and Go formatters. Updated for Go 1.27 export-data compatibility; no protocol surface, runtime import, or public API impact. Installed separately from the project module graph."
+    }
+  ],
   "modules": [
     {
       "path": "github.com/davecgh/go-spew",
