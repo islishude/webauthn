@@ -132,7 +132,7 @@ func decodeAttestationStatement(format string, value any) (codec.AttestationStat
 	statements := make([]codec.CompoundSubStatement, 0, len(rawStatements))
 	for _, rawStatement := range rawStatements {
 		fields, ok := stringMap(rawStatement)
-		if !ok {
+		if !ok || len(fields) != 2 {
 			return nil, ErrMalformedCBOR
 		}
 		format, ok := fields["fmt"].(string)

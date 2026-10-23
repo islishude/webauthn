@@ -278,6 +278,56 @@ func TestAuthenticationResponseFromJSON(t *testing.T) {
 	}
 }
 
+func TestLargeBlobOutputDecodesOnlyDefinedByteMembers(t *testing.T) {
+	t.Parallel()
+
+	// Recommendation section 10.1.5 defines blob as the only binary output
+	// member. In particular, write belongs only to the input dictionary.
+	for _, test := range []struct {
+		name    string
+		blob    string
+		write   string
+		wantErr bool
+	}{
+		{name: "unknown non-base64url write", blob: encode([]byte("blob")), write: "future value"},
+		{name: "unknown base64url write", blob: "", write: "YQ"},
+		{name: "malformed defined blob", blob: "%%%", write: "future value", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			payload := browser.AuthenticationCredentialJSON{
+				ID:    "YQ",
+				RawID: "YQ",
+				Type:  protocol.CredentialTypePublicKey,
+				Response: browser.AssertionResponseJSON{
+					ClientDataJSON:    encode([]byte(`{"type":"webauthn.get"}`)),
+					AuthenticatorData: encode(make([]byte, protocol.MinAuthenticatorDataLength)),
+					Signature:         encode([]byte("signature")),
+				},
+				ClientExtensionResults: browser.ExtensionJSON{
+					extension.IDLargeBlob: mustJSON(t, map[string]any{"blob": test.blob, "write": test.write}),
+				},
+			}
+			response, err := browser.AuthenticationResponseFromJSON(mustJSON(t, payload))
+			if test.wantErr {
+				if !errors.Is(err, browser.ErrInvalidBase64URL) {
+					t.Fatalf("AuthenticationResponseFromJSON() error = %v, want ErrInvalidBase64URL", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AuthenticationResponseFromJSON() error = %v", err)
+			}
+			output := rawObject(t, response.ClientExtensionResults[extension.IDLargeBlob])
+			blob, ok := output["blob"].([]byte)
+			if !ok || encode(blob) != test.blob || output["write"] != test.write {
+				t.Fatalf("largeBlob output = %#v", output)
+			}
+		})
+	}
+}
+
 func TestResponseDecodersRejectInvalidInputs(t *testing.T) {
 	t.Parallel()
 

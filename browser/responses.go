@@ -445,20 +445,12 @@ func largeBlobOutputFromJSON(value any) (any, error) {
 	}
 
 	out := maps.Clone(fields)
-	for _, field := range []string{"blob", "write"} {
-		raw, ok := out[field]
-		if !ok {
-			continue
-		}
-		encoded, ok := raw.(string)
-		if !ok {
-			continue
-		}
-		decoded, err := decodeBase64URL("clientExtensionResults.largeBlob."+field, encoded)
+	if encoded, ok := out["blob"].(string); ok {
+		decoded, err := decodeBase64URL("clientExtensionResults.largeBlob.blob", encoded)
 		if err != nil {
 			return nil, err
 		}
-		out[field] = decoded
+		out["blob"] = decoded
 	}
 
 	return out, nil

@@ -315,3 +315,48 @@ func TestPRFHandler(t *testing.T) {
 		}
 	})
 }
+
+func TestPRFInputRequiresFirstValue(t *testing.T) {
+	t.Parallel()
+
+	// Recommendation section 10.1.4 requires first, while allowing byte
+	// sequences of any length, including an explicitly empty sequence.
+	for _, operation := range []extension.Operation{extension.OperationRegistration, extension.OperationAuthentication} {
+		for _, test := range []struct {
+			name    string
+			values  extension.PRFValues
+			wantErr bool
+		}{
+			{name: "missing first", wantErr: true},
+			{name: "only second", values: extension.PRFValues{Second: []byte("salt")}, wantErr: true},
+			{name: "empty first", values: extension.PRFValues{First: []byte{}}},
+			{name: "empty first and second", values: extension.PRFValues{First: []byte{}, Second: []byte{}}},
+			{name: "arbitrary length", values: extension.PRFValues{First: []byte("salt"), Second: []byte("other salt")}},
+		} {
+			t.Run(string(operation)+"/"+test.name, func(t *testing.T) {
+				t.Parallel()
+
+				inputs := []extension.PRFInput{{Eval: &test.values}}
+				if operation == extension.OperationAuthentication {
+					inputs = append(inputs, extension.PRFInput{
+						EvalByCredential: map[string]extension.PRFValues{"YQ": test.values},
+						AllowCredentials: []string{"YQ"},
+					})
+				}
+				for _, input := range inputs {
+					_, err := (extension.PRFHandler{}).ValidateInput(extension.InputRequest{
+						Operation: operation,
+						ID:        extension.IDPRF,
+						Input:     rawValue(t, input),
+					})
+					if test.wantErr && !errors.Is(err, extension.ErrInvalidRequest) {
+						t.Fatalf("ValidateInput(%+v) error = %v, want ErrInvalidRequest", input, err)
+					}
+					if !test.wantErr && err != nil {
+						t.Fatalf("ValidateInput(%+v) error = %v", input, err)
+					}
+				}
+			})
+		}
+	}
+}

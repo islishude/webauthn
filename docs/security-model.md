@@ -135,6 +135,11 @@ Attestation conveyance is passed into format verification. Packed device serial
 extensions are accepted only for enterprise conveyance; TPM identity attributes,
 Android hardware-enforced authorization lists, and Apple nonce ASN.1 structure
 are validated before trust evaluation.
+Android KeyDescription version and unique-ID types, security-level enumeration
+values, and unique EXPLICIT context-specific tags within each authorization list
+are checked even when the corresponding values do not affect RP policy.
+Every EXPLICIT wrapper must contain exactly one ASN.1 value; empty, truncated,
+or multiple-value wrappers are rejected.
 TPM statement signatures remain fail-closed to the normative `TPMT_SIGNATURE`
 shape; a raw DER ECDSA signature is not accepted as a compatibility form.
 Format verifiers must also return a known attestation type and one of the
@@ -156,6 +161,8 @@ integrity requirement, and an optional version allow-list. JWS verification and
 outer Google-root/status acceptance remain separate requirements.
 
 Compound attestation returns successful sub-results in typed `TrustPath.Statements`.
+The CBOR decoder requires each compound sub-statement to contain only `fmt` and
+`attStmt`, rejecting extra members instead of discarding them during normalization.
 Built-in evidence and nested statements are copied deeply. Custom evidence and
 input implementations must honor their explicit defensive-copy contracts.
 `RequireTrustedRoots` deliberately does not treat that aggregate as an X.509
@@ -216,6 +223,10 @@ is absent. A missing selected-credential context fails closed when credential-
 specific inputs could affect the result. PRF
 outputs are extension results for caller policy and storage; they are not login
 success criteria by themselves.
+
+Typed and raw PRF inputs both require `first` in every supplied value pair.
+A nil `First` is missing; an explicitly empty, non-nil byte slice is valid.
+These checks apply at ceremony start and when finish revalidates restored state.
 
 When a client implements PRF over CTAP `hmac-secret`, signed authenticator data
 can contain an unrequested `hmac-secret` output that the RP cannot interpret.
@@ -288,6 +299,9 @@ Browser response JSON has a fixed 1 MiB decoder limit. The redundant unsigned
 registration `response.publicKey` is syntax-checked when present but is not
 carried into the root response; the signed authenticator-data COSE key remains
 authoritative.
+For largeBlob client outputs, only `blob` undergoes base64url decoding. Unknown
+members, including input-only `write`, remain untrusted values for extension
+policy; malformed known byte fields still fail decoding.
 
 The optional `transport/http` package only reads bounded JSON request bodies and
 writes JSON responses. It serializes a response before committing HTTP headers,

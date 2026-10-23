@@ -171,3 +171,72 @@ func mustProtocolChallenge(t *testing.T, value []byte) protocol.Challenge {
 	}
 	return challenge
 }
+
+func TestCeremoniesValidatePRFFirstPresence(t *testing.T) {
+	t.Parallel()
+
+	registry, err := extension.NewLevel3Registry()
+	if err != nil {
+		t.Fatalf("NewLevel3Registry() error = %v", err)
+	}
+	for _, test := range []struct {
+		name  string
+		first []byte
+		valid bool
+	}{
+		{name: "missing first"},
+		{name: "empty first", first: []byte{}, valid: true},
+		{name: "nonempty first", first: []byte("salt"), valid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			inputs := protocol.ExtensionInputs{
+				extension.IDPRF: extension.PRFInput{Eval: &extension.PRFValues{First: test.first}},
+			}
+			check := func(t *testing.T, err, sentinel error) {
+				t.Helper()
+				if test.valid {
+					if err != nil {
+						t.Fatalf("ceremony error = %v", err)
+					}
+				} else if !errors.Is(err, sentinel) {
+					t.Fatalf("ceremony error = %v, want %v", err, sentinel)
+				}
+			}
+
+			t.Run("registration start", func(t *testing.T) {
+				fixture := newRegistrationFixture(t)
+				_, err := webauthn.StartRegistration(context.Background(), webauthn.RegistrationStartOptions{
+					RP: fixture.start.Options.RP, User: fixture.start.Options.User,
+					OriginPolicy: fixture.start.State.OriginPolicy, Challenge: fixture.challenge,
+					Extensions: inputs, ExtensionRegistry: registry,
+				})
+				check(t, err, webauthn.ErrInvalidConfiguration)
+			})
+			t.Run("authentication start", func(t *testing.T) {
+				fixture := newAuthenticationFixture(t, true)
+				_, err := webauthn.StartAuthentication(context.Background(), webauthn.AuthenticationStartOptions{
+					RPID: fixture.start.State.RPID, OriginPolicy: fixture.start.State.OriginPolicy,
+					Challenge: fixture.challenge, Extensions: inputs, ExtensionRegistry: registry,
+				})
+				check(t, err, webauthn.ErrInvalidConfiguration)
+			})
+			t.Run("restored registration state", func(t *testing.T) {
+				options := newRegistrationFixture(t).finishOptions()
+				options.State.RequestedExtensions = inputs
+				options.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDPRF)
+				options.ExtensionRegistry = registry
+				_, err := webauthn.FinishRegistration(context.Background(), options)
+				check(t, err, webauthn.ErrExtensionPolicy)
+			})
+			t.Run("restored authentication state", func(t *testing.T) {
+				options := newAuthenticationFixture(t, true).finishOptions()
+				options.State.RequestedExtensions = inputs
+				options.State.ExtensionBindings = mustExtensionBindings(t, registry, extension.IDPRF)
+				options.ExtensionRegistry = registry
+				_, err := webauthn.FinishAuthentication(context.Background(), options)
+				check(t, err, webauthn.ErrExtensionPolicy)
+			})
+		})
+	}
+}

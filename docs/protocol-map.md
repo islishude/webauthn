@@ -119,6 +119,13 @@ associated with the credential.
 The root package must not import these packages automatically. Trust acceptance
 remains caller policy after format verification succeeds.
 
+Recommendation section 8.4.1 requires the Android Key extension schema: version
+fields are INTEGERs, `uniqueId` is an OCTET STRING, security levels are defined
+enumeration values, and authorization-list members have unique EXPLICIT
+context-specific tags within each list, each wrapping exactly one ASN.1 value.
+Section 8.9 compound sub-statements
+contain exactly `fmt` and `attStmt`; extra members are rejected before dispatch.
+
 ## Extensions
 
 | Extension identifier   | Applicability                   | Behavior                                                                                                                  | Status                |
@@ -134,6 +141,12 @@ remains caller policy after format verification succeeds.
 `extension.NewLevel3Registry` excludes `uvm` by default.
 `extension.NewLevel3RegistryWithDeprecated` includes it for callers that still
 need to parse existing outputs.
+
+Section 10.1.4 requires `PRFValues.First` whenever `eval` or an
+`evalByCredential` value is supplied. A nil slice is missing; a non-nil empty
+slice is a valid zero-length input. Section 10.1.5 defines `blob` as the only
+binary largeBlob output member. The browser adapter leaves unknown output
+members unchanged instead of treating input-only `write` as an output byte field.
 
 `extension.RemoteClientDataJSONHandler` is not included in either default
 registry. A caller opting into it must also configure the remote origin in

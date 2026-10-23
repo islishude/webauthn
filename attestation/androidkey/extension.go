@@ -12,6 +12,7 @@ const (
 
 	androidKeyPurposeSign         = 2
 	androidKeyOriginGenerated     = 0
+	androidSecurityLevelSoftware  = 0
 	androidSecurityLevelTEE       = 1
 	androidSecurityLevelStrongBox = 2
 
@@ -67,6 +68,17 @@ func parseAndroidKeyDescription(raw []byte) (androidKeyDescription, error) {
 	if len(fields) != 8 {
 		return androidKeyDescription{}, ErrInvalidExtension
 	}
+	// Versions and the unique ID are not WebAuthn policy inputs, but must
+	// still have the types required by the KeyDescription schema.
+	if _, err := parseInteger(fields[0]); err != nil {
+		return androidKeyDescription{}, err
+	}
+	if _, err := parseInteger(fields[2]); err != nil {
+		return androidKeyDescription{}, err
+	}
+	if _, err := parseOctetString(fields[5]); err != nil {
+		return androidKeyDescription{}, err
+	}
 
 	challenge, err := parseOctetString(fields[4])
 	if err != nil {
@@ -81,11 +93,11 @@ func parseAndroidKeyDescription(raw []byte) (androidKeyDescription, error) {
 		return androidKeyDescription{}, err
 	}
 
-	attestationSecurityLevel, err := parseEnumerated(fields[1])
+	attestationSecurityLevel, err := parseSecurityLevel(fields[1])
 	if err != nil {
 		return androidKeyDescription{}, err
 	}
-	keymasterSecurityLevel, err := parseEnumerated(fields[3])
+	keymasterSecurityLevel, err := parseSecurityLevel(fields[3])
 	if err != nil {
 		return androidKeyDescription{}, err
 	}
@@ -106,9 +118,18 @@ func parseAuthorizationList(raw asn1.RawValue) (androidAuthorizationList, error)
 	}
 
 	var list androidAuthorizationList
+	seen := make(map[int]bool, len(fields))
 	for _, field := range fields {
-		if field.Class != asn1.ClassContextSpecific {
-			continue
+		if field.Class != asn1.ClassContextSpecific || !field.IsCompound || seen[field.Tag] {
+			return androidAuthorizationList{}, ErrInvalidExtension
+		}
+		seen[field.Tag] = true
+		// EXPLICIT fields wrap exactly one ASN.1 value, including fields that
+		// do not participate in the WebAuthn authorization checks.
+		var value asn1.RawValue
+		rest, err := asn1.Unmarshal(field.Bytes, &value)
+		if err != nil || len(rest) != 0 {
+			return androidAuthorizationList{}, ErrInvalidExtension
 		}
 		switch field.Tag {
 		case androidTagPurpose:
@@ -206,10 +227,13 @@ func parseOctetString(raw asn1.RawValue) ([]byte, error) {
 	return out, nil
 }
 
-func parseEnumerated(raw asn1.RawValue) (int, error) {
+func parseSecurityLevel(raw asn1.RawValue) (int, error) {
 	var out asn1.Enumerated
 	rest, err := asn1.Unmarshal(raw.FullBytes, &out)
 	if err != nil || len(rest) != 0 {
+		return 0, ErrInvalidExtension
+	}
+	if out != androidSecurityLevelSoftware && out != androidSecurityLevelTEE && out != androidSecurityLevelStrongBox {
 		return 0, ErrInvalidExtension
 	}
 	return int(out), nil
