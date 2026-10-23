@@ -155,6 +155,16 @@ func (PRFHandler) VerifyOutput(_ context.Context, request OutputRequest[PRFInput
 func parsePRFInput(value any) (PRFInput, error) {
 	switch input := value.(type) {
 	case PRFInput:
+		if input.Eval != nil {
+			if err := validatePRFValues(*input.Eval, false); err != nil {
+				return PRFInput{}, err
+			}
+		}
+		for _, values := range input.EvalByCredential {
+			if err := validatePRFValues(values, false); err != nil {
+				return PRFInput{}, err
+			}
+		}
 		return clonePRFInput(input), nil
 	case map[string]any:
 		return prfInputFromFields(input)

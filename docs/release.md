@@ -29,6 +29,24 @@ Security fixes may tighten accepted behavior and must document the change.
 Security maintenance targets the latest release (`main` before the first
 release); older versions have no guaranteed backports.
 
+## Level 3 validation corrections
+
+The Recommendation conformance fixes preserve public API and dependency
+boundaries. Typed PRF `eval` and `evalByCredential` values now reject a nil
+`First`; use a non-nil empty slice when deliberately evaluating an empty input.
+Invalid restored inputs also fail finish-time validation.
+
+Compound sub-statements with members beyond `fmt` and `attStmt` are rejected.
+Android Key certificate extensions with invalid version/unique-ID types,
+undefined security levels, duplicate authorization tags, or non-EXPLICIT
+authorization fields are rejected before trust evaluation. EXPLICIT wrappers
+must contain exactly one ASN.1 value. These changes tighten
+acceptance of malformed attestations without changing caller-owned trust policy.
+
+The browser adapter now base64url-decodes only `blob` in largeBlob outputs.
+Unknown `write` output members retain their original value and remain subject
+to extension policy; malformed `blob` values still fail.
+
 ## Go 1.27 and JSON v2 migration
 
 The next minor release requires Go 1.27.0 or newer. This is an intentional

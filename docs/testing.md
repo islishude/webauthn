@@ -202,13 +202,19 @@ Format-specific coverage:
 - `tpm`: TPM statement shape, public-key/name binding, strict `TPMT_SIGNATURE`,
   critical SAN and exact manufacturer/model/version attribute checks.
 - `android-key`: challenge binding, exact authorization-list values, union
-  default, hardware/TEE-only policy, and Ed25519 certificate-key binding.
+  default, hardware/TEE-only policy, and Ed25519 certificate-key binding;
+  reject wrong version/unique-ID ASN.1 types, undefined security levels,
+  duplicate authorization tags, untagged or implicit authorizations, and empty,
+  truncated or multiple-value EXPLICIT wrappers, while
+  accepting defined security levels and additional valid explicit fields.
 - `android-safetynet`: legacy JWS response verification through dependency,
   nonce, application identity, signing-certificate digest, timestamp, version,
   integrity, and certificate/trust policy.
 - `fido-u2f`: U2F registration signature base construction and ES256 requirement.
 - `apple`: anonymous attestation certificate, Ed25519 certificate-key support,
   and DER sequence/explicit nonce binding behavior, including the W3C vector.
+- `compound`: accept the two-member `fmt`/`attStmt` sub-statement shape and
+  reject extra members, including an embedded `authData`.
 
 ### Extension tests
 
@@ -225,6 +231,11 @@ Required coverage:
   list and the credential that actually produced the assertion;
 - rejection of registration `evalByCredential` whenever the member is present,
   including an empty object;
+- typed PRF values reject missing `first`, including second-only pairs, while
+  accepting explicitly empty and arbitrary-length input bytes; root ceremony
+  tests cover both start and restored-state finish paths;
+- largeBlob browser output conversion decodes `blob` and preserves unknown
+  `write` values unchanged, while rejecting malformed `blob` base64url;
 - operation-specific PRF/largeBlob outputs, equal-input PRF results, and the
   single-credential largeBlob write rule;
 - registered-handler enforcement at largeBlob start plus finish-time

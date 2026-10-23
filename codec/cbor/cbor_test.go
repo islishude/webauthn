@@ -111,6 +111,22 @@ func TestDecoderRejectsMalformedCompoundAttestationObject(t *testing.T) {
 			},
 			wantErr: codeccbor.ErrMalformedCBOR,
 		},
+		{
+			name: "unexpected sub-statement field",
+			stmt: []any{
+				map[string]any{"fmt": "none", "attStmt": map[string]any{}, "unexpected": true},
+				map[string]any{"fmt": "packed", "attStmt": map[string]any{"alg": -7, "sig": []byte("signature")}},
+			},
+			wantErr: codeccbor.ErrMalformedCBOR,
+		},
+		{
+			name: "sub-statement authenticator data",
+			stmt: []any{
+				map[string]any{"fmt": "none", "attStmt": map[string]any{}},
+				map[string]any{"fmt": "none", "attStmt": map[string]any{}, "authData": authData.Bytes()},
+			},
+			wantErr: codeccbor.ErrMalformedCBOR,
+		},
 	}
 
 	for _, tt := range tests {

@@ -395,6 +395,7 @@ type extensionOptions struct {
 	omitPurpose             bool
 	purpose                 int
 	hardwareEnforced        bool
+	descriptionFields       func(*testing.T, []asn1.RawValue) []asn1.RawValue
 }
 
 type testCertificate struct {
@@ -474,7 +475,7 @@ func androidKeyDescriptionDER(t *testing.T, options extensionOptions) []byte {
 	if options.hardwareEnforced {
 		securityLevel = asn1.Enumerated(androidSecurityLevelTEE)
 	}
-	return mustMarshal(t, []asn1.RawValue{
+	fields := []asn1.RawValue{
 		rawValue(t, mustMarshal(t, 3)),
 		rawValue(t, mustMarshal(t, securityLevel)),
 		rawValue(t, mustMarshal(t, 4)),
@@ -483,7 +484,11 @@ func androidKeyDescriptionDER(t *testing.T, options extensionOptions) []byte {
 		rawValue(t, mustMarshal(t, []byte{})),
 		software,
 		hardware,
-	})
+	}
+	if options.descriptionFields != nil {
+		fields = options.descriptionFields(t, fields)
+	}
+	return mustMarshal(t, fields)
 }
 
 type authListOptions struct {

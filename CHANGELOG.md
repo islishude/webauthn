@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Correct Level 3 boundary validation: require `first` in typed PRF values,
+  reject extra compound sub-statement members and malformed Android Key
+  extension fields, and decode only the defined `blob` byte member in
+  largeBlob outputs. See the [conformance notes](docs/release.md#level-3-validation-corrections).
+
 - Define v1 as the only storage envelope format, with explicit credential type,
   extension handler bindings, and strict validation. See the
   [storage format contract](docs/release.md#storage-envelope-v1).
