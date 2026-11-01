@@ -68,7 +68,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: "latest"
-          install-only: 
+          install-only: true
           install-mode: "goinstall"
 
       - name: Verify module tidy without modifying files
