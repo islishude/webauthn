@@ -3,7 +3,7 @@ module github.com/islishude/webauthn
 go 1.27.0
 
 require (
-	github.com/fxamacker/cbor/v2 v2.9.4
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/ldclabs/cose v1.4.0
 )
 
