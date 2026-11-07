@@ -85,7 +85,10 @@ The project may implement parsing of WebAuthn protocol-specific binary structure
 - validation of required and optional fields after general-purpose decoding.
 
 The project must not implement general CBOR or COSE decoders. Attestation
-objects and COSE keys are decoded through a codec dependency or adapter. The
+objects and COSE keys are decoded through a CBOR dependency or injected adapter.
+The bundled adapter only extracts WebAuthn public-key fields from decoded maps
+(RFC 9052 section 7, RFC 9053 section 7, and RFC 8230 section 4); it does not
+implement general COSE messages, private keys, signing, or encryption. The
 concrete adapter uses that dependency for canonical round-tripping and rejects
 tags, indefinite lengths, duplicate keys, non-canonical ordering/widths, extra
 attestation-object fields, and optional or private COSE key parameters. No
@@ -210,7 +213,7 @@ Dependencies must be minimal and compartmentalized. The root package should not 
 
 The implementation should prefer standard library support for SHA-256, X.509 parsing, ASN.1 parsing, ECDSA/RSA verification, and base64url handling where it is sufficient. CBOR, COSE, and JWS/JWT require explicit dependency decisions before implementation.
 
-The optional `codec/cbor` package uses `github.com/fxamacker/cbor/v2 v2.10.0` and `github.com/ldclabs/cose v1.4.0`, both MIT-licensed. They support attestation object, authenticator extension map, and COSE_Key decoding. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
+The optional `codec/cbor` package uses MIT-licensed `github.com/fxamacker/cbor/v2 v2.10.0` for attestation objects, authenticator extension maps, and the CBOR representation of credential public keys. WebAuthn-specific COSE_Key field extraction is maintained locally; the general COSE dependency is removed, including its extended-crypto dependency chain. No external types or public signatures change. The root registration and authentication APIs accept narrow codec/crypto interfaces, so replacing these dependencies does not require exposing concrete dependency types.
 
 Plan 05's initial `attestation/packed` slice adds no dependency. It uses Go standard library X.509 parsing for packed attestation certificate shape checks and delegates attestation signature verification through `crypto.SignatureVerifier`. X.509 trust-chain acceptance remains caller policy through `attestation.TrustPolicy`.
 

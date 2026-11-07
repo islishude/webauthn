@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Remove the general COSE dependency in favor of WebAuthn-specific public-key
+  field extraction over the existing CBOR library. Preserve public interfaces
+  and standard-library cryptography; reject zero or mistyped key/algorithm
+  identifiers instead of inferring algorithms from curves.
+
 - Correct Level 3 boundary validation: require `first` in typed PRF values,
   reject extra compound sub-statement members and malformed Android Key
   extension fields, and decode only the defined `blob` byte member in

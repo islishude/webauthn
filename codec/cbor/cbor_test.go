@@ -443,7 +443,7 @@ func TestDecoderCredentialPublicKeyRejectsU2FKnownKeyMismatch(t *testing.T) {
 	}
 }
 
-func TestDecoderCredentialPublicKeyRejectsMalformedDependencyShape(t *testing.T) {
+func TestDecoderCredentialPublicKeyRejectsMalformedShape(t *testing.T) {
 	t.Parallel()
 
 	_, err := codeccbor.MustNewDecoder().DecodeCredentialPublicKey([]byte("\xa500102070 \xf7"))

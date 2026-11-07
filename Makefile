@@ -128,6 +128,7 @@ e2e-headed: node-deps
 
 mod-check:
 	$(GO) mod tidy -diff
+	cd tests/consumer && GOWORK=off $(GO) mod tidy -diff
 
 ci-docs:
 	@test -f LICENSE

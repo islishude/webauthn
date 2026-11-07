@@ -379,3 +379,17 @@ compatibility, while storage rejects them. Required fields, explicit null
 checks, one-document parsing, and existing work budgets still apply. Parsing
 client data never replaces the original signed bytes with re-encoded JSON;
 the existing leading-BOM parsing rule and verbatim hashing remain unchanged.
+
+## WebAuthn credential public-key decoding
+
+The optional `codec/cbor` adapter retains the CBOR dependency and standard-library
+cryptography but extracts WebAuthn COSE_Key fields locally. Public codec contracts
+and typed key material are unchanged. Required `kty` and `alg` must be explicit
+nonzero integers within the signed 32-bit range; `alg=0` is rejected rather than
+inferred from a curve. Missing, null, or mistyped required fields fail closed.
+Unknown nonzero algorithm identifiers remain available to explicit caller policy
+and custom verifiers; successful decoding does not imply algorithm acceptance.
+Unknown nonzero key types retain raw bytes without synthesized typed material,
+subject to the existing optional-parameter restrictions. Canonical CBOR, input
+limits, exact consumed bytes, and known-algorithm material validation remain.
+This is WebAuthn-specific field validation, not a general-purpose COSE codec.

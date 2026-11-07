@@ -207,3 +207,8 @@ they introduce no new wire fields, attestation policies or protocol algorithms.
 Stored-record error classification and application row-version examples likewise
 preserve the Recommendation baseline and storage field semantics. Storage
 envelopes use the sole v1 format.
+
+The bundled credential public-key adapter uses the CBOR library for wire decoding
+and local WebAuthn-specific field validation. It requires explicit nonzero integer
+key/algorithm identifiers without curve-based algorithm inference. No general
+COSE implementation or external COSE dependency is included.

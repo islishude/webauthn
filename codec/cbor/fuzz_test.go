@@ -49,6 +49,11 @@ func FuzzDecodeCredentialPublicKey(f *testing.F) {
 	f.Add([]byte{0xa0})
 	f.Add([]byte{0xff})
 
+	f.Add(seedCBOR(map[int]any{1: 1, 3: -19, -1: 6, -2: make([]byte, 32)}))
+	f.Add(seedCBOR(map[int]any{1: 2, 3: 0, -1: 1, -2: make([]byte, 32), -3: make([]byte, 32)}))
+	f.Add(seedCBOR(map[int]any{1: 42, 3: int64(-1 << 31)}))
+	f.Add([]byte("\xa500102070 \xf7"))
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		_, _ = decoder.DecodeCredentialPublicKey(data)
 	})

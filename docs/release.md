@@ -91,3 +91,17 @@ Persist the complete format using the current storage API. Ceremony states must
 include all required policy and extension bindings; applications remain
 responsible for expiry enforcement and single-use consumption. Envelope decoding
 validates the current schema and does not infer missing required values.
+
+## WebAuthn credential public-key decoding
+
+The optional `codec/cbor` adapter retains the CBOR dependency and standard-library
+cryptography but extracts WebAuthn COSE_Key fields locally. Public codec contracts
+and typed key material are unchanged. Required `kty` and `alg` must be explicit
+nonzero integers within the signed 32-bit range; `alg=0` is rejected rather than
+inferred from a curve. Missing, null, or mistyped required fields fail closed.
+Unknown nonzero algorithm identifiers remain available to explicit caller policy
+and custom verifiers; successful decoding does not imply algorithm acceptance.
+Unknown nonzero key types retain raw bytes without synthesized typed material,
+subject to the existing optional-parameter restrictions. Canonical CBOR, input
+limits, exact consumed bytes, and known-algorithm material validation remain.
+This is WebAuthn-specific field validation, not a general-purpose COSE codec.
