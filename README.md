@@ -234,8 +234,8 @@ More detail is recorded in `docs/security-model.md`.
 ## Dependencies
 
 The root API is kept behind narrow interfaces where possible. Concrete
-dependencies used for CBOR and COSE decoding live in the optional `codec/cbor`
-package, and dependency inventory is maintained in `docs/dependencies.json`.
+CBOR decoding lives in the optional `codec/cbor`
+package, with local WebAuthn-specific COSE public-key field validation, and dependency inventory is maintained in `docs/dependencies.json`.
 
 Before adding a dependency, document why it is needed, which protocol surface it
 supports, whether it is root or optional, whether replacing it affects public API

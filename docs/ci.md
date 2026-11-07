@@ -229,3 +229,7 @@ the existing unit, race, and fuzz gates.
 without rewriting files. An intentional uncommitted Go baseline change is not
 itself module drift. The separate clean-worktree release requirement still
 applies before publication.
+
+`make mod-check` checks both the library and independent consumer module with
+`go mod tidy -diff`, so removed runtime dependencies cannot remain unnoticed in
+the consumer module. The CI lint job invokes the same non-mutating check.

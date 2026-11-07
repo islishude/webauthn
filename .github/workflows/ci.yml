@@ -71,7 +71,7 @@ jobs:
           install-only: true
           install-mode: "goinstall"
 
-      - name: Verify module tidy without modifying files
+      - name: Verify library and consumer module tidy without modifying files
         run: make mod-check
 
       - name: Lint check

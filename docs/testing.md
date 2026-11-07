@@ -359,7 +359,7 @@ Plan 08 added tests and checks for:
 - fuzz targets for authenticator data parsing, collected client data parsing, CBOR attestation object decoding, COSE key decoding, authenticator extension map decoding, and browser transport credential descriptor conversion;
 - browser interoperability fixture verification using the e2e Playwright dependency and Chrome DevTools virtual authenticators for platform/discoverable UV-required and roaming allow-credentials username-first flows;
 - real ES256 assertion signature verification for browser fixtures through a test-only standard-library verifier, including tampered signature rejection;
-- regression coverage for malformed COSE key shapes that can panic inside the selected COSE dependency, now reported as `codec/cbor.ErrMalformedCBOR`;
+- regression coverage for malformed COSE key shapes, reported as `codec/cbor.ErrMalformedCBOR`;
 - explicit import graph and dependency license manifest checks in local and GitHub Actions CI.
 
 Plan 09 added tests and checks for:
@@ -690,3 +690,11 @@ types; ceremony tests reject missing required extension bindings. Strict JSON
 tests retain duplicate/unknown member, invalid UTF-8, missing/null version, and
 trailing-data rejection, with assertions that fixture mutations take effect.
 These cases run through the existing unit and fuzz smoke gates in `make ci`.
+
+Credential-key parser tests are independently authored from WebAuthn Level 3
+section 6.5.1, RFC 9052/9053 key structures, and RFC 8230 RSA requirements. They
+cover required field types and integer bounds, zero algorithm rejection without
+curve inference, unknown identifier policy boundaries, all supported EC curves,
+OKP/RSA material, canonicality, duplicate labels, and trailing extension bytes.
+The existing unit, race and credential-key fuzz gates exercise the local parser;
+Chromium E2E exercises registration and authentication through the same adapter.

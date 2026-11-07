@@ -4,14 +4,10 @@ package cbor
 
 import (
 	"bytes"
-	"crypto/ecdh"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
 	fxcbor "github.com/fxamacker/cbor/v2"
-	"github.com/ldclabs/cose/iana"
-	cosekey "github.com/ldclabs/cose/key"
 
 	"github.com/islishude/webauthn/codec"
 	"github.com/islishude/webauthn/internal/protocolidentifier"
@@ -152,53 +148,6 @@ func decodeAttestationStatement(format string, value any) (codec.AttestationStat
 	return codec.AttestationStatement{codec.CompoundSubStatementsKey: statements}, nil
 }
 
-// DecodeCredentialPublicKey decodes the first CBOR item as a COSE_Key and
-// stores only the consumed COSE_Key bytes in the returned Raw value.
-func (d *Decoder) DecodeCredentialPublicKey(raw []byte) (decoded codec.CredentialPublicKey, err error) {
-	defer func() {
-		if recover() != nil {
-			decoded = codec.CredentialPublicKey{}
-			err = fmt.Errorf("%w: malformed cose key", ErrMalformedCBOR)
-		}
-	}()
-	if d == nil || d.mode == nil || d.canonicalMode == nil {
-		return codec.CredentialPublicKey{}, errors.New("nil cbor decoder")
-	}
-	if len(raw) == 0 || len(raw) > MaxCBORBytes {
-		return codec.CredentialPublicKey{}, ErrMalformedCBOR
-	}
-
-	var key cosekey.Key
-	rest, err := d.mode.UnmarshalFirst(raw, &key)
-	if err != nil {
-		return codec.CredentialPublicKey{}, err
-	}
-
-	consumed := len(raw) - len(rest)
-	if consumed <= 0 || consumed > codec.MaxCredentialPublicKeyBytes || key == nil {
-		return codec.CredentialPublicKey{}, ErrMalformedCBOR
-	}
-	encodedKey := raw[:consumed]
-	canonicalValue, err := d.validateCanonical(encodedKey)
-	if err != nil {
-		return codec.CredentialPublicKey{}, err
-	}
-	if err := validateCredentialPublicKeyParameters(canonicalValue, key.Kty()); err != nil {
-		return codec.CredentialPublicKey{}, err
-	}
-
-	algorithm := protocol.COSEAlgorithmIdentifier(key.Alg())
-	if err := algorithm.Validate(); err != nil {
-		return codec.CredentialPublicKey{}, ErrMalformedCBOR
-	}
-	material := publicKeyMaterial(key)
-	if err := validateCredentialPublicKey(algorithm, material); err != nil {
-		return codec.CredentialPublicKey{}, err
-	}
-
-	return codec.NewCredentialPublicKey(algorithm, encodedKey, material), nil
-}
-
 // DecodeExtensionMap decodes authenticator extension output CBOR.
 func (d *Decoder) DecodeExtensionMap(raw []byte) (codec.ExtensionMap, error) {
 	decodedValue, err := d.validateCanonical(raw)
@@ -232,43 +181,6 @@ func (d *Decoder) validateCanonical(data []byte) (any, error) {
 		return nil, ErrMalformedCBOR
 	}
 	return decoded, nil
-}
-
-func validateCredentialPublicKeyParameters(value any, keyType int) error {
-	parameters, ok := integerMap(value)
-	if !ok {
-		return ErrMalformedCBOR
-	}
-	if _, ok := parameters[1]; !ok {
-		return ErrMalformedCBOR
-	}
-	if _, ok := parameters[3]; !ok {
-		return ErrMalformedCBOR
-	}
-
-	var allowed map[int64]struct{}
-	switch keyType {
-	case iana.KeyTypeEC2:
-		allowed = keySet(1, 3, -1, -2, -3)
-	case iana.KeyTypeRSA, iana.KeyTypeOKP:
-		allowed = keySet(1, 3, -1, -2)
-	default:
-		for _, optional := range []int64{2, 4, 5} {
-			if _, present := parameters[optional]; present {
-				return ErrMalformedCBOR
-			}
-		}
-		return nil
-	}
-	if len(parameters) != len(allowed) {
-		return ErrMalformedCBOR
-	}
-	for parameter := range parameters {
-		if _, ok := allowed[parameter]; !ok {
-			return ErrMalformedCBOR
-		}
-	}
-	return nil
 }
 
 func stringMap(value any) (map[string]any, bool) {
@@ -333,163 +245,6 @@ func keySet(keys ...int64) map[int64]struct{} {
 		out[key] = struct{}{}
 	}
 	return out
-}
-
-func publicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
-	switch key.Kty() {
-	case iana.KeyTypeEC2:
-		return ec2PublicKeyMaterial(key)
-	case iana.KeyTypeRSA:
-		return rsaPublicKeyMaterial(key)
-	case iana.KeyTypeOKP:
-		return okpPublicKeyMaterial(key)
-	default:
-		return codec.CredentialPublicKeyMaterial{}
-	}
-}
-
-func validateCredentialPublicKey(algorithm protocol.COSEAlgorithmIdentifier, material codec.CredentialPublicKeyMaterial) error {
-	switch algorithm {
-	case protocol.AlgorithmES256, protocol.AlgorithmESP256:
-		return validateEC2Material(material, codec.EC2CurveP256, ecdh.P256())
-	case protocol.AlgorithmES384, protocol.AlgorithmESP384:
-		return validateEC2Material(material, codec.EC2CurveP384, ecdh.P384())
-	case protocol.AlgorithmES512, protocol.AlgorithmESP512:
-		return validateEC2Material(material, codec.EC2CurveP521, ecdh.P521())
-	case protocol.AlgorithmRS256, protocol.AlgorithmRS384, protocol.AlgorithmRS512,
-		protocol.AlgorithmPS256, protocol.AlgorithmPS384, protocol.AlgorithmPS512:
-		if material.RSA == nil || material.EC2 != nil || material.OKP != nil || !material.RSA.Valid() {
-			return ErrMalformedCBOR
-		}
-	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
-		if material.OKP == nil || material.EC2 != nil || material.RSA != nil || material.OKP.Curve != codec.OKPCurveEd25519 || len(material.OKP.X) != 32 {
-			return ErrMalformedCBOR
-		}
-	case protocol.AlgorithmEd448:
-		if material.OKP == nil || material.EC2 != nil || material.RSA != nil || material.OKP.Curve != codec.OKPCurveEd448 || len(material.OKP.X) != 57 {
-			return ErrMalformedCBOR
-		}
-	}
-
-	return nil
-}
-
-func validateEC2Material(material codec.CredentialPublicKeyMaterial, curveName string, curve ecdh.Curve) error {
-	if material.EC2 == nil || material.RSA != nil || material.OKP != nil || material.EC2.Curve != curveName {
-		return ErrMalformedCBOR
-	}
-	raw := make([]byte, 1, 1+len(material.EC2.X)+len(material.EC2.Y))
-	raw[0] = 0x04
-	raw = append(raw, material.EC2.X...)
-	raw = append(raw, material.EC2.Y...)
-	if _, err := curve.NewPublicKey(raw); err != nil {
-		return ErrMalformedCBOR
-	}
-	return nil
-}
-
-func ec2PublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
-	curve, err := key.GetInt(iana.EC2KeyParameterCrv)
-	if err != nil {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-	x, err := key.GetBytes(iana.EC2KeyParameterX)
-	if err != nil {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-	y, err := key.GetBytes(iana.EC2KeyParameterY)
-	if err != nil {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-
-	curveName, coordinateLength, ok := ec2Curve(curve)
-	if !ok || len(x) != coordinateLength || len(y) != coordinateLength {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-
-	return codec.CredentialPublicKeyMaterial{EC2: &codec.EC2PublicKeyMaterial{
-		Curve: curveName,
-		X:     x,
-		Y:     y,
-	}}
-}
-
-func okpPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
-	curve, err := key.GetInt(iana.OKPKeyParameterCrv)
-	if err != nil {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-	x, err := key.GetBytes(iana.OKPKeyParameterX)
-	if err != nil {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-
-	curveName, coordinateLength, ok := okpCurve(curve)
-	if !ok || len(x) != coordinateLength {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-	switch protocol.COSEAlgorithmIdentifier(key.Alg()) {
-	case protocol.AlgorithmEdDSA, protocol.AlgorithmEd25519:
-		if curve != iana.EllipticCurveEd25519 {
-			return codec.CredentialPublicKeyMaterial{}
-		}
-	case protocol.AlgorithmEd448:
-		if curve != iana.EllipticCurveEd448 {
-			return codec.CredentialPublicKeyMaterial{}
-		}
-	}
-
-	return codec.CredentialPublicKeyMaterial{OKP: &codec.OKPPublicKeyMaterial{
-		Curve: curveName,
-		X:     x,
-	}}
-}
-
-func rsaPublicKeyMaterial(key cosekey.Key) codec.CredentialPublicKeyMaterial {
-	modulus, err := key.GetBytes(iana.RSAKeyParameterN)
-	if err != nil || len(modulus) == 0 || modulus[0] == 0 {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-	exponentBytes, err := key.GetBytes(iana.RSAKeyParameterE)
-	if err != nil || len(exponentBytes) == 0 || len(exponentBytes) > 4 || exponentBytes[0] == 0 {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-
-	var padded [4]byte
-	copy(padded[len(padded)-len(exponentBytes):], exponentBytes)
-	exponent := binary.BigEndian.Uint32(padded[:])
-	if exponent == 0 {
-		return codec.CredentialPublicKeyMaterial{}
-	}
-
-	return codec.CredentialPublicKeyMaterial{RSA: &codec.RSAPublicKeyMaterial{
-		Modulus:  modulus,
-		Exponent: exponent,
-	}}
-}
-
-func ec2Curve(curve int) (string, int, bool) {
-	switch curve {
-	case iana.EllipticCurveP_256:
-		return codec.EC2CurveP256, 32, true
-	case iana.EllipticCurveP_384:
-		return codec.EC2CurveP384, 48, true
-	case iana.EllipticCurveP_521:
-		return codec.EC2CurveP521, 66, true
-	default:
-		return "", 0, false
-	}
-}
-
-func okpCurve(curve int) (string, int, bool) {
-	switch curve {
-	case iana.EllipticCurveEd25519:
-		return codec.OKPCurveEd25519, 32, true
-	case iana.EllipticCurveEd448:
-		return codec.OKPCurveEd448, 57, true
-	default:
-		return "", 0, false
-	}
 }
 
 var (
